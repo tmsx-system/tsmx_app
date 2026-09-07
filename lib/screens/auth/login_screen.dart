@@ -5,6 +5,7 @@ import '../../config/app_config.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../app_main_screen.dart';
+import 'register_site_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,15 +15,13 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _siteFormKey = GlobalKey<FormState>();
-  final _credentialFormKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
   final _siteController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _isLoading = false;
-  bool _isSiteConfirmed = false;
   List<Map<String, String>> _siteHistory = const [];
 
   @override
@@ -30,11 +29,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final appState = context.read<AppState>();
-      if (appState.selectedSiteBaseUrl.trim().isNotEmpty) {
-        _siteController.text = appState.selectedSiteName;
-        _isSiteConfirmed = true;
+      if (appState.selectedSiteCode.trim().isNotEmpty) {
+        _siteController.text = appState.selectedSiteCode;
       }
-      final history = await appState.loadFrappeSiteHistory();
+      final history = (await appState.loadFrappeSiteHistory())
+          .where((site) => (site['siteCode'] ?? '').trim().isNotEmpty)
+          .toList();
       if (!mounted) return;
       setState(() => _siteHistory = history);
     });
@@ -48,39 +48,29 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _continueWithSite({String? displayName}) async {
-    if (!_siteFormKey.currentState!.validate()) return;
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
     final appState = context.read<AppState>();
-    final configured = await appState.configureFrappeSite(
-      codeOrUrl: _siteController.text.trim(),
-      displayName: displayName,
-    );
+    final siteInput = _siteController.text.trim();
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    final configured = await appState.configureFrappeSite(codeOrUrl: siteInput);
 
     if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-      _isSiteConfirmed = configured;
-    });
 
     if (!configured) {
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(appState.lastAuthError ?? 'Site tidak valid.'),
           backgroundColor: Colors.redAccent,
         ),
       );
+      return;
     }
-  }
-
-  Future<void> _submit() async {
-    if (!_credentialFormKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-
-    final appState = context.read<AppState>();
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text;
 
     final success = await appState.login(
       username,
@@ -93,6 +83,7 @@ class _LoginScreenState extends State<LoginScreen> {
         username: username,
         password: password,
         baseUrl: appState.selectedSiteBaseUrl,
+        siteCode: appState.selectedSiteCode,
         siteName: appState.selectedSiteName,
       );
 
@@ -118,9 +109,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-  Future<void> _useHistorySite(Map<String, String> site) async {
-    _siteController.text = site['baseUrl'] ?? '';
-    await _continueWithSite(displayName: site['siteName']);
+  void _useHistorySite(Map<String, String> site) {
+    final code = (site['siteCode'] ?? '').trim();
+    if (code.isNotEmpty) _siteController.text = code.toUpperCase();
+  }
+
+  String _historySiteLabel(Map<String, String> site) {
+    final code = (site['siteCode'] ?? '').trim();
+    return code.isEmpty ? 'SITE' : code.toUpperCase();
   }
 
   Future<void> _continueSample() async {
@@ -134,13 +130,20 @@ class _LoginScreenState extends State<LoginScreen> {
     ).pushReplacement(MaterialPageRoute(builder: (_) => const AppMainScreen()));
   }
 
-  void _changeCompany() {
+  Future<void> _openRegisterSitePage() async {
+    final registered = await Navigator.of(context).push<RegisteredSiteResult>(
+      MaterialPageRoute(builder: (_) => const RegisterSiteScreen()),
+    );
+    if (registered == null || !mounted) return;
     setState(() {
-      _isSiteConfirmed = false;
-      _siteController.clear();
-      _usernameController.clear();
-      _passwordController.clear();
+      _siteController.text = registered.siteCode;
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${registered.siteName} berhasil diregister.'),
+        backgroundColor: AppColors.primary,
+      ),
+    );
   }
 
   InputDecoration _inputDecoration({
@@ -221,12 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                  child: _isSiteConfirmed
-                      ? Form(
-                          key: _credentialFormKey,
-                          child: _credentialForm(appState),
-                        )
-                      : Form(key: _siteFormKey, child: _siteOnboardingForm()),
+                  child: Form(key: _formKey, child: _loginForm(appState)),
                 ),
                 const SizedBox(height: 26),
                 Text(
@@ -245,15 +243,10 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _siteOnboardingForm() {
+  Widget _loginForm(AppState appState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _FormHeader(
-          title: 'Kode Perusahaan',
-          subtitle: 'Masuk ke site ERPNext yang diberikan admin.',
-        ),
-        const SizedBox(height: 14),
         if (_siteHistory.isNotEmpty) ...[
           const Text(
             'Terakhir digunakan',
@@ -275,7 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     size: 16,
                     color: AppColors.primary,
                   ),
-                  label: Text(site['siteName'] ?? 'Site'),
+                  label: Text(_historySiteLabel(site)),
                   onPressed: _isLoading ? null : () => _useHistorySite(site),
                   backgroundColor: AppColors.softGreen,
                   side: BorderSide(
@@ -297,9 +290,9 @@ class _LoginScreenState extends State<LoginScreen> {
             label: 'Kode Perusahaan',
             icon: Icons.dns_outlined,
           ),
-          textInputAction: TextInputAction.done,
+          textInputAction: TextInputAction.next,
           onFieldSubmitted: (_) {
-            if (!_isLoading) _continueWithSite();
+            FocusScope.of(context).nextFocus();
           },
           validator: (value) {
             if (value == null || value.trim().isEmpty) {
@@ -307,62 +300,6 @@ class _LoginScreenState extends State<LoginScreen> {
             }
             return null;
           },
-        ),
-        const SizedBox(height: 22),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _continueWithSite,
-          style: _primaryButtonStyle(),
-          child: _isLoading
-              ? const _ButtonSpinner()
-              : const Text(
-                  'LANJUT',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _isLoading ? null : _continueSample,
-          icon: const Icon(Icons.dataset_outlined),
-          label: const Text('Lanjut Sample'),
-        ),
-      ],
-    );
-  }
-
-  Widget _credentialForm(AppState appState) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const _FormHeader(
-          title: 'Sign In',
-          subtitle: 'Gunakan akun ERPNext untuk site yang dipilih.',
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                appState.selectedSiteName.isEmpty
-                    ? 'Site terpilih'
-                    : appState.selectedSiteName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.slate,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: _isLoading ? null : _changeCompany,
-              child: const Text('Ganti'),
-            ),
-          ],
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -450,7 +387,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: _isLoading
               ? const _ButtonSpinner()
               : const Text(
-                  'SIGN IN',
+                  'Log in',
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 14,
@@ -462,7 +399,49 @@ class _LoginScreenState extends State<LoginScreen> {
         OutlinedButton.icon(
           onPressed: _isLoading ? null : _continueSample,
           icon: const Icon(Icons.dataset_outlined),
-          label: const Text('Lanjut Sample'),
+          label: const Text('Sample'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.primary,
+            side: BorderSide(color: AppColors.primary.withValues(alpha: 0.35)),
+            backgroundColor: AppColors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Register Your ERP',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: AppColors.slate,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _isLoading ? null : _openRegisterSitePage,
+          icon: const Icon(Icons.app_registration_rounded),
+          label: const Text('Register'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.primary,
+            side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25)),
+            backgroundColor: AppColors.softGreen.withValues(alpha: 0.18),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
         ),
       ],
     );
@@ -477,8 +456,8 @@ class _LoginBrand extends StatelessWidget {
     return Column(
       children: [
         SizedBox(
-          width: 150,
-          height: 150,
+          width: 108,
+          height: 108,
           child: Image.asset('assets/images/logo.png', fit: BoxFit.contain),
         ),
         const SizedBox(height: 6),
@@ -489,39 +468,6 @@ class _LoginBrand extends StatelessWidget {
             color: AppColors.slate,
             fontSize: 13,
             fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FormHeader extends StatelessWidget {
-  final String title;
-  final String subtitle;
-
-  const _FormHeader({required this.title, required this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.navy,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          subtitle,
-          style: const TextStyle(
-            color: AppColors.slate,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
           ),
         ),
       ],

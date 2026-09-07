@@ -41,6 +41,7 @@ import '../services/domains/sales_order_service.dart';
 import '../services/erp_services.dart';
 import '../services/frappe_service.dart';
 import '../services/local_app_database.dart';
+import '../services/mobile_site_registry_service.dart';
 import '../services/native_notification_service.dart';
 import '../services/sales_visit_location_service.dart';
 import '../utils/erp_doc_utils.dart';
@@ -49,24 +50,15 @@ import '../utils/frappe_page_walker.dart';
 import '../config/mobile_role_registry.dart';
 import '../utils/mobile_access.dart';
 
-class _LocalFrappeSite {
-  final String name;
-  final String baseUrl;
-
-  const _LocalFrappeSite({required this.name, required this.baseUrl});
-}
-
 class _ResolvedFrappeSite {
   final String code;
   final String name;
   final String baseUrl;
-  final bool directUrl;
 
   const _ResolvedFrappeSite({
     required this.code,
     required this.name,
     required this.baseUrl,
-    this.directUrl = false,
   });
 }
 
@@ -115,6 +107,8 @@ class AppState with ChangeNotifier {
       : MobileRoleRegistry.defaultAppName;
   String _selectedSiteName = '';
   String get selectedSiteName => _selectedSiteName;
+  String _selectedSiteCode = '';
+  String get selectedSiteCode => _selectedSiteCode;
   String get selectedSiteBaseUrl => _frappeService.baseUrl;
   bool get hasSelectedSite => _frappeService.baseUrl.trim().isNotEmpty;
 
@@ -760,11 +754,6 @@ class AppState with ChangeNotifier {
   static const String _prefsApprovalNotificationCountKey =
       'approval_notification_count';
 
-  static final Map<String, _LocalFrappeSite> _localSiteCodes = {
-    for (final site in AppConfig.localFrappeSites)
-      site.code: _LocalFrappeSite(name: site.name, baseUrl: site.baseUrl),
-  };
-
   final ErpServices services;
   final SalesVisitLocationService _visitLocationService =
       SalesVisitLocationService();
@@ -797,35 +786,8 @@ class AppState with ChangeNotifier {
       services.purchaseInvoice;
 
   FrappeService get frappeService => _frappeService;
-
-  Map<String, _LocalFrappeSite> get _siteCatalog {
-    final sites = <String, _LocalFrappeSite>{..._localSiteCodes};
-    final defaultUrl = AppConfig.optionalFrappeBaseUrl;
-    if (defaultUrl.isNotEmpty) {
-      sites.putIfAbsent(
-        'TMSX',
-        () => _LocalFrappeSite(name: 'TMSX Default', baseUrl: defaultUrl),
-      );
-      sites.putIfAbsent(
-        'DEFAULT',
-        () => _LocalFrappeSite(name: 'Default ERP Site', baseUrl: defaultUrl),
-      );
-    }
-    return sites;
-  }
-
-  List<String> get localSiteCodeHints {
-    final codes = _siteCatalog.keys.toList()..sort();
-    return codes;
-  }
-
-  List<MapEntry<String, String>> get localSiteOptions {
-    final entries = _siteCatalog.entries
-        .map((entry) => MapEntry(entry.key, entry.value.name))
-        .toList();
-    entries.sort((a, b) => a.key.compareTo(b.key));
-    return entries;
-  }
+  final MobileSiteRegistryService _siteRegistryService =
+      MobileSiteRegistryService();
 
   Future<List<Map<String, String>>> loadFrappeSiteHistory() async {
     final sp = await SharedPreferences.getInstance();
@@ -881,6 +843,7 @@ class AppState with ChangeNotifier {
         baseUrl: _frappeService.baseUrl,
         storedName: cfg?['siteName'],
       );
+      _selectedSiteCode = (cfg?['siteCode'] ?? '').trim().toUpperCase();
     }
     if (cfg == null) return;
 
@@ -919,19 +882,12 @@ class AppState with ChangeNotifier {
     return false;
   }
 
-  String _siteNameForBaseUrl(String baseUrl) {
-    final normalized = _normalizeBaseUrl(baseUrl);
-    if (normalized.isEmpty) return 'ERP Site';
-    for (final site in _siteCatalog.values) {
-      if (_normalizeBaseUrl(site.baseUrl) == normalized) return site.name;
-    }
-    return 'ERP Site';
-  }
-
   String _publicSiteName({required String baseUrl, String? storedName}) {
     final name = storedName?.trim() ?? '';
     if (name.isNotEmpty && !_looksLikeTechnicalHost(name)) return name;
-    return _siteNameForBaseUrl(baseUrl);
+    final normalized = _normalizeBaseUrl(baseUrl);
+    if (normalized.isEmpty) return 'ERP Site';
+    return _hostLabel(normalized);
   }
 
   String _activeFrappeBaseUrl([String? baseUrl]) {
@@ -946,9 +902,8 @@ class AppState with ChangeNotifier {
     required String codeOrUrl,
     String? displayName,
   }) async {
-    final resolved = _resolveLocalSite(codeOrUrl);
+    final resolved = await _resolveRegisteredSite(codeOrUrl);
     if (resolved == null) {
-      _lastAuthError = 'Kode perusahaan/site tidak valid.';
       notifyListeners();
       return false;
     }
@@ -969,6 +924,7 @@ class AppState with ChangeNotifier {
       await _clearSummaryCache();
     }
     _frappeService.baseUrl = baseUrl;
+    _selectedSiteCode = resolved.code;
     _selectedSiteName = _publicSiteName(
       baseUrl: baseUrl,
       storedName: displayName?.trim().isNotEmpty == true
@@ -977,6 +933,7 @@ class AppState with ChangeNotifier {
     );
     await _saveFrappeConfigPatch({
       'baseUrl': baseUrl,
+      'siteCode': _selectedSiteCode,
       'siteName': _selectedSiteName,
     });
     _lastAuthError = null;
@@ -984,28 +941,31 @@ class AppState with ChangeNotifier {
     return true;
   }
 
-  _ResolvedFrappeSite? _resolveLocalSite(String codeOrUrl) {
-    final raw = codeOrUrl.trim();
-    if (raw.isEmpty) return null;
-    if (raw.contains('.') ||
-        raw.startsWith('http://') ||
-        raw.startsWith('https://')) {
-      final baseUrl = _normalizeBaseUrl(raw);
+  Future<_ResolvedFrappeSite?> _resolveRegisteredSite(String codeOrUrl) async {
+    try {
+      final registered = await _siteRegistryService.resolveSite(codeOrUrl);
+      if (!registered.enabled) {
+        _lastAuthError =
+            'Site ${registered.siteName} belum aktif. Tunggu approval developer TMSX Hub.';
+        return null;
+      }
+      final baseUrl = _normalizeBaseUrl(registered.siteUrl);
+      if (baseUrl.isEmpty) {
+        _lastAuthError = 'Site URL registry tidak valid.';
+        return null;
+      }
       return _ResolvedFrappeSite(
-        code: _hostLabel(baseUrl).toUpperCase(),
-        name: _siteNameForBaseUrl(baseUrl),
+        code: registered.siteCode.trim().isEmpty
+            ? _hostLabel(baseUrl).toUpperCase()
+            : registered.siteCode.trim().toUpperCase(),
+        name: registered.siteName,
         baseUrl: baseUrl,
-        directUrl: true,
       );
+    } catch (error) {
+      _lastAuthError =
+          'Site belum aktif atau belum terdaftar di registry TMSX Hub. Detail: ${_cleanShortFrappeError(error)}';
+      return null;
     }
-    final code = raw.toUpperCase();
-    final site = _siteCatalog[code];
-    if (site == null) return null;
-    return _ResolvedFrappeSite(
-      code: code,
-      name: site.name,
-      baseUrl: site.baseUrl,
-    );
   }
 
   Future<void> _saveFrappeConfigPatch(Map<String, String> patch) async {
@@ -1017,6 +977,7 @@ class AppState with ChangeNotifier {
 
   Future<void> _saveFrappeSiteHistory({
     required String baseUrl,
+    required String siteCode,
     required String siteName,
   }) async {
     final sp = await SharedPreferences.getInstance();
@@ -1027,6 +988,7 @@ class AppState with ChangeNotifier {
     final next = <Map<String, String>>[
       {
         'baseUrl': normalizedBaseUrl,
+        if (siteCode.trim().isNotEmpty) 'siteCode': siteCode.trim(),
         'siteName': _publicSiteName(
           baseUrl: normalizedBaseUrl,
           storedName: siteName,
@@ -1036,6 +998,8 @@ class AppState with ChangeNotifier {
         if (_normalizeBaseUrl(entry['baseUrl'] ?? '') != normalizedBaseUrl)
           {
             'baseUrl': _normalizeBaseUrl(entry['baseUrl'] ?? ''),
+            if ((entry['siteCode'] ?? '').trim().isNotEmpty)
+              'siteCode': entry['siteCode']!.trim(),
             'siteName': _publicSiteName(
               baseUrl: entry['baseUrl'] ?? '',
               storedName: entry['siteName'],
@@ -1185,6 +1149,8 @@ class AppState with ChangeNotifier {
             'baseUrl': cfg['baseUrl']!,
           if (cfg['siteName']?.trim().isNotEmpty == true)
             'siteName': cfg['siteName']!,
+          if (cfg['siteCode']?.trim().isNotEmpty == true)
+            'siteCode': cfg['siteCode']!,
         };
         if (next.isEmpty) {
           await sp.remove(_prefsFrappeConfigKey);
@@ -1465,6 +1431,7 @@ class AppState with ChangeNotifier {
     _salesIdentityError = null;
     _userRole = MobileRole.developer;
     _selectedSiteName = 'Sample Offline';
+    _selectedSiteCode = 'SAMPLE';
     _frappeService.baseUrl = '';
 
     _loadSampleData();
@@ -10897,6 +10864,7 @@ class AppState with ChangeNotifier {
     String? password,
     bool savePassword = true,
     String? baseUrl,
+    String? siteCode,
     String? siteName,
   }) async {
     final sp = await SharedPreferences.getInstance();
@@ -10911,6 +10879,8 @@ class AppState with ChangeNotifier {
     final cfg = {
       'username': username,
       'baseUrl': resolvedBaseUrl,
+      if ((siteCode ?? _selectedSiteCode).trim().isNotEmpty)
+        'siteCode': (siteCode ?? _selectedSiteCode).trim().toUpperCase(),
       'siteName': _publicSiteName(
         baseUrl: resolvedBaseUrl,
         storedName: siteName?.trim().isNotEmpty == true
@@ -10922,11 +10892,13 @@ class AppState with ChangeNotifier {
     await sp.setString(_prefsFrappeConfigKey, jsonEncode(cfg));
     await _saveFrappeSiteHistory(
       baseUrl: resolvedBaseUrl,
+      siteCode: cfg['siteCode'] ?? _selectedSiteCode,
       siteName: cfg['siteName']!,
     );
 
     _frappeService.baseUrl = resolvedBaseUrl;
     _frappeService.username = username;
+    _selectedSiteCode = cfg['siteCode'] ?? _selectedSiteCode;
     _selectedSiteName = cfg['siteName']!;
     if (shouldSavePassword && password != null) {
       _frappeService.password = password;
