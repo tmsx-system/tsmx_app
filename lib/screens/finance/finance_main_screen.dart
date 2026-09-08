@@ -3,11 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../../models/erp_summary.dart';
 import '../../models/finance_accounting.dart';
-import '../../state/app_state.dart';
+import '../../state/finance/finance_state.dart';
 import '../../theme/app_colors.dart';
-import '../../utils/date_range_presets.dart';
 import '../../utils/erp_format.dart';
-import '../../utils/num_parse.dart';
 import '../../widgets/erp/erp_empty_state.dart';
 import '../../widgets/erp/erp_error_box.dart';
 import '../../widgets/erp/erp_detail_sheet.dart';
@@ -53,8 +51,8 @@ class _FinanceMainScreenState extends State<FinanceMainScreen> {
   }
 
   Future<_FinanceAccess> _loadAccess() async {
-    final state = context.read<AppState>();
-    await state.frappeService.ensureLoggedIn();
+    final state = context.read<FinanceState>();
+    await state.ensureLoggedIn();
 
     final results = await Future.wait<bool>([
       state.canReadDoctype('Payment Entry'),
@@ -149,7 +147,8 @@ class _FinanceMainScreenState extends State<FinanceMainScreen> {
           title: isAccounting ? 'Accounting' : 'Finance',
           fallbackUsername: isAccounting ? 'Accounting' : 'Finance',
           initialTabIndex: initialIndex < 0 ? 0 : initialIndex,
-          onInitialize: (state) async => state.frappeService.ensureLoggedIn(),
+          onInitialize: (context) async =>
+              context.read<FinanceState>().ensureLoggedIn(),
           screensBuilder: (_) => [
             for (final entry in entries)
               _FinanceWorkspaceTab(initialView: entry.view, access: access),
@@ -200,6 +199,17 @@ class _FinanceAccess {
       canUseCashBank || canUseReceivablePayable || canUseAccounting;
   bool get hasAnyFinanceAccess =>
       canUseDashboard || canCreatePaymentEntry || canCreateJournalEntry;
+
+  FinanceDataAccess toDataAccess() {
+    return FinanceDataAccess(
+      canReadPaymentEntry: canReadPaymentEntry,
+      canReadSalesInvoice: canReadSalesInvoice,
+      canReadPurchaseInvoice: canReadPurchaseInvoice,
+      canReadAccount: canReadAccount,
+      canReadGlEntry: canReadGlEntry,
+      canReadJournalEntry: canReadJournalEntry,
+    );
+  }
 
   List<_FinanceTabEntry> entries({required bool accountingOnly}) {
     final entries = <_FinanceTabEntry>[];

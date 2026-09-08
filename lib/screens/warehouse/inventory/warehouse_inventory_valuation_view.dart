@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/inventory_item.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_valuation_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
@@ -45,7 +45,7 @@ class _WarehouseInventoryValuationViewState
       _error = null;
     });
     try {
-      await context.read<AppState>().refreshInventory();
+      await context.read<WarehouseValuationState>().refreshInventory();
     } catch (error) {
       _error = _friendlyError(error);
     } finally {
@@ -55,7 +55,7 @@ class _WarehouseInventoryValuationViewState
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<WarehouseValuationState>();
     final rows = _filteredRows(state.inventory);
     final warehouses =
         state.warehouses

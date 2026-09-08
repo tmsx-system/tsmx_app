@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/quality_inspection_record.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../shared/warehouse_widgets.dart';
@@ -44,10 +44,12 @@ class _WarehouseProductionQcScreenState
       _error = null;
     });
     try {
-      _rows = await context.read<AppState>().fetchProductionQualityInspections(
-        periodDays: _periodDays,
-        forceRefresh: forceRefresh,
-      );
+      _rows = await context
+          .read<WarehouseStockState>()
+          .fetchProductionQualityInspections(
+            periodDays: _periodDays,
+            forceRefresh: forceRefresh,
+          );
     } catch (error) {
       _error = _friendlyError(error);
     } finally {

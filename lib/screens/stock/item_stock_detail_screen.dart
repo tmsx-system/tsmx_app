@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/inventory_item.dart';
 import '../../models/stock_ledger_movement.dart';
-import '../../state/app_state.dart';
+import '../../state/warehouse/warehouse_stock_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/date_range_presets.dart';
 
@@ -45,11 +45,13 @@ class _ItemStockDetailScreenState extends State<ItemStockDetailScreen> {
     });
 
     try {
-      final result = await context.read<AppState>().fetchStockLedgerForItem(
-        itemCode: widget.item.sku,
-        from: _range.from,
-        to: _range.to,
-      );
+      final result = await context
+          .read<WarehouseStockState>()
+          .fetchStockLedgerForItem(
+            itemCode: widget.item.sku,
+            from: _range.from,
+            to: _range.to,
+          );
       if (!mounted) return;
       setState(() {
         _result = result;

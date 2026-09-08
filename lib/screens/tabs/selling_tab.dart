@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../state/app_state.dart';
+import '../../state/selling/delivery_note_state.dart';
+import '../../state/selling/sales_invoice_state.dart';
+import '../../state/selling/sales_order_state.dart';
+import '../../state/selling/selling_filter_state.dart';
 import '../../theme/app_colors.dart';
 import '../sales/shared/sales_ui.dart';
 import '../sales/delivery_note/delivery_note_panel.dart';
@@ -65,11 +68,11 @@ class SellingTabState extends State<SellingTab>
     _tabController!.addListener(_handleTabChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appState = context.read<AppState>();
+      final sellingState = context.read<SellingFilterState>();
 
-      appState.loadSellingFilterOptions();
-      appState.refreshSellingSummaries(documentType: _activeDocumentType);
-      _ensureActiveDocumentLoaded(appState);
+      sellingState.loadSellingFilterOptions();
+      sellingState.refreshSellingSummaries(documentType: _activeDocumentType);
+      _ensureActiveDocumentLoaded();
     });
   }
 
@@ -107,31 +110,34 @@ class SellingTabState extends State<SellingTab>
 
     widget.onSegmentChanged?.call(id);
 
-    final appState = context.read<AppState>();
-    appState.refreshSellingSummaries(documentType: _activeDocumentType);
-    _ensureActiveDocumentLoaded(appState);
+    final sellingState = context.read<SellingFilterState>();
+    sellingState.refreshSellingSummaries(documentType: _activeDocumentType);
+    _ensureActiveDocumentLoaded();
   }
 
-  void _ensureActiveDocumentLoaded(AppState appState) {
+  void _ensureActiveDocumentLoaded() {
     final controller = _tabController;
     final id = _allowedSegments[controller?.index ?? _initialIndex];
     switch (id) {
       case 'dn':
-        if (appState.deliveryNotes.isEmpty) {
-          appState.refreshDeliveryNotes();
+        final state = context.read<DeliveryNoteState>();
+        if (state.deliveryNotes.isEmpty) {
+          state.refreshDeliveryNotes();
         }
         break;
 
       case 'si':
-        if (appState.salesInvoices.isEmpty) {
-          appState.refreshSalesInvoices();
+        final state = context.read<SalesInvoiceState>();
+        if (state.salesInvoices.isEmpty) {
+          state.refreshSalesInvoices();
         }
         break;
 
       case 'so':
       default:
-        if (appState.salesOrders.isEmpty) {
-          appState.refreshSalesOrders();
+        final state = context.read<SalesOrderState>();
+        if (state.salesOrders.isEmpty) {
+          state.refreshSalesOrders();
         }
         break;
     }
@@ -141,17 +147,17 @@ class SellingTabState extends State<SellingTab>
     final controller = _tabController;
     if (controller == null) return;
 
-    final appState = context.read<AppState>();
+    final sellingState = context.read<SellingFilterState>();
 
     await Future.wait([
-      appState.refreshSellingSummaries(
+      sellingState.refreshSellingSummaries(
         forceRemote: true,
         documentType: _activeDocumentType,
       ),
       switch (_allowedSegments[controller.index]) {
-        'dn' => appState.refreshDeliveryNotes(),
-        'si' => appState.refreshSalesInvoices(),
-        _ => appState.refreshSalesOrders(),
+        'dn' => context.read<DeliveryNoteState>().refreshDeliveryNotes(),
+        'si' => context.read<SalesInvoiceState>().refreshSalesInvoices(),
+        _ => context.read<SalesOrderState>().refreshSalesOrders(),
       },
     ]);
   }
@@ -160,33 +166,32 @@ class SellingTabState extends State<SellingTab>
     final controller = _tabController;
     if (controller == null) return;
 
-    final appState = context.read<AppState>();
     final id = _allowedSegments[controller.index];
 
     switch (id) {
       case 'dn':
-        appState.loadMoreDeliveryNotes();
+        context.read<DeliveryNoteState>().loadMoreDeliveryNotes();
         break;
 
       case 'si':
-        appState.loadMoreSalesInvoices();
+        context.read<SalesInvoiceState>().loadMoreSalesInvoices();
         break;
 
       case 'so':
       default:
-        appState.loadMoreSalesOrders();
+        context.read<SalesOrderState>().loadMoreSalesOrders();
         break;
     }
   }
 
   Future<void> _openSellingPeriodFilter() async {
-    final appState = context.read<AppState>();
+    final sellingState = context.read<SellingFilterState>();
     final salesGroupFilter =
-        appState.sellingCustomerTypeFilter == 'all' ||
-            appState.sellingSalesGroups.contains(
-              appState.sellingCustomerTypeFilter,
+        sellingState.sellingCustomerTypeFilter == 'all' ||
+            sellingState.sellingSalesGroups.contains(
+              sellingState.sellingCustomerTypeFilter,
             )
-        ? appState.sellingCustomerTypeFilter
+        ? sellingState.sellingCustomerTypeFilter
         : 'all';
 
     final result = await showModalBottomSheet<_SellingPeriodFilterValue>(
@@ -198,36 +203,44 @@ class SellingTabState extends State<SellingTab>
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (context) => _SellingPeriodFilterSheet(
-        initialMonth: appState.sellingPeriodMonth,
-        initialYear: appState.sellingPeriodYear,
-        initialCompany: appState.sellingCompanyFilter,
+        initialMonth: sellingState.sellingPeriodMonth,
+        initialYear: sellingState.sellingPeriodYear,
+        initialCompany: sellingState.sellingCompanyFilter,
         initialSalesGroup: salesGroupFilter,
-        companies: appState.sellingCompanies,
-        salesGroups: appState.sellingSalesGroups,
-        lockSalesPerson: appState.mobileAccess.shouldScopeSalesData,
-        loading: appState.isOrderSummaryLoading,
+        companies: sellingState.sellingCompanies,
+        salesGroups: sellingState.sellingSalesGroups,
+        lockSalesPerson: sellingState.mobileAccess.shouldScopeSalesData,
+        loading: sellingState.isOrderSummaryLoading,
       ),
     );
     if (result == null || !mounted) return;
 
-    await context.read<AppState>().setSellingPeriod(
+    await context.read<SellingFilterState>().setSellingPeriod(
       year: result.year,
       month: result.month,
       company: result.company,
       customerType: result.salesGroup,
       documentType: _activeDocumentType,
     );
+    if (!mounted) return;
+    await switch (_activeDocumentType) {
+      'Delivery Note' =>
+        context.read<DeliveryNoteState>().refreshDeliveryNotes(),
+      'Sales Invoice' =>
+        context.read<SalesInvoiceState>().refreshSalesInvoices(),
+      _ => context.read<SalesOrderState>().refreshSalesOrders(),
+    };
   }
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final sellingState = context.watch<SellingFilterState>();
     final salesGroupFilter =
-        appState.sellingCustomerTypeFilter == 'all' ||
-            appState.sellingSalesGroups.contains(
-              appState.sellingCustomerTypeFilter,
+        sellingState.sellingCustomerTypeFilter == 'all' ||
+            sellingState.sellingSalesGroups.contains(
+              sellingState.sellingCustomerTypeFilter,
             )
-        ? appState.sellingCustomerTypeFilter
+        ? sellingState.sellingCustomerTypeFilter
         : 'all';
 
     final controller = _tabController;
@@ -255,15 +268,16 @@ class SellingTabState extends State<SellingTab>
                 padding: SalesUi.screenPaddingOf(context),
                 children: [
                   _SellingPeriodFilterBar(
-                    selectedYear: appState.sellingPeriodYear,
-                    selectedMonth: appState.sellingPeriodMonth,
-                    selectedCompany: appState.sellingCompanyFilter,
+                    selectedYear: sellingState.sellingPeriodYear,
+                    selectedMonth: sellingState.sellingPeriodMonth,
+                    selectedCompany: sellingState.sellingCompanyFilter,
                     selectedSalesGroup:
-                        appState.mobileAccess.shouldScopeSalesData
+                        sellingState.mobileAccess.shouldScopeSalesData
                         ? 'all'
                         : salesGroupFilter,
-                    lockSalesPerson: appState.mobileAccess.shouldScopeSalesData,
-                    loading: appState.isOrderSummaryLoading,
+                    lockSalesPerson:
+                        sellingState.mobileAccess.shouldScopeSalesData,
+                    loading: sellingState.isOrderSummaryLoading,
                     onOpenFilter: _openSellingPeriodFilter,
                   ),
 

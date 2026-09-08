@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/spg_workspace.dart';
-import '../../../state/app_state.dart';
+import '../../../state/spg/spg_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
@@ -49,7 +49,7 @@ class _CreateSpgDailyActivityScreenState
       _error = null;
     });
     try {
-      final state = context.read<AppState>();
+      final state = context.read<SpgState>();
       final employees = state.mobileAccess.canSelectAnyEmployee
           ? await state.fetchEmployeeOptions()
           : const <Map<String, dynamic>>[];
@@ -84,7 +84,7 @@ class _CreateSpgDailyActivityScreenState
     });
     try {
       final customers = await context
-          .read<AppState>()
+          .read<SpgState>()
           .fetchScheduledSpgCustomers(employee: employee);
       if (!mounted) return;
       setState(() => _customers = customers);
@@ -116,7 +116,7 @@ class _CreateSpgDailyActivityScreenState
 
   Future<void> _save() async {
     final canSelectEmployee = context
-        .read<AppState>()
+        .read<SpgState>()
         .mobileAccess
         .canSelectAnyEmployee;
     if (canSelectEmployee && _employee == null) {
@@ -136,7 +136,7 @@ class _CreateSpgDailyActivityScreenState
       _error = null;
     });
     try {
-      await context.read<AppState>().createSpgDailyActivity(
+      await context.read<SpgState>().createSpgDailyActivity(
         customer: _customer!.id,
         photoPaths: _photos.map((photo) => photo.path).toList(),
         employee: _employee?['name']?.toString(),
@@ -278,7 +278,7 @@ class _CreateSpgDailyActivityScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (context.watch<AppState>().mobileAccess.canSelectAnyEmployee) ...[
+          if (context.watch<SpgState>().mobileAccess.canSelectAnyEmployee) ...[
             _employeeSearchField(),
             const SizedBox(height: 12),
           ],
@@ -373,7 +373,7 @@ class _CreateSpgDailyActivityScreenState
 
   Widget _customerSearchField() {
     final needsEmployee =
-        context.read<AppState>().mobileAccess.canSelectAnyEmployee &&
+        context.read<SpgState>().mobileAccess.canSelectAnyEmployee &&
         _employee == null;
     return Autocomplete<SpgCustomerOption>(
       displayStringForOption: _customerLabel,

@@ -5,7 +5,10 @@ import 'package:provider/provider.dart';
 
 import '../models/sales_order.dart';
 import '../services/native_notification_service.dart';
-import '../state/app_state.dart';
+import '../state/auth/auth_state.dart';
+import '../state/dashboard/dashboard_state.dart';
+import '../state/selling/sales_order_state.dart';
+import '../state/todo/todo_state.dart';
 import '../theme/app_colors.dart';
 import '../utils/erp_doc_utils.dart';
 import '../utils/erp_format.dart';
@@ -62,18 +65,18 @@ class _AppMainScreenState extends State<AppMainScreen> {
     super.dispose();
   }
 
-  int _totalTodoCount(AppState appState) => appState.approvalTodoCount;
+  int _totalTodoCount(TodoState state) => state.approvalTodoCount;
 
-  List<ModuleLaunchEntry> _workspaceEntries(AppState appState) {
+  List<ModuleLaunchEntry> _workspaceEntries(DashboardState state) {
     return ModuleScreenRegistry.launchEntriesFor(
-      appState.mobileAccess.enabledModules,
+      state.mobileAccess.enabledModules,
     );
   }
 
-  List<_MainTabItem> _tabs(AppState appState) {
-    final workspaceEntries = _workspaceEntries(appState);
+  List<_MainTabItem> _tabs(DashboardState state, TodoState todoState) {
+    final workspaceEntries = _workspaceEntries(state);
     final singleWorkspace =
-        workspaceEntries.length == 1 && !appState.canUseApprovals;
+        workspaceEntries.length == 1 && !state.canUseApprovals;
     final tabs = <_MainTabItem>[
       _MainTabItem(
         keyName: MobileModule.dashboard,
@@ -83,15 +86,15 @@ class _AppMainScreenState extends State<AppMainScreen> {
         destination: NavigationDestination(
           icon: const Icon(Icons.home_outlined),
           selectedIcon: const Icon(Icons.home_rounded),
-          label: _moduleLabel(appState, MobileModule.dashboard, 'Beranda'),
+          label: _moduleLabel(state, MobileModule.dashboard, 'Beranda'),
         ),
         navIcon: Icons.home_outlined,
         selectedNavIcon: Icons.home_rounded,
       ),
     ];
 
-    if (appState.canUseApprovals) {
-      final todoCount = _totalTodoCount(appState);
+    if (state.canUseApprovals) {
+      final todoCount = _totalTodoCount(todoState);
       tabs.add(
         _MainTabItem(
           keyName: MobileModule.approvals,
@@ -102,7 +105,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
           destination: NavigationDestination(
             icon: _todoIcon(Icons.checklist_outlined, todoCount),
             selectedIcon: _todoIcon(Icons.checklist_rounded, todoCount),
-            label: _moduleLabel(appState, MobileModule.approvals, 'Todo'),
+            label: _moduleLabel(state, MobileModule.approvals, 'Todo'),
           ),
           navIcon: Icons.checklist_outlined,
           selectedNavIcon: Icons.checklist_rounded,
@@ -128,8 +131,8 @@ class _AppMainScreenState extends State<AppMainScreen> {
     return tabs;
   }
 
-  String _moduleLabel(AppState appState, String module, String fallback) {
-    final bootMenus = (appState.mobileBoot?.menus ?? const [])
+  String _moduleLabel(DashboardState state, String module, String fallback) {
+    final bootMenus = (state.mobileBoot?.menus ?? const [])
         .map((menu) => (module: menu.module, label: menu.label))
         .toList();
     return MobileRoleRegistry.moduleLabel(
@@ -154,9 +157,10 @@ class _AppMainScreenState extends State<AppMainScreen> {
 
   void _openApprovalTodoTabIfReady() {
     if (!mounted || !_pendingOpenApprovalTodo) return;
-    final appState = context.read<AppState>();
-    if (!appState.canUseApprovals) return;
-    final tabs = _tabs(appState);
+    final dashboardState = context.read<DashboardState>();
+    final todoState = context.read<TodoState>();
+    if (!dashboardState.canUseApprovals) return;
+    final tabs = _tabs(dashboardState, todoState);
     final todoIndex = tabs.indexWhere(
       (tab) => tab.keyName == MobileModule.approvals,
     );
@@ -179,9 +183,11 @@ class _AppMainScreenState extends State<AppMainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final authState = context.watch<AuthState>();
+    final dashboardState = context.watch<DashboardState>();
+    final todoState = context.watch<TodoState>();
 
-    if (!appState.isAuthenticated) {
+    if (!authState.isAuthenticated) {
       _redirectToLogin();
 
       return const Scaffold(
@@ -191,13 +197,13 @@ class _AppMainScreenState extends State<AppMainScreen> {
       );
     }
 
-    final tabs = _tabs(appState);
+    final tabs = _tabs(dashboardState, todoState);
     final selectedIndex = _currentIndex.clamp(0, tabs.length - 1);
-    final workspaceEntries = _workspaceEntries(appState);
+    final workspaceEntries = _workspaceEntries(dashboardState);
     final singleWorkspace =
         selectedIndex == 0 &&
         workspaceEntries.length == 1 &&
-        !appState.canUseApprovals;
+        !dashboardState.canUseApprovals;
     if (_pendingOpenApprovalTodo &&
         tabs.any((tab) => tab.keyName == MobileModule.approvals)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -238,15 +244,15 @@ class _AppMainScreenState extends State<AppMainScreen> {
                 surfaceTintColor: Colors.transparent,
                 centerTitle: false,
                 titleSpacing: 18,
-                title: _TmsxHeaderTitle(appState: appState),
+                title: _TmsxHeaderTitle(state: dashboardState),
                 actions: [
-                  if (appState.canUseApprovals)
+                  if (dashboardState.canUseApprovals)
                     _TopBarActionButton(
-                      tooltip: _totalTodoCount(appState) > 0
-                          ? '${_totalTodoCount(appState)} approval menunggu'
+                      tooltip: _totalTodoCount(todoState) > 0
+                          ? '${_totalTodoCount(todoState)} approval menunggu'
                           : 'Tidak ada approval menunggu',
                       icon: Icons.assignment_turned_in_outlined,
-                      count: _totalTodoCount(appState),
+                      count: _totalTodoCount(todoState),
                       onTap: () {
                         final todoIndex = tabs.indexWhere(
                           (tab) => tab.keyName == MobileModule.approvals,
@@ -276,7 +282,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
             ? Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _CreateButton(
-                  onTap: () => _showQuickCreateSheet(context, appState),
+                  onTap: () => _showQuickCreateSheet(context, authState),
                 ),
               )
             : null,
@@ -302,36 +308,36 @@ class _AppMainScreenState extends State<AppMainScreen> {
 
   Future<void> _showQuickCreateSheet(
     BuildContext context,
-    AppState appState,
+    AuthState authState,
   ) async {
-    final canCreateSalesOrder = await appState.canCreateDoctype('Sales Order');
-    final canCreateDeliveryNote = await appState.canCreateDoctype(
+    final canCreateSalesOrder = await authState.canCreateDoctype('Sales Order');
+    final canCreateDeliveryNote = await authState.canCreateDoctype(
       'Delivery Note',
     );
-    final canCreateSalesInvoice = await appState.canCreateDoctype(
+    final canCreateSalesInvoice = await authState.canCreateDoctype(
       'Sales Invoice',
     );
-    final canCreateSalesVisit = await appState.canCreateDoctype('Sales Visit');
-    final canCreateSpgVisit = await appState.canCreateDoctype('SPG Visit');
-    final canCreateSpgDailyActivity = await appState.canCreateDoctype(
+    final canCreateSalesVisit = await authState.canCreateDoctype('Sales Visit');
+    final canCreateSpgVisit = await authState.canCreateDoctype('SPG Visit');
+    final canCreateSpgDailyActivity = await authState.canCreateDoctype(
       'SPG Daily Activity',
     );
-    final canCreateSpgDailyReport = await appState.canCreateDoctype(
+    final canCreateSpgDailyReport = await authState.canCreateDoctype(
       'SPG Daily Report',
     );
-    final canCreatePurchaseOrder = await appState.canCreateDoctype(
+    final canCreatePurchaseOrder = await authState.canCreateDoctype(
       'Purchase Order',
     );
-    final canCreatePurchaseReceipt = await appState.canCreateDoctype(
+    final canCreatePurchaseReceipt = await authState.canCreateDoctype(
       'Purchase Receipt',
     );
-    final canCreatePurchaseInvoice = await appState.canCreateDoctype(
+    final canCreatePurchaseInvoice = await authState.canCreateDoctype(
       'Purchase Invoice',
     );
-    final canCreateMaterialRequest = await appState.canCreateDoctype(
+    final canCreateMaterialRequest = await authState.canCreateDoctype(
       'Material Request',
     );
-    final canCreateStockEntry = await appState.canCreateDoctype('Stock Entry');
+    final canCreateStockEntry = await authState.canCreateDoctype('Stock Entry');
 
     if (!context.mounted) return;
 
@@ -371,7 +377,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
     ];
 
     final canUseSpgCreateFallback =
-        appState.canUseSpg &&
+        authState.canUseSpg &&
         !canCreateSpgVisit &&
         !canCreateSpgDailyActivity &&
         !canCreateSpgDailyReport;
@@ -472,25 +478,25 @@ class _AppMainScreenState extends State<AppMainScreen> {
     ];
 
     final groups = <_QuickCreateGroup>[
-      if (appState.canUseSales && salesActions.isNotEmpty)
+      if (authState.canUseSales && salesActions.isNotEmpty)
         _QuickCreateGroup(
           title: 'Sales',
           icon: Icons.point_of_sale_rounded,
           actions: salesActions,
         ),
-      if (appState.canUseSpg && spgActions.isNotEmpty)
+      if (authState.canUseSpg && spgActions.isNotEmpty)
         _QuickCreateGroup(
           title: 'SPG',
           icon: Icons.storefront_rounded,
           actions: spgActions,
         ),
-      if (appState.canUsePurchase && purchaseActions.isNotEmpty)
+      if (authState.canUsePurchase && purchaseActions.isNotEmpty)
         _QuickCreateGroup(
           title: 'Purchase',
           icon: Icons.shopping_bag_rounded,
           actions: purchaseActions,
         ),
-      if (appState.canUseStock && stockActions.isNotEmpty)
+      if (authState.canUseStock && stockActions.isNotEmpty)
         _QuickCreateGroup(
           title: 'Stock',
           icon: Icons.inventory_2_rounded,
@@ -607,10 +613,11 @@ class _AppMainScreenState extends State<AppMainScreen> {
 
     await _runSalesOrderCreateAction(
       context,
-      action: () => context.read<AppState>().createDeliveryNoteFromSalesOrder(
-        selection.order.id,
-        namingSeries: selection.namingSeries,
-      ),
+      action: () =>
+          context.read<SalesOrderState>().createDeliveryNoteFromSalesOrder(
+            selection.order.id,
+            namingSeries: selection.namingSeries,
+          ),
       successMessage:
           'Delivery Note berhasil dibuat dari ${selection.order.id}',
       failurePrefix: 'Gagal membuat Delivery Note',
@@ -630,10 +637,11 @@ class _AppMainScreenState extends State<AppMainScreen> {
 
     await _runSalesOrderCreateAction(
       context,
-      action: () => context.read<AppState>().createSalesInvoiceFromSalesOrder(
-        selection.order.id,
-        namingSeries: selection.namingSeries,
-      ),
+      action: () =>
+          context.read<SalesOrderState>().createSalesInvoiceFromSalesOrder(
+            selection.order.id,
+            namingSeries: selection.namingSeries,
+          ),
       successMessage:
           'Sales Invoice berhasil dibuat dari ${selection.order.id}',
       failurePrefix: 'Gagal membuat Sales Invoice',
@@ -647,13 +655,13 @@ class _AppMainScreenState extends State<AppMainScreen> {
     required String emptyMessage,
     required bool Function(SalesOrder order) canUse,
   }) async {
-    final appState = context.read<AppState>();
-    if (appState.dashboardSalesOrders.isEmpty) {
-      await appState.refreshSalesOrders();
+    final salesOrderState = context.read<SalesOrderState>();
+    if (salesOrderState.salesOrders.isEmpty) {
+      await salesOrderState.refreshSalesOrders();
       if (!context.mounted) return null;
     }
 
-    final candidates = appState.dashboardSalesOrders.where(canUse).toList()
+    final candidates = salesOrderState.salesOrders.where(canUse).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
     if (candidates.isEmpty) {
@@ -665,7 +673,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
 
     List<String> namingSeries;
     try {
-      namingSeries = await appState.fetchNamingSeries(doctype);
+      namingSeries = await salesOrderState.fetchNamingSeries(doctype);
     } catch (error) {
       if (!context.mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1069,14 +1077,14 @@ class _MainTabItem {
 }
 
 class _TmsxHeaderTitle extends StatelessWidget {
-  final AppState appState;
+  final DashboardState state;
 
-  const _TmsxHeaderTitle({required this.appState});
+  const _TmsxHeaderTitle({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    final tenant = appState.selectedSiteName.trim();
-    final user = appState.currentUser ?? 'Operator';
+    final tenant = state.selectedSiteName.trim();
+    final user = state.currentUser ?? 'Operator';
     final subtitle = tenant.isNotEmpty ? tenant : user;
 
     return Row(
@@ -1105,7 +1113,7 @@ class _TmsxHeaderTitle extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                appState.appDisplayName,
+                state.appDisplayName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/stock_ledger_movement.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_aging_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
@@ -45,7 +45,7 @@ class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
       _error = null;
     });
     try {
-      _rows = await context.read<AppState>().fetchStockAging(
+      _rows = await context.read<WarehouseAgingState>().fetchStockAging(
         forceRefresh: forceRefresh,
       );
     } catch (error) {

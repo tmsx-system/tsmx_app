@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../state/app_state.dart';
+import '../../state/dashboard/dashboard_state.dart';
+import '../../state/logistics/logistics_overview_state.dart';
+import '../../state/purchasing/purchase_order_state.dart';
+import '../../state/selling/sales_order_state.dart';
+import '../../state/todo/todo_state.dart';
+import '../../state/warehouse/warehouse_stock_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/dashboard/dashboard_activity_carousel.dart';
 import '../../widgets/dashboard/dashboard_module_launcher.dart';
@@ -16,9 +21,36 @@ class DashboardTab extends StatefulWidget {
 }
 
 class _DashboardTabState extends State<DashboardTab> {
+  bool _didInitialLoad = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInitialLoad) return;
+    _didInitialLoad = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final dashboardState = context.read<DashboardState>();
+      final showStockKpi =
+          dashboardState.canUseStock || dashboardState.canUseWarehouse;
+      Future.wait([
+        if (dashboardState.canUseSales)
+          context.read<SalesOrderState>().refreshSalesOrders(),
+        if (dashboardState.canUsePurchase)
+          context.read<PurchaseOrderState>().refreshPurchaseOrders(),
+        if (showStockKpi)
+          context.read<WarehouseStockState>().refreshInventory(),
+        if (dashboardState.canUseLogistics)
+          context.read<LogisticsOverviewState>().refreshDeliveryNotes(),
+        if (dashboardState.canUseApprovals)
+          context.read<TodoState>().fetchApprovalTodos(),
+      ]);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final appState = context.watch<DashboardState>();
 
     final showStockKpi = appState.canUseStock || appState.canUseWarehouse;
 
@@ -26,11 +58,16 @@ class _DashboardTabState extends State<DashboardTab> {
       color: AppColors.primary,
       onRefresh: () async {
         await Future.wait([
-          if (appState.canUseSales) appState.refreshSalesOrders(),
-          if (appState.canUsePurchase) appState.refreshPurchaseOrders(),
-          if (showStockKpi) appState.refreshInventory(),
+          if (appState.canUseSales)
+            context.read<SalesOrderState>().refreshSalesOrders(),
+          if (appState.canUsePurchase)
+            context.read<PurchaseOrderState>().refreshPurchaseOrders(),
+          if (showStockKpi)
+            context.read<WarehouseStockState>().refreshInventory(),
+          if (appState.canUseLogistics)
+            context.read<LogisticsOverviewState>().refreshDeliveryNotes(),
           if (appState.canUseApprovals)
-            appState.fetchApprovalTodos(forceRefresh: true),
+            context.read<TodoState>().fetchApprovalTodos(forceRefresh: true),
         ]);
       },
       child: SingleChildScrollView(
@@ -54,7 +91,7 @@ class _DashboardTabState extends State<DashboardTab> {
 }
 
 class _DashboardGreetingCard extends StatelessWidget {
-  final AppState appState;
+  final DashboardState appState;
 
   const _DashboardGreetingCard({required this.appState});
 

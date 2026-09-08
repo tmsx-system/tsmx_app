@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/sales_invoice.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/collection_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/date_range_presets.dart';
 import '../../../utils/erp_format.dart';
@@ -48,7 +48,7 @@ class _CustomerPaymentScheduleTabState extends State<CustomerPaymentScheduleTab>
     });
     try {
       invoices = await context
-          .read<AppState>()
+          .read<CollectionState>()
           .fetchCollectionOutstandingInvoices();
     } catch (e) {
       error = e.toString();

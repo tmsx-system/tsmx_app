@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../state/app_state.dart';
+import '../../state/auth/auth_state.dart';
+import '../../state/selling/sales_order_state.dart';
+import '../../state/selling/selling_filter_state.dart';
+import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
 import '../shared/role_main_screen.dart';
 import '../tabs/selling_tab.dart';
@@ -48,7 +51,7 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (context.watch<AppState>().mobileAccess.isSpg) {
+    if (context.watch<AuthState>().mobileAccess.isSpg) {
       return const SpgMainScreen();
     }
     return FutureBuilder<_SalesDoctypePermissions>(
@@ -78,9 +81,9 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
     return RoleMainScreen(
       title: permissions.canReadSalesOrder ? 'Sales' : 'Collection',
       fallbackUsername: 'Salesman',
-      onInitialize: (state) async {
-        if (state.isSalesManagerRole) {
-          await state.fetchApprovalTodos();
+      onInitialize: (context) async {
+        if (context.read<AuthState>().mobileAccess.isSalesManager) {
+          await context.read<TodoState>().fetchApprovalTodos();
         }
       },
       screensBuilder: (onMenuSelected) => entries
@@ -189,7 +192,7 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
   }
 
   Future<_SalesDoctypePermissions> _loadPermissions() async {
-    final state = context.read<AppState>();
+    final state = context.read<AuthState>();
     if (state.mobileAccess.isAdministrator ||
         state.mobileAccess.isDeveloper ||
         state.mobileAccess.isCompanyAdministrator ||
@@ -260,14 +263,15 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
   }
 
   Future<void> _openCreateSalesOrder(BuildContext context) async {
-    final state = context.read<AppState>();
+    final salesOrderState = context.read<SalesOrderState>();
+    final sellingFilterState = context.read<SellingFilterState>();
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const CreateSalesOrderScreen()));
     if (!context.mounted) return;
     await Future.wait([
-      state.refreshSalesOrders(),
-      state.refreshSellingSummaries(documentType: 'Sales Order'),
+      salesOrderState.refreshSalesOrders(),
+      sellingFilterState.refreshSellingSummaries(documentType: 'Sales Order'),
     ]);
   }
 }

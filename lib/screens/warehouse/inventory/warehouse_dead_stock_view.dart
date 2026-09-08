@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/stock_ledger_movement.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_dead_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
@@ -42,7 +42,7 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
       _error = null;
     });
     try {
-      _rows = await context.read<AppState>().fetchDeadStock(
+      _rows = await context.read<WarehouseDeadStockState>().fetchDeadStock(
         forceRefresh: forceRefresh,
       );
     } catch (error) {

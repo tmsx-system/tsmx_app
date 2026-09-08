@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/inventory_item.dart';
 import '../../../models/purchase_order.dart';
 import '../../../models/warehouse_info.dart';
-import '../../../state/app_state.dart';
+import '../../../state/purchasing/purchase_order_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
@@ -103,7 +103,9 @@ class _CreatePurchaseOrderScreenState extends State<CreatePurchaseOrderScreen> {
     _calculateTotal();
   }
 
-  Future<List<_SupplierOption>> _fetchSupplierOptions(AppState appState) async {
+  Future<List<_SupplierOption>> _fetchSupplierOptions(
+    PurchaseOrderState appState,
+  ) async {
     try {
       final supplierData = await appState.frappeService.fetchResource(
         'Supplier',
@@ -199,7 +201,7 @@ class _CreatePurchaseOrderScreenState extends State<CreatePurchaseOrderScreen> {
   Future<List<ErpItemOption>> _searchSupplierOptions(String query) async {
     final normalized = query.trim();
     if (normalized.isEmpty) return const [];
-    final appState = context.read<AppState>();
+    final appState = context.read<PurchaseOrderState>();
     try {
       final rows = await appState.frappeService.fetchResource(
         'Supplier',
@@ -241,7 +243,9 @@ class _CreatePurchaseOrderScreenState extends State<CreatePurchaseOrderScreen> {
     }
   }
 
-  Future<List<_ItemOption>> _fetchItemOptions(AppState appState) async {
+  Future<List<_ItemOption>> _fetchItemOptions(
+    PurchaseOrderState appState,
+  ) async {
     try {
       final itemData = await appState.fetchPurchasableItems(limit: 200);
       return itemData.map(_itemOptionFromRow).whereType<_ItemOption>().toList();
@@ -266,7 +270,7 @@ class _CreatePurchaseOrderScreenState extends State<CreatePurchaseOrderScreen> {
     final query = value.trim();
     if (query.isEmpty) return _itemOptions.take(20);
 
-    final rows = await context.read<AppState>().fetchPurchasableItems(
+    final rows = await context.read<PurchaseOrderState>().fetchPurchasableItems(
       query: query,
       limit: 50,
     );
@@ -382,7 +386,7 @@ class _CreatePurchaseOrderScreenState extends State<CreatePurchaseOrderScreen> {
   }
 
   Future<void> _loadSelectors() async {
-    final appState = context.read<AppState>();
+    final appState = context.read<PurchaseOrderState>();
     setState(() {
       _isLoadingSelectors = true;
     });
@@ -629,7 +633,7 @@ class _CreatePurchaseOrderScreenState extends State<CreatePurchaseOrderScreen> {
         _isSaving = true;
       });
 
-      final appState = context.read<AppState>();
+      final appState = context.read<PurchaseOrderState>();
       final itemCode =
           _selectedItemCode ?? _itemTextController?.text.trim() ?? '';
       if (itemCode.isEmpty) {
@@ -991,9 +995,9 @@ class _CreatePurchaseOrderScreenState extends State<CreatePurchaseOrderScreen> {
                                 (w) => w.name == _selectedWarehouse,
                               )
                               ? _selectedWarehouse
-                              : context.read<AppState>().preferredWarehouse(
-                                  _warehouseOptions,
-                                ),
+                              : context
+                                    .read<PurchaseOrderState>()
+                                    .preferredWarehouse(_warehouseOptions),
                           decoration: _fieldDecoration(
                             'Pilih Warehouse',
                             icon: Icons.warehouse_outlined,

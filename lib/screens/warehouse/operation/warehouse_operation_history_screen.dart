@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/stock_entry.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_status_badge.dart';
@@ -44,7 +44,7 @@ class _WarehouseOperationHistoryScreenState
       _error = null;
     });
     try {
-      final state = context.read<AppState>();
+      final state = context.read<WarehouseStockState>();
       await Future.wait([
         state.refreshStockEntries(),
         state.refreshStockReconciliations(),
@@ -58,7 +58,7 @@ class _WarehouseOperationHistoryScreenState
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<WarehouseStockState>();
     final entries = _filterEntries(state.stockEntries);
     final reconciliations = _filterReconciliations(state.stockReconciliations);
     return Scaffold(

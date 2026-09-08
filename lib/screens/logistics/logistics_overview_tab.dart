@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/delivery_note.dart';
-import '../../state/app_state.dart';
+import '../../state/logistics/logistics_overview_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_format.dart';
 import 'logistics_widgets.dart';
@@ -14,7 +14,7 @@ class LogisticsOverviewTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<LogisticsOverviewState>();
     final docs = state.deliveryNotes;
     final outstandingRows = docs.where(_isOutstanding).toList();
     final completed = docs
@@ -33,7 +33,8 @@ class LogisticsOverviewTab extends StatelessWidget {
     );
 
     return RefreshIndicator(
-      onRefresh: () => context.read<AppState>().refreshDeliveryNotes(),
+      onRefresh: () =>
+          context.read<LogisticsOverviewState>().refreshDeliveryNotes(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: logisticsPagePaddingOf(context),

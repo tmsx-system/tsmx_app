@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../state/app_state.dart';
+import '../../../state/spg/spg_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
@@ -33,7 +33,7 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
       _error = null;
     });
     try {
-      final records = await context.read<AppState>().fetchSpgDailyReports();
+      final records = await context.read<SpgState>().fetchSpgDailyReports();
       if (!mounted) return;
       setState(() => _records = records);
     } catch (error) {
@@ -198,7 +198,7 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
 
   Future<void> _showDetail(String name) async {
     try {
-      final detail = await context.read<AppState>().fetchSpgDailyReportDetail(
+      final detail = await context.read<SpgState>().fetchSpgDailyReportDetail(
         name,
       );
       if (!mounted) return;

@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/sales_workspace.dart';
 import '../../services/sales_visit_location_service.dart';
-import '../../state/app_state.dart';
+import '../../state/visits/visit_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/erp/erp_empty_state.dart';
 import '../../widgets/erp/erp_error_box.dart';
@@ -84,7 +84,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
       loading = true;
       error = null;
     });
-    final state = context.read<AppState>();
+    final state = context.read<VisitState>();
     var nextCustomers = customers;
     var nextVisits = visits;
     String? nextError;
@@ -153,7 +153,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
     });
     if (value == null) return;
     try {
-      target = await context.read<AppState>().fetchCustomerVisitLocation(
+      target = await context.read<VisitState>().fetchCustomerVisitLocation(
         value.id,
       );
     } catch (e) {
@@ -171,13 +171,13 @@ class _AttendanceTabState extends State<AttendanceTab> {
     }
     await _runAction(() async {
       if (widget.spgMode) {
-        await context.read<AppState>().checkInSpgCustomer(
+        await context.read<VisitState>().checkInSpgCustomer(
           customer: customer!.id,
           target: target!,
           photoPath: photo!.path,
         );
       } else {
-        await context.read<AppState>().checkInSalesCustomer(
+        await context.read<VisitState>().checkInSalesCustomer(
           customer: customer!.id,
           target: target!,
           photoPath: photo!.path,
@@ -218,7 +218,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
   Widget build(BuildContext context) => _checkInTab();
 
   Widget _checkInTab() {
-    final state = context.watch<AppState>();
+    final state = context.watch<VisitState>();
     final active = widget.spgMode
         ? state.activeSpgVisit
         : state.activeSalesVisit;
@@ -356,7 +356,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
   }
 
   Widget _checkInForm({
-    required AppState state,
+    required VisitState state,
     required VisitLocationPoint? point,
     required double? distance,
     required bool canCheckIn,
@@ -401,7 +401,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
             onPressed: loading
                 ? null
                 : () => _runAction(
-                    () => context.read<AppState>().getCurrentVisitLocation(),
+                    () => context.read<VisitState>().getCurrentVisitLocation(),
                   ),
             icon: const Icon(Icons.my_location_rounded),
             label: const Text('Ambil Lokasi Sekarang'),
@@ -958,9 +958,9 @@ class _AttendanceTabState extends State<AttendanceTab> {
     if (!confirmed || !mounted) return;
     await _runAction(() async {
       if (widget.spgMode) {
-        await context.read<AppState>().checkOutSpgVisit(visit.id);
+        await context.read<VisitState>().checkOutSpgVisit(visit.id);
       } else {
-        await context.read<AppState>().checkOutSalesVisit(visit.id);
+        await context.read<VisitState>().checkOutSalesVisit(visit.id);
       }
       await _load();
     });
@@ -1018,7 +1018,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
   }
 
   double? _distanceToVisit(
-    AppState state,
+    VisitState state,
     SalesVisit visit,
     VisitLocationPoint point,
   ) {

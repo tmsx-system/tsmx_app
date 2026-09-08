@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../state/app_state.dart';
+import '../../../state/selling/noo_state.dart';
 import '../../../theme/app_colors.dart';
 import '../shared/sales_ui.dart';
 import 'create_noo_request_screen.dart';
@@ -131,7 +131,7 @@ class _NooRequestTabState extends State<NooRequestTab> {
       _error = null;
     });
     try {
-      final state = context.read<AppState>();
+      final state = context.read<NooState>();
       final rows = await state.fetchNooRequestRows(
         fields: const [
           'name',

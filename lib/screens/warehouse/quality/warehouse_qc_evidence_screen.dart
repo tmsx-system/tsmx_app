@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/quality_inspection_record.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../shared/warehouse_widgets.dart';
@@ -45,7 +45,7 @@ class _WarehouseQcEvidenceScreenState extends State<WarehouseQcEvidenceScreen> {
       _error = null;
     });
     try {
-      _rows = await context.read<AppState>().fetchQualityInspections(
+      _rows = await context.read<WarehouseStockState>().fetchQualityInspections(
         periodDays: _periodDays,
       );
     } catch (error) {
@@ -115,7 +115,7 @@ class _WarehouseQcEvidenceScreenState extends State<WarehouseQcEvidenceScreen> {
       _error = null;
     });
     try {
-      await context.read<AppState>().uploadAttachment(
+      await context.read<WarehouseStockState>().uploadAttachment(
         doctype: 'Quality Inspection',
         documentName: inspection.name,
         filePath: photo.path,

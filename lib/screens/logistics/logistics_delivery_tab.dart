@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/delivery_note.dart';
 import '../../services/sales_visit_location_service.dart';
-import '../../state/app_state.dart';
+import '../../state/logistics/logistics_delivery_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_doc_utils.dart';
 import '../../utils/erp_format.dart';
@@ -43,13 +43,16 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
     super.dispose();
   }
 
-  Future<void> _refresh() => context.read<AppState>().refreshDeliveryNotes();
+  Future<void> _refresh() =>
+      context.read<LogisticsDeliveryState>().refreshDeliveryNotes();
 
   void _searchChanged(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
-      context.read<AppState>().setDeliveryNoteQuery(search: value);
+      context.read<LogisticsDeliveryState>().setDeliveryNoteQuery(
+        search: value,
+      );
     });
   }
 
@@ -143,7 +146,7 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
       _error = null;
     });
     try {
-      await context.read<AppState>().uploadDeliveryNoteProof(
+      await context.read<LogisticsDeliveryState>().uploadDeliveryNoteProof(
         deliveryNoteId: row.id,
         filePath: photo.path,
       );
@@ -174,7 +177,7 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
       _error = null;
     });
     try {
-      await context.read<AppState>().uploadDeliveryNoteProof(
+      await context.read<LogisticsDeliveryState>().uploadDeliveryNoteProof(
         deliveryNoteId: row.id,
         filePath: filePath,
       );
@@ -207,7 +210,7 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final appState = context.watch<LogisticsDeliveryState>();
     final rows = _filter(appState.deliveryNotes);
     final allRows = appState.deliveryNotes;
     final outstandingRows = allRows.where(_isOutstanding).toList();
@@ -316,7 +319,9 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
               child: OutlinedButton.icon(
                 onPressed: appState.isMoreDeliveryNotesLoading
                     ? null
-                    : () => context.read<AppState>().loadMoreDeliveryNotes(),
+                    : () => context
+                          .read<LogisticsDeliveryState>()
+                          .loadMoreDeliveryNotes(),
                 icon: appState.isMoreDeliveryNotesLoading
                     ? const SizedBox.square(
                         dimension: 16,
@@ -491,9 +496,9 @@ class _LogisticsDeliveryDetailScreenState
       _trackingError = null;
     });
     try {
-      final point = await context.read<AppState>().startDeliveryDriverTracking(
-        widget.row,
-      );
+      final point = await context
+          .read<LogisticsDeliveryState>()
+          .startDeliveryDriverTracking(widget.row);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -517,9 +522,9 @@ class _LogisticsDeliveryDetailScreenState
       _trackingError = null;
     });
     try {
-      final point = await context.read<AppState>().recordDeliveryDriverLocation(
-        widget.row,
-      );
+      final point = await context
+          .read<LogisticsDeliveryState>()
+          .recordDeliveryDriverLocation(widget.row);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -543,7 +548,7 @@ class _LogisticsDeliveryDetailScreenState
       _trackingError = null;
     });
     try {
-      await context.read<AppState>().stopDeliveryDriverTracking();
+      await context.read<LogisticsDeliveryState>().stopDeliveryDriverTracking();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -568,7 +573,7 @@ class _LogisticsDeliveryDetailScreenState
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final appState = context.watch<AppState>();
+    final appState = context.watch<LogisticsDeliveryState>();
     final trackingThisNote = appState.activeDeliveryTrackingNote == row.id;
     final latestPoint = appState.latestDeliveryTrackingNote == row.id
         ? appState.latestDeliveryDriverLocation
@@ -997,7 +1002,7 @@ class _DeliverySignatureDocumentScreenState
   @override
   void initState() {
     super.initState();
-    _future = context.read<AppState>().loadDeliveryNoteDetail(
+    _future = context.read<LogisticsDeliveryState>().loadDeliveryNoteDetail(
       widget.initialRow.id,
     );
   }
@@ -1799,7 +1804,7 @@ class _DeliveryItemsSectionState extends State<_DeliveryItemsSection> {
   @override
   void initState() {
     super.initState();
-    _future = context.read<AppState>().loadDeliveryNoteDetail(
+    _future = context.read<LogisticsDeliveryState>().loadDeliveryNoteDetail(
       widget.initialRow.id,
     );
   }
@@ -1888,7 +1893,7 @@ class _DeliveryProofSectionState extends State<_DeliveryProofSection> {
   }
 
   Future<List<Map<String, dynamic>>> _loadProofs() {
-    return context.read<AppState>().fetchDocumentAttachments(
+    return context.read<LogisticsDeliveryState>().fetchDocumentAttachments(
       doctype: 'Delivery Note',
       documentName: widget.deliveryNoteId,
     );
@@ -2037,10 +2042,12 @@ class _ProofStatusChipState extends State<_ProofStatusChip> {
   }
 
   Future<int> _loadCount() async {
-    final files = await context.read<AppState>().fetchDocumentAttachments(
-      doctype: 'Delivery Note',
-      documentName: widget.deliveryNoteId,
-    );
+    final files = await context
+        .read<LogisticsDeliveryState>()
+        .fetchDocumentAttachments(
+          doctype: 'Delivery Note',
+          documentName: widget.deliveryNoteId,
+        );
     return files.length;
   }
 
@@ -2183,7 +2190,7 @@ class _ProofFileTile extends StatelessWidget {
   }
 
   static String _absoluteUrl(BuildContext context, String url) {
-    final appState = context.read<AppState>();
+    final appState = context.read<LogisticsDeliveryState>();
     return Uri.parse(appState.frappeService.baseUrl).resolve(url).toString();
   }
 }

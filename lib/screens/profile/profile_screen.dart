@@ -3,7 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../state/app_state.dart';
+import '../../state/profile/profile_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/responsive/responsive_layout.dart';
 import '../auth/login_screen.dart';
@@ -67,7 +67,9 @@ class _ProfileScreenState extends State<ProfileScreen>
       _profileError = null;
     });
     try {
-      final profile = await context.read<AppState>().fetchCurrentUserProfile();
+      final profile = await context
+          .read<ProfileState>()
+          .fetchCurrentUserProfile();
       if (!mounted) return;
       setState(() => _userProfile = profile);
     } catch (error) {
@@ -139,9 +141,9 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     setState(() => _uploadingImage = true);
     try {
-      final imageUrl = await context.read<AppState>().uploadCurrentUserImage(
-        photo.path,
-      );
+      final imageUrl = await context
+          .read<ProfileState>()
+          .uploadCurrentUserImage(photo.path);
       if (!mounted) return;
       setState(() => _userProfile = {..._userProfile, 'user_image': imageUrl});
       _showMessage('Foto profil berhasil diperbarui.');
@@ -181,7 +183,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     setState(() => _changingPassword = true);
     try {
-      await context.read<AppState>().changeCurrentUserPassword(
+      await context.read<ProfileState>().changeCurrentUserPassword(
         oldPassword: _oldPasswordController.text,
         newPassword: _newPasswordController.text,
         logoutAllSessions: _logoutAllSessions,
@@ -201,7 +203,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final appState = context.watch<ProfileState>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -285,7 +287,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildInformationTab(AppState appState) {
+  Widget _buildInformationTab(ProfileState appState) {
     return RefreshIndicator(
       onRefresh: _loadProfile,
       child: ListView(
@@ -452,7 +454,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  Widget _buildIdentityCard(AppState appState) {
+  Widget _buildIdentityCard(ProfileState appState) {
     final fullName = _profileValue(
       'full_name',
       fallback: _profileValue('first_name', fallback: appState.currentUser),
@@ -573,7 +575,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildEmployeeCard(AppState appState) {
+  Widget _buildEmployeeCard(ProfileState appState) {
     final employee = appState.currentEmployeeProfile;
     return _SectionCard(
       title: 'Informasi Karyawan',
@@ -615,7 +617,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildSalesMappingCard(AppState appState) {
+  Widget _buildSalesMappingCard(ProfileState appState) {
     final hasError = appState.salesIdentityError != null;
     return _SectionCard(
       title: hasError ? 'Mapping Sales Perlu Dicek' : 'Mapping Sales',
@@ -850,7 +852,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Future<void> _confirmLogout(AppState appState) async {
+  Future<void> _confirmLogout(ProfileState appState) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -878,7 +880,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Future<void> _confirmResetLocalData(AppState appState) async {
+  Future<void> _confirmResetLocalData(ProfileState appState) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -908,13 +910,13 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  String? _absoluteImageUrl(AppState appState) {
+  String? _absoluteImageUrl(ProfileState appState) {
     final image = _userProfile['user_image']?.toString().trim() ?? '';
     if (image.isEmpty) return null;
     if (image.startsWith('http://') || image.startsWith('https://')) {
       return image;
     }
-    return Uri.parse(appState.frappeService.baseUrl).resolve(image).toString();
+    return Uri.parse(appState.selectedSiteBaseUrl).resolve(image).toString();
   }
 
   String _profileValue(String key, {String? fallback}) {

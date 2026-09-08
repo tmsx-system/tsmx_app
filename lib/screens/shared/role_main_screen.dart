@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../state/app_state.dart';
+import '../../state/auth/auth_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/responsive/responsive_layout.dart';
 import '../auth/login_screen.dart';
@@ -19,7 +19,7 @@ class RoleMainScreen extends StatefulWidget {
   final String fallbackUsername;
   final List<NavigationDestination> destinations;
   final RoleScreensBuilder screensBuilder;
-  final FutureOr<void> Function(AppState state)? onInitialize;
+  final FutureOr<void> Function(BuildContext context)? onInitialize;
   final RoleFloatingActionButtonBuilder? floatingActionButtonBuilder;
   final int initialTabIndex;
 
@@ -53,7 +53,7 @@ class _RoleMainScreenState extends State<RoleMainScreen> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      widget.onInitialize?.call(context.read<AppState>());
+      widget.onInitialize?.call(context);
     });
   }
 
@@ -74,7 +74,7 @@ class _RoleMainScreenState extends State<RoleMainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAuthenticated = context.select<AppState, bool>(
+    final isAuthenticated = context.select<AuthState, bool>(
       (state) => state.isAuthenticated,
     );
     if (!isAuthenticated) {
@@ -87,11 +87,13 @@ class _RoleMainScreenState extends State<RoleMainScreen> {
       );
     }
 
-    final subtitle = context.select<AppState, String>((state) {
+    final subtitle = context.select<AuthState, String>((state) {
       final siteName = state.selectedSiteName.trim();
       return siteName.isNotEmpty
           ? siteName
-          : state.currentUser ?? widget.fallbackUsername;
+          : state.selectedSiteCode.trim().isNotEmpty
+          ? state.selectedSiteCode
+          : widget.fallbackUsername;
     });
     return Scaffold(
       backgroundColor: AppColors.background,

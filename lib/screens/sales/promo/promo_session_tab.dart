@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../state/app_state.dart';
+import '../../../state/selling/promo_state.dart';
 import '../../../theme/app_colors.dart';
 import 'create_promo_request_screen.dart';
 import '../shared/sales_ui.dart';
@@ -107,7 +107,7 @@ class _PromoSessionTabState extends State<PromoSessionTab> {
       _error = null;
     });
     try {
-      final state = context.read<AppState>();
+      final state = context.read<PromoState>();
       final rows = await state.fetchPromoRequestRows(
         fields: const [
           'name',

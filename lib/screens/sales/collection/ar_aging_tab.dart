@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../models/sales_invoice.dart';
 import '../../../models/sales_workspace.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/collection_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/date_range_presets.dart';
 import '../../../utils/erp_format.dart';
@@ -132,7 +132,7 @@ class _ArAgingTabState extends State<ArAgingTab>
       agingError = null;
       paymentError = null;
     });
-    final state = context.read<AppState>();
+    final state = context.read<CollectionState>();
     await Future.wait([
       () async {
         try {
@@ -611,10 +611,9 @@ class _CollectionFullListScreenState extends State<_CollectionFullListScreen> {
       _paymentError = null;
     });
     try {
-      final rows = await context.read<AppState>().fetchCollectionPayments(
-        from: _range.from,
-        to: _range.to,
-      );
+      final rows = await context
+          .read<CollectionState>()
+          .fetchCollectionPayments(from: _range.from, to: _range.to);
       if (!mounted) return;
       setState(() => _payments = rows);
     } catch (error) {

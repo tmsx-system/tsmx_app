@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../models/warehouse_info.dart';
-import '../../../state/app_state.dart';
+import '../../../state/purchasing/purchase_invoice_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
@@ -74,7 +74,7 @@ class _CreatePurchaseInvoiceScreenState
   }
 
   Future<List<_Option>> _fetchOptions(
-    AppState appState,
+    PurchaseInvoiceState appState,
     String doctype,
     String labelField,
   ) async {
@@ -119,7 +119,7 @@ class _CreatePurchaseInvoiceScreenState
       _loadError = null;
     });
     try {
-      final appState = context.read<AppState>();
+      final appState = context.read<PurchaseInvoiceState>();
       if (appState.warehouses.isEmpty) await appState.refreshWarehouses();
       final series = await appState.fetchNamingSeries('Purchase Invoice');
       final suppliers = await _fetchOptions(
@@ -254,7 +254,7 @@ class _CreatePurchaseInvoiceScreenState
     }
     setState(() => _saving = true);
     try {
-      await context.read<AppState>().createPurchaseInvoice(
+      await context.read<PurchaseInvoiceState>().createPurchaseInvoice(
         supplier: _selectedSupplier!,
         items: _buildItemsPayload(),
         namingSeries: _selectedSeries!,

@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../models/sales_order.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/sales_order_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -65,9 +65,9 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appState = context.read<AppState>();
-      if (appState.salesOrders.isEmpty) {
-        appState.refreshSalesOrders();
+      final sellingState = context.read<SalesOrderState>();
+      if (sellingState.salesOrders.isEmpty) {
+        sellingState.refreshSalesOrders();
       }
     });
   }
@@ -84,7 +84,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {
-        context.read<AppState>().setSalesOrderQuery(
+        context.read<SalesOrderState>().setSalesOrderQuery(
           search: value,
           status: null,
         );
@@ -286,23 +286,23 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
   Future<void> _openDetail(SalesOrder order) async {
     if (_isOpeningDetail) return;
     setState(() => _isOpeningDetail = true);
-    final appState = context.read<AppState>();
+    final sellingState = context.read<SalesOrderState>();
     late final SalesOrder detail;
     try {
-      detail = await appState.loadSalesOrderDetail(order.id);
+      detail = await sellingState.loadSalesOrderDetail(order.id);
       if (!mounted) return;
 
-      final relatedDn = await appState.fetchDeliveryNotesForSalesOrder(
+      final relatedDn = await sellingState.fetchDeliveryNotesForSalesOrder(
         order.id,
       );
-      final relatedSi = await appState.fetchSalesInvoicesForSalesOrder(
+      final relatedSi = await sellingState.fetchSalesInvoicesForSalesOrder(
         order.id,
       );
       if (!mounted) return;
 
       var workflowActions = const <String>[];
       try {
-        workflowActions = await appState.fetchDocumentWorkflowActions(
+        workflowActions = await sellingState.fetchDocumentWorkflowActions(
           doctype: 'Sales Order',
           name: detail.id,
         );
@@ -312,7 +312,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       if (!mounted) return;
 
       final canSubmit = isDocDraft(detail.docStatus)
-          ? await appState.canSubmitDoctype('Sales Order')
+          ? await sellingState.canSubmitDoctype('Sales Order')
           : false;
       final canEdit = isDocDraft(detail.docStatus);
       if (!mounted) return;
@@ -455,7 +455,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
 
     final ok = await runErpWorkflowAction(
       context,
-      action: () => context.read<AppState>().applyDocumentWorkflow(
+      action: () => context.read<SalesOrderState>().applyDocumentWorkflow(
         doctype: 'Sales Order',
         name: id,
         action: action,
@@ -464,7 +464,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       successMessage: 'Sales Order: $action berhasil',
     );
     if (ok && mounted) {
-      await context.read<AppState>().refreshSalesOrders();
+      await context.read<SalesOrderState>().refreshSalesOrders();
       if (mounted) Navigator.pop(context);
     }
   }
@@ -531,7 +531,9 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       SnackBar(content: Text('Mengunduh PDF Sales Order $id...')),
     );
     try {
-      final bytes = await context.read<AppState>().downloadSalesOrderPdf(id);
+      final bytes = await context.read<SalesOrderState>().downloadSalesOrderPdf(
+        id,
+      );
       final directory = await getApplicationDocumentsDirectory();
       final folder = Directory('${directory.path}/sales_order_pdf');
       if (!await folder.exists()) {
@@ -630,10 +632,10 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
 
   Future<void> _editSo(String id, {bool closeSheet = false}) async {
     if (closeSheet) Navigator.pop(context);
-    final appState = context.read<AppState>();
+    final sellingState = context.read<SalesOrderState>();
     late final SalesOrder latest;
     try {
-      latest = await appState.loadSalesOrderDetail(id);
+      latest = await sellingState.loadSalesOrderDetail(id);
     } catch (err) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -658,7 +660,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       ),
     );
     if (mounted) {
-      await context.read<AppState>().refreshSalesOrders();
+      await context.read<SalesOrderState>().refreshSalesOrders();
     }
   }
 
@@ -670,7 +672,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       ),
     );
     if (mounted) {
-      await context.read<AppState>().refreshSalesOrders();
+      await context.read<SalesOrderState>().refreshSalesOrders();
     }
   }
 
@@ -678,7 +680,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
     if (_isOpeningDetail) return;
     setState(() => _isOpeningDetail = true);
     try {
-      final detail = await context.read<AppState>().loadSalesOrderDetail(
+      final detail = await context.read<SalesOrderState>().loadSalesOrderDetail(
         order.id,
       );
       if (!mounted) return;
@@ -699,20 +701,21 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
     if (!mounted) return;
     final ok = await runErpWorkflowAction(
       context,
-      action: () => context.read<AppState>().submitDocument('Sales Order', id),
+      action: () =>
+          context.read<SalesOrderState>().submitDocument('Sales Order', id),
       successMessage: 'Sales Order submitted',
     );
     if (ok && mounted) {
-      await context.read<AppState>().refreshSalesOrders();
+      await context.read<SalesOrderState>().refreshSalesOrders();
       if (mounted) Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final baseFiltered = _baseFilter(appState.salesOrders);
-    final filtered = _filter(appState.salesOrders);
+    final sellingState = context.watch<SalesOrderState>();
+    final baseFiltered = _baseFilter(sellingState.salesOrders);
+    final filtered = _filter(sellingState.salesOrders);
     final statusChips = _statusChips(baseFiltered);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -721,11 +724,11 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
           title: 'Pendapatan',
           emptyMessage:
               'Belum ada nilai Sales Order dari Sales Analytics pada periode ini.',
-          points: appState.salesOrderTrendPoints,
-          selectedYear: appState.sellingPeriodYear,
-          selectedMonth: appState.sellingPeriodMonth,
+          points: sellingState.salesOrderTrendPoints,
+          selectedYear: sellingState.sellingPeriodYear,
+          selectedMonth: sellingState.sellingPeriodMonth,
           sourceLabel: 'Sumber: Sales Analytics ERPNext',
-          isLoading: appState.isOrderSummaryLoading,
+          isLoading: sellingState.isOrderSummaryLoading,
           accent: _soGreen,
         ),
 
@@ -764,9 +767,9 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
             ),
           ),
         ),
-        if (appState.salesOrdersError != null) ...[
+        if (sellingState.salesOrdersError != null) ...[
           const SizedBox(height: 10),
-          ErpErrorBox(message: appState.salesOrdersError!),
+          ErpErrorBox(message: sellingState.salesOrdersError!),
         ],
         const SizedBox(height: 10),
         _SalesOrderQuickFilters(
@@ -788,7 +791,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
               _advancedTo = null;
               _advancedDocStatus = _DocStatusFilter.all;
             });
-            context.read<AppState>().setSalesOrderQuery(
+            context.read<SalesOrderState>().setSalesOrderQuery(
               search: '',
               status: null,
             );
@@ -805,7 +808,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
           },
         ),
         const SizedBox(height: 12),
-        if (filtered.isEmpty && !appState.isSalesOrdersLoading)
+        if (filtered.isEmpty && !sellingState.isSalesOrdersLoading)
           const ErpEmptyState(title: 'No sales orders found')
         else
           TmsxResponsiveCardGrid(
@@ -827,16 +830,16 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
                 )
                 .toList(),
           ),
-        if (appState.hasMoreSalesOrders ||
-            appState.isMoreSalesOrdersLoading) ...[
+        if (sellingState.hasMoreSalesOrders ||
+            sellingState.isMoreSalesOrdersLoading) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: appState.isMoreSalesOrdersLoading
+              onPressed: sellingState.isMoreSalesOrdersLoading
                   ? null
-                  : () => context.read<AppState>().loadMoreSalesOrders(),
-              icon: appState.isMoreSalesOrdersLoading
+                  : () => context.read<SalesOrderState>().loadMoreSalesOrders(),
+              icon: sellingState.isMoreSalesOrdersLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -844,7 +847,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
                     )
                   : const Icon(Icons.expand_more_rounded),
               label: Text(
-                appState.isMoreSalesOrdersLoading
+                sellingState.isMoreSalesOrdersLoading
                     ? 'Loading orders...'
                     : 'Load more orders',
               ),

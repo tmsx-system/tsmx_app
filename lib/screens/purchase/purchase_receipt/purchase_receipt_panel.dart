@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../models/purchase_receipt.dart';
 import '../../../models/quality_inspection_record.dart';
-import '../../../state/app_state.dart';
+import '../../../../state/purchasing/purchase_receipt_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -61,9 +61,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appState = context.read<AppState>();
-      if (appState.purchaseReceipts.isEmpty) {
-        appState.refreshPurchaseReceipts();
+      final purchasingState = context.read<PurchaseReceiptState>();
+      if (purchasingState.purchaseReceipts.isEmpty) {
+        purchasingState.refreshPurchaseReceipts();
       }
     });
   }
@@ -90,7 +90,7 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
-      context.read<AppState>().setPurchaseReceiptQuery(
+      context.read<PurchaseReceiptState>().setPurchaseReceiptQuery(
         search: value,
         status: _statusText,
       );
@@ -110,9 +110,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
   }
 
   Future<void> _openDetail(PurchaseReceipt doc) async {
-    final detail = await context.read<AppState>().loadPurchaseReceiptDetail(
-      doc.id,
-    );
+    final detail = await context
+        .read<PurchaseReceiptState>()
+        .loadPurchaseReceiptDetail(doc.id);
     if (!mounted) return;
 
     final canSubmit = isDocDraft(detail.docStatus);
@@ -239,7 +239,7 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
     if (photo == null || !mounted) return;
 
     try {
-      await context.read<AppState>().uploadAttachment(
+      await context.read<PurchaseReceiptState>().uploadAttachment(
         doctype: 'Purchase Receipt',
         documentName: receiptId,
         filePath: photo.path,
@@ -284,7 +284,7 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
       builder: (_) => _CreateReceiptQcSheet(receipt: receipt),
     );
     if (created == true && mounted) {
-      await context.read<AppState>().refreshPurchaseReceipts();
+      await context.read<PurchaseReceiptState>().refreshPurchaseReceipts();
     }
   }
 
@@ -307,8 +307,10 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
     if (!mounted) return;
     final ok = await runErpWorkflowAction(
       context,
-      action: () =>
-          context.read<AppState>().submitDocument('Purchase Receipt', id),
+      action: () => context.read<PurchaseReceiptState>().submitDocument(
+        'Purchase Receipt',
+        id,
+      ),
       successMessage: 'Purchase Receipt submitted',
     );
     if (ok && mounted) Navigator.pop(context);
@@ -316,8 +318,8 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final filtered = _filter(appState.purchaseReceipts);
+    final purchasingState = context.watch<PurchaseReceiptState>();
+    final filtered = _filter(purchasingState.purchaseReceipts);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -326,9 +328,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
           title: 'Purchase Receipt',
           emptyMessage:
               'Belum ada nilai Purchase Receipt dari Purchase Analytics pada periode ini.',
-          points: appState.purchaseReceiptTrendPoints,
-          selectedYear: appState.buyingPeriodYear,
-          selectedMonth: appState.buyingPeriodMonth,
+          points: purchasingState.purchaseReceiptTrendPoints,
+          selectedYear: purchasingState.buyingPeriodYear,
+          selectedMonth: purchasingState.buyingPeriodMonth,
           sourceLabel: 'Sumber: Purchase Analytics ERPNext',
         ),
         const SizedBox(height: 12),
@@ -336,9 +338,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
           onChanged: _searchChanged,
           hintText: 'Cari receipt atau supplier',
         ),
-        if (appState.purchaseReceiptsError != null) ...[
+        if (purchasingState.purchaseReceiptsError != null) ...[
           const SizedBox(height: 10),
-          ErpErrorBox(message: appState.purchaseReceiptsError!),
+          ErpErrorBox(message: purchasingState.purchaseReceiptsError!),
         ],
         const SizedBox(height: 10),
         ErpStatusChipBar<DeliveryNoteStatusKey?>(
@@ -346,14 +348,14 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
           selected: _statusFilter,
           onSelected: (v) {
             setState(() => _statusFilter = v);
-            context.read<AppState>().setPurchaseReceiptQuery(
+            context.read<PurchaseReceiptState>().setPurchaseReceiptQuery(
               search: _search,
               status: _statusText,
             );
           },
         ),
         const SizedBox(height: 12),
-        if (filtered.isEmpty && !appState.isPurchaseReceiptsLoading)
+        if (filtered.isEmpty && !purchasingState.isPurchaseReceiptsLoading)
           const ErpEmptyState(
             title: 'Belum ada Purchase Receipt',
             message: 'Gunakan tombol Terima Barang untuk mencatat penerimaan.',
@@ -373,16 +375,18 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
                 )
                 .toList(),
           ),
-        if (appState.hasMorePurchaseReceipts ||
-            appState.isMorePurchaseReceiptsLoading) ...[
+        if (purchasingState.hasMorePurchaseReceipts ||
+            purchasingState.isMorePurchaseReceiptsLoading) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: appState.isMorePurchaseReceiptsLoading
+              onPressed: purchasingState.isMorePurchaseReceiptsLoading
                   ? null
-                  : () => context.read<AppState>().loadMorePurchaseReceipts(),
-              icon: appState.isMorePurchaseReceiptsLoading
+                  : () => context
+                        .read<PurchaseReceiptState>()
+                        .loadMorePurchaseReceipts(),
+              icon: purchasingState.isMorePurchaseReceiptsLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -390,7 +394,7 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
                     )
                   : const Icon(Icons.expand_more_rounded),
               label: Text(
-                appState.isMorePurchaseReceiptsLoading
+                purchasingState.isMorePurchaseReceiptsLoading
                     ? 'Memuat receipt...'
                     : 'Muat receipt lainnya',
               ),
@@ -496,9 +500,9 @@ class _ReceiptQcCardState extends State<_ReceiptQcCard> {
   }
 
   Future<List<QualityInspectionRecord>> _load() {
-    return context.read<AppState>().fetchQualityInspectionsForReceipt(
-      widget.receipt.id,
-    );
+    return context
+        .read<PurchaseReceiptState>()
+        .fetchQualityInspectionsForReceipt(widget.receipt.id);
   }
 
   @override
@@ -799,7 +803,7 @@ class _CreateReceiptQcSheetState extends State<_CreateReceiptQcSheet> {
     setState(() => _saving = true);
     try {
       final record = await context
-          .read<AppState>()
+          .read<PurchaseReceiptState>()
           .createIncomingQualityInspection(
             purchaseReceiptId: widget.receipt.id,
             itemCode: _selectedItem.itemCode,
@@ -968,7 +972,7 @@ class _ReceiptAttachmentPreviewCardState
   }
 
   Future<List<Map<String, dynamic>>> _load() {
-    return context.read<AppState>().fetchDocumentAttachments(
+    return context.read<PurchaseReceiptState>().fetchDocumentAttachments(
       doctype: 'Purchase Receipt',
       documentName: widget.receiptId,
     );
@@ -976,7 +980,7 @@ class _ReceiptAttachmentPreviewCardState
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.read<AppState>();
+    final purchasingState = context.read<PurchaseReceiptState>();
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snapshot) {
@@ -1012,7 +1016,7 @@ class _ReceiptAttachmentPreviewCardState
                       .map(
                         (file) => _ReceiptAttachmentTile(
                           file: file,
-                          baseUrl: appState.frappeService.baseUrl,
+                          baseUrl: purchasingState.frappeService.baseUrl,
                         ),
                       )
                       .toList(),

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/purchase_order.dart';
 import '../../../models/supplier_price_comparison.dart';
-import '../../../state/app_state.dart';
+import '../../../../state/purchasing/purchase_order_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -78,9 +78,9 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appState = context.read<AppState>();
-      if (appState.purchaseOrders.isEmpty) {
-        appState.refreshPurchaseOrders();
+      final purchasingState = context.read<PurchaseOrderState>();
+      if (purchasingState.purchaseOrders.isEmpty) {
+        purchasingState.refreshPurchaseOrders();
       }
     });
   }
@@ -110,7 +110,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {
-        context.read<AppState>().setPurchaseOrderQuery(
+        context.read<PurchaseOrderState>().setPurchaseOrderQuery(
           search: value,
           status: _statusText,
         );
@@ -231,11 +231,11 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
   }
 
   Future<void> _openDetail(PurchaseOrder order) async {
-    final appState = context.read<AppState>();
-    final detail = await appState.loadPurchaseOrderDetail(order.id);
+    final purchasingState = context.read<PurchaseOrderState>();
+    final detail = await purchasingState.loadPurchaseOrderDetail(order.id);
     var workflowActions = <String>[];
     try {
-      workflowActions = await appState.fetchDocumentWorkflowActions(
+      workflowActions = await purchasingState.fetchDocumentWorkflowActions(
         doctype: 'Purchase Order',
         name: detail.id,
       );
@@ -445,7 +445,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
       ),
     );
     if (mounted) {
-      await context.read<AppState>().refreshPurchaseOrders();
+      await context.read<PurchaseOrderState>().refreshPurchaseOrders();
     }
   }
 
@@ -460,8 +460,10 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
     if (!mounted) return;
     final ok = await runErpWorkflowAction(
       context,
-      action: () =>
-          context.read<AppState>().submitDocument('Purchase Order', id),
+      action: () => context.read<PurchaseOrderState>().submitDocument(
+        'Purchase Order',
+        id,
+      ),
       successMessage: 'Purchase Order submitted',
     );
     if (ok && mounted) Navigator.pop(context);
@@ -478,8 +480,10 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
     if (!mounted) return;
     final ok = await runErpWorkflowAction(
       context,
-      action: () =>
-          context.read<AppState>().cancelDocument('Purchase Order', id),
+      action: () => context.read<PurchaseOrderState>().cancelDocument(
+        'Purchase Order',
+        id,
+      ),
       successMessage: 'Purchase Order cancelled',
     );
     if (ok && mounted) Navigator.pop(context);
@@ -496,7 +500,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
     if (!mounted) return;
     final ok = await runErpWorkflowAction(
       context,
-      action: () => context.read<AppState>().deletePurchaseOrder(id),
+      action: () => context.read<PurchaseOrderState>().deletePurchaseOrder(id),
       successMessage: 'Purchase Order deleted',
     );
     if (ok && mounted && closeSheet) Navigator.pop(context);
@@ -505,26 +509,28 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
   Future<void> _createPr(String poId) async {
     final ok = await runErpWorkflowAction(
       context,
-      action: () =>
-          context.read<AppState>().createPurchaseReceiptFromPurchaseOrder(poId),
+      action: () => context
+          .read<PurchaseOrderState>()
+          .createPurchaseReceiptFromPurchaseOrder(poId),
       successMessage: 'Purchase Receipt created',
     );
     if (ok && mounted) {
       Navigator.pop(context);
-      await context.read<AppState>().refreshPurchaseReceipts();
+      await context.read<PurchaseOrderState>().refreshPurchaseReceipts();
     }
   }
 
   Future<void> _createPi(String poId) async {
     final ok = await runErpWorkflowAction(
       context,
-      action: () =>
-          context.read<AppState>().createPurchaseInvoiceFromPurchaseOrder(poId),
+      action: () => context
+          .read<PurchaseOrderState>()
+          .createPurchaseInvoiceFromPurchaseOrder(poId),
       successMessage: 'Purchase Invoice created',
     );
     if (ok && mounted) {
       Navigator.pop(context);
-      await context.read<AppState>().refreshPurchaseInvoices();
+      await context.read<PurchaseOrderState>().refreshPurchaseInvoices();
     }
   }
 
@@ -587,7 +593,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
 
     final ok = await runErpWorkflowAction(
       context,
-      action: () => context.read<AppState>().applyDocumentWorkflow(
+      action: () => context.read<PurchaseOrderState>().applyDocumentWorkflow(
         doctype: doctype,
         name: name,
         action: action,
@@ -637,8 +643,8 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final filtered = _filter(appState.purchaseOrders);
+    final purchasingState = context.watch<PurchaseOrderState>();
+    final filtered = _filter(purchasingState.purchaseOrders);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -647,9 +653,9 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
           title: 'Purchase Order',
           emptyMessage:
               'Belum ada nilai Purchase Order dari Purchase Analytics pada periode ini.',
-          points: appState.purchaseOrderTrendPoints,
-          selectedYear: appState.buyingPeriodYear,
-          selectedMonth: appState.buyingPeriodMonth,
+          points: purchasingState.purchaseOrderTrendPoints,
+          selectedYear: purchasingState.buyingPeriodYear,
+          selectedMonth: purchasingState.buyingPeriodMonth,
           sourceLabel: 'Sumber: Purchase Analytics ERPNext',
         ),
 
@@ -661,9 +667,9 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
           hintText: 'Cari PO atau supplier...',
         ),
 
-        if (appState.purchaseOrdersError != null) ...[
+        if (purchasingState.purchaseOrdersError != null) ...[
           const SizedBox(height: 10),
-          ErpErrorBox(message: appState.purchaseOrdersError!),
+          ErpErrorBox(message: purchasingState.purchaseOrdersError!),
         ],
 
         const SizedBox(height: 10),
@@ -687,7 +693,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
               _advancedTo = null;
               _advancedDocStatus = _PoDocStatusFilter.all;
             });
-            context.read<AppState>().setPurchaseOrderQuery(
+            context.read<PurchaseOrderState>().setPurchaseOrderQuery(
               search: '',
               status: null,
             );
@@ -703,7 +709,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
           selected: _statusFilter,
           onSelected: (v) {
             setState(() => _statusFilter = v);
-            context.read<AppState>().setPurchaseOrderQuery(
+            context.read<PurchaseOrderState>().setPurchaseOrderQuery(
               search: _search,
               status: _statusText,
             );
@@ -712,7 +718,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
 
         const SizedBox(height: 12),
 
-        if (filtered.isEmpty && !appState.isPurchaseOrdersLoading)
+        if (filtered.isEmpty && !purchasingState.isPurchaseOrdersLoading)
           const ErpEmptyState(
             title: 'Belum ada Purchase Order',
             message: 'Gunakan tombol Buat PO untuk membuat dokumen baru.',
@@ -739,16 +745,18 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
                 .toList(),
           ),
 
-        if (appState.hasMorePurchaseOrders ||
-            appState.isMorePurchaseOrdersLoading) ...[
+        if (purchasingState.hasMorePurchaseOrders ||
+            purchasingState.isMorePurchaseOrdersLoading) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: appState.isMorePurchaseOrdersLoading
+              onPressed: purchasingState.isMorePurchaseOrdersLoading
                   ? null
-                  : () => context.read<AppState>().loadMorePurchaseOrders(),
-              icon: appState.isMorePurchaseOrdersLoading
+                  : () => context
+                        .read<PurchaseOrderState>()
+                        .loadMorePurchaseOrders(),
+              icon: purchasingState.isMorePurchaseOrdersLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -756,7 +764,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
                     )
                   : const Icon(Icons.expand_more_rounded),
               label: Text(
-                appState.isMorePurchaseOrdersLoading
+                purchasingState.isMorePurchaseOrdersLoading
                     ? 'Memuat PO...'
                     : 'Muat PO lainnya',
               ),
@@ -900,7 +908,7 @@ class _SupplierPriceComparisonSheetState
     });
     try {
       final result = await context
-          .read<AppState>()
+          .read<PurchaseOrderState>()
           .fetchSupplierPriceComparison(
             itemCode: _selectedItem.itemCode,
             itemName: _selectedItem.itemName,

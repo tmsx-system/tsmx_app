@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/sales_workspace.dart';
-import '../../../state/app_state.dart';
+import '../../../state/spg/spg_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../../visits/attendance_tab.dart';
@@ -38,7 +38,7 @@ class _SpgOverviewTabState extends State<SpgOverviewTab> {
       _visitError = null;
     });
     try {
-      final state = context.read<AppState>();
+      final state = context.read<SpgState>();
       await state.fetchSpgVisits(forceRefresh: forceRefresh);
       if (!mounted) return;
       setState(() {
@@ -57,7 +57,7 @@ class _SpgOverviewTabState extends State<SpgOverviewTab> {
   }
 
   Future<void> _loadProfileImage() async {
-    final state = context.read<AppState>();
+    final state = context.read<SpgState>();
     try {
       final profile = await state.fetchCurrentUserProfile();
       final image = profile['user_image']?.toString().trim() ?? '';

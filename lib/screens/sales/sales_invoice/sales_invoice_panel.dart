@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/sales_invoice.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/sales_invoice_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -53,9 +53,9 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appState = context.read<AppState>();
-      if (appState.salesInvoices.isEmpty) {
-        appState.refreshSalesInvoices();
+      final sellingState = context.read<SalesInvoiceState>();
+      if (sellingState.salesInvoices.isEmpty) {
+        sellingState.refreshSalesInvoices();
       }
     });
   }
@@ -84,7 +84,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {
-        context.read<AppState>().setSalesInvoiceQuery(
+        context.read<SalesInvoiceState>().setSalesInvoiceQuery(
           search: value,
           status: _statusText,
         );
@@ -239,13 +239,16 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
       _sortOption = SellingSortOption.newest;
       _advancedFilters = SellingAdvancedFilters.empty;
     });
-    context.read<AppState>().setSalesInvoiceQuery(search: '', status: null);
+    context.read<SalesInvoiceState>().setSalesInvoiceQuery(
+      search: '',
+      status: null,
+    );
   }
 
   Future<void> _openDetail(SalesInvoice doc) async {
-    final detail = await context.read<AppState>().loadSalesInvoiceDetail(
-      doc.id,
-    );
+    final detail = await context
+        .read<SalesInvoiceState>()
+        .loadSalesInvoiceDetail(doc.id);
     if (!mounted) return;
 
     final canSubmit = isDocDraft(detail.docStatus);
@@ -320,7 +323,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
     final ok = await runErpWorkflowAction(
       context,
       action: () =>
-          context.read<AppState>().submitDocument('Sales Invoice', id),
+          context.read<SalesInvoiceState>().submitDocument('Sales Invoice', id),
       successMessage: 'Sales Invoice submitted',
     );
     if (ok && mounted) Navigator.pop(context);
@@ -328,8 +331,8 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final filtered = _filter(appState.salesInvoices);
+    final sellingState = context.watch<SalesInvoiceState>();
+    final filtered = _filter(sellingState.salesInvoices);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -337,11 +340,11 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
           title: 'Sales Invoice',
           emptyMessage:
               'Belum ada nilai Sales Invoice dari Sales Analytics pada periode ini.',
-          points: appState.salesInvoiceTrendPoints,
-          selectedYear: appState.sellingPeriodYear,
-          selectedMonth: appState.sellingPeriodMonth,
+          points: sellingState.salesInvoiceTrendPoints,
+          selectedYear: sellingState.sellingPeriodYear,
+          selectedMonth: sellingState.sellingPeriodMonth,
           sourceLabel: 'Sumber: Sales Analytics ERPNext',
-          isLoading: appState.isOrderSummaryLoading,
+          isLoading: sellingState.isOrderSummaryLoading,
         ),
 
         const SizedBox(height: 12),
@@ -369,9 +372,9 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
           ),
         ),
 
-        if (appState.salesInvoicesError != null) ...[
+        if (sellingState.salesInvoicesError != null) ...[
           const SizedBox(height: 10),
-          ErpErrorBox(message: appState.salesInvoicesError!),
+          ErpErrorBox(message: sellingState.salesInvoicesError!),
         ],
 
         const SizedBox(height: 10),
@@ -392,7 +395,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
           selected: _statusFilter,
           onSelected: (v) {
             setState(() => _statusFilter = v);
-            context.read<AppState>().setSalesInvoiceQuery(
+            context.read<SalesInvoiceState>().setSalesInvoiceQuery(
               search: _search,
               status: _statusText,
             );
@@ -401,7 +404,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
 
         const SizedBox(height: 12),
 
-        if (filtered.isEmpty && !appState.isSalesInvoicesLoading)
+        if (filtered.isEmpty && !sellingState.isSalesInvoicesLoading)
           const ErpEmptyState(title: 'No sales invoices found')
         else
           TmsxResponsiveCardGrid(
@@ -419,16 +422,18 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
                 .toList(),
           ),
 
-        if (appState.hasMoreSalesInvoices ||
-            appState.isMoreSalesInvoicesLoading) ...[
+        if (sellingState.hasMoreSalesInvoices ||
+            sellingState.isMoreSalesInvoicesLoading) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: appState.isMoreSalesInvoicesLoading
+              onPressed: sellingState.isMoreSalesInvoicesLoading
                   ? null
-                  : () => context.read<AppState>().loadMoreSalesInvoices(),
-              icon: appState.isMoreSalesInvoicesLoading
+                  : () => context
+                        .read<SalesInvoiceState>()
+                        .loadMoreSalesInvoices(),
+              icon: sellingState.isMoreSalesInvoicesLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -436,7 +441,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
                     )
                   : const Icon(Icons.expand_more_rounded),
               label: Text(
-                appState.isMoreSalesInvoicesLoading
+                sellingState.isMoreSalesInvoicesLoading
                     ? 'Loading invoices...'
                     : 'Load more invoices',
               ),

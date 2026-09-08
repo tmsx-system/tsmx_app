@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../state/app_state.dart';
+import '../../state/purchasing/purchasing_filter_state.dart';
 import '../../theme/app_colors.dart';
 import '../shared/role_main_screen.dart';
 import 'material_request/create_material_request_screen.dart';
 import 'material_request/material_request_panel.dart';
 import 'purchase_invoice/create_purchase_invoice_screen.dart';
 import 'purchase_invoice/purchase_invoice_panel.dart';
+import '../../state/purchasing/material_request_state.dart';
+import '../../state/purchasing/purchase_invoice_state.dart';
+import '../../state/purchasing/purchase_order_state.dart';
+import '../../state/purchasing/purchase_receipt_state.dart';
 import 'purchase_order/create_purchase_order_screen.dart';
 import 'purchase_order/purchase_order_panel.dart';
 import 'purchase_overview_tab.dart';
@@ -60,8 +64,8 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
     return RoleMainScreen(
       title: 'Purchase',
       fallbackUsername: 'Purchase',
-      onInitialize: (state) async {
-        await state.loadBuyingFilterOptions();
+      onInitialize: (context) async {
+        await context.read<PurchasingFilterState>().loadBuyingFilterOptions();
       },
       screensBuilder: (onMenuSelected) => entries
           .map((entry) {
@@ -238,7 +242,7 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
   }
 
   Future<_PurchaseDoctypePermissions> _loadPermissions() async {
-    final state = context.read<AppState>();
+    final state = context.read<PurchasingFilterState>();
     if (state.mobileAccess.isAdministrator ||
         state.mobileAccess.isDeveloper ||
         state.mobileAccess.isCompanyAdministrator ||
@@ -317,12 +321,11 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
     await Navigator.of(context).push(route);
     if (!context.mounted) return;
 
-    final state = context.read<AppState>();
     await switch (key) {
-      'pr' => state.refreshPurchaseReceipts(),
-      'pi' => state.refreshPurchaseInvoices(),
-      'mr' => state.refreshMaterialRequests(),
-      _ => state.refreshPurchaseOrders(),
+      'pr' => context.read<PurchaseReceiptState>().refreshPurchaseReceipts(),
+      'pi' => context.read<PurchaseInvoiceState>().refreshPurchaseInvoices(),
+      'mr' => context.read<MaterialRequestState>().refreshMaterialRequests(),
+      _ => context.read<PurchaseOrderState>().refreshPurchaseOrders(),
     };
   }
 }
@@ -334,12 +337,12 @@ class _PurchasePane extends StatelessWidget {
   const _PurchasePane({required this.doctypeKey, required this.child});
 
   Future<void> _openPurchasePeriodFilter(BuildContext context) async {
-    final appState = context.read<AppState>();
+    final purchasingState = context.read<PurchasingFilterState>();
     final supplierType =
         _purchaseSupplierTypeOptions.containsKey(
-          appState.buyingSupplierTypeFilter,
+          purchasingState.buyingSupplierTypeFilter,
         )
-        ? appState.buyingSupplierTypeFilter
+        ? purchasingState.buyingSupplierTypeFilter
         : 'all';
 
     final result = await showModalBottomSheet<_PurchasePeriodFilterValue>(
@@ -351,37 +354,32 @@ class _PurchasePane extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (context) => _PurchasePeriodFilterSheet(
-        initialMonth: appState.buyingPeriodMonth,
-        initialYear: appState.buyingPeriodYear,
-        initialCompany: appState.buyingCompanyFilter,
+        initialMonth: purchasingState.buyingPeriodMonth,
+        initialYear: purchasingState.buyingPeriodYear,
+        initialCompany: purchasingState.buyingCompanyFilter,
         initialSupplierType: supplierType,
-        companies: appState.buyingCompanies,
-        loading: appState.isOrderSummaryLoading,
+        companies: purchasingState.buyingCompanies,
+        loading: purchasingState.isOrderSummaryLoading,
       ),
     );
     if (result == null || !context.mounted) return;
 
-    await context.read<AppState>().setBuyingPeriod(
+    await context.read<PurchasingFilterState>().setBuyingPeriod(
       year: result.year,
       month: result.month,
       company: result.company,
       supplierType: result.supplierType,
     );
+    if (!context.mounted) return;
+    await _refreshActiveDoctype(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<PurchasingFilterState>();
     return RefreshIndicator(
       color: AppColors.primary,
-      onRefresh: () async {
-        await switch (doctypeKey) {
-          'pr' => state.refreshPurchaseReceipts(),
-          'pi' => state.refreshPurchaseInvoices(),
-          'mr' => state.refreshMaterialRequests(),
-          _ => state.refreshPurchaseOrders(),
-        };
-      },
+      onRefresh: () => _refreshActiveDoctype(context),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
@@ -399,6 +397,15 @@ class _PurchasePane extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _refreshActiveDoctype(BuildContext context) {
+    return switch (doctypeKey) {
+      'pr' => context.read<PurchaseReceiptState>().refreshPurchaseReceipts(),
+      'pi' => context.read<PurchaseInvoiceState>().refreshPurchaseInvoices(),
+      'mr' => context.read<MaterialRequestState>().refreshMaterialRequests(),
+      _ => context.read<PurchaseOrderState>().refreshPurchaseOrders(),
+    };
   }
 }
 

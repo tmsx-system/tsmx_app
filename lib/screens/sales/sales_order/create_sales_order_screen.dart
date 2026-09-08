@@ -8,7 +8,7 @@ import '../../../models/sales_order.dart';
 import '../../../models/sales_order_insight.dart';
 import '../../../models/sales_workspace.dart';
 import '../../../models/warehouse_info.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/sales_order_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
@@ -99,7 +99,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   List<_CustomerOption> _customerOptions = [];
   List<_ItemOption> _itemOptions = [];
 
-  List<WarehouseInfo> _warehouseOptions(AppState appState) {
+  List<WarehouseInfo> _warehouseOptions(SalesOrderState appState) {
     final warehouses = appState.warehouses.toList()
       ..sort((a, b) => a.name.compareTo(b.name));
     final seen = <String>{};
@@ -113,7 +113,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     }).toList();
   }
 
-  List<WarehouseInfo> _warehousesForCompany(AppState appState) {
+  List<WarehouseInfo> _warehousesForCompany(SalesOrderState appState) {
     final warehouses = _warehouseOptions(appState);
     final company = _selectedCompany?.trim() ?? '';
     if (company.isEmpty) return warehouses;
@@ -122,7 +122,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         .toList();
   }
 
-  Future<void> _ensureWarehouseEnabled(AppState appState) async {
+  Future<void> _ensureWarehouseEnabled(SalesOrderState appState) async {
     final warehouse = _selectedWarehouse?.trim() ?? '';
     if (warehouse.isEmpty) return;
 
@@ -184,12 +184,14 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     return result;
   }
 
-  Future<List<String>> _fetchSalesOrderSeriesOptions(AppState appState) async {
+  Future<List<String>> _fetchSalesOrderSeriesOptions(
+    SalesOrderState appState,
+  ) async {
     return appState.fetchNamingSeries('Sales Order');
   }
 
   Future<List<String>> _fetchDocTypeSelectOptions(
-    AppState appState, {
+    SalesOrderState appState, {
     required String doctype,
     required String fieldname,
   }) async {
@@ -211,7 +213,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   Future<List<String>> _fetchLinkOptions(
-    AppState appState, {
+    SalesOrderState appState, {
     required String doctype,
     List<List<dynamic>>? filters,
   }) async {
@@ -249,7 +251,9 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     }
   }
 
-  Future<List<String>> _fetchSalesPersonOptions(AppState appState) async {
+  Future<List<String>> _fetchSalesPersonOptions(
+    SalesOrderState appState,
+  ) async {
     Future<List<String>> fetch(List<List<dynamic>> filters) async {
       final data = await appState.frappeService.fetchResource(
         'Sales Person',
@@ -330,7 +334,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   void _applyCustomerSelection(String customerId) {
-    final appState = context.read<AppState>();
+    final appState = context.read<SalesOrderState>();
     _customerCtrl.text = customerId;
     final customer = _selectedCustomerOption();
     if (appState.mobileAccess.isSalesUser) {
@@ -348,7 +352,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   Future<void> _applyCustomerErpDefaults(String customerId) async {
-    final appState = context.read<AppState>();
+    final appState = context.read<SalesOrderState>();
     try {
       final customer = await appState.frappeService.fetchDocument(
         'Customer',
@@ -465,7 +469,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   Future<void> _onCompanySelected(String? company) async {
-    final appState = context.read<AppState>();
+    final appState = context.read<SalesOrderState>();
     setState(() {
       _selectedCompany = company;
       final warehouses = _warehousesForCompany(appState);
@@ -502,7 +506,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   Future<List<_CostCenterOption>> _fetchCostCenterOptions(
-    AppState appState,
+    SalesOrderState appState,
   ) async {
     Future<List<_CostCenterOption>> fetch({
       required List<String> fields,
@@ -562,7 +566,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     _discountCtrl.addListener(_calculateTotal);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final appState = context.read<AppState>();
+      final appState = context.read<SalesOrderState>();
       final defaultWarehouse = appState.preferredWarehouse(
         _warehouseOptions(appState),
       );
@@ -792,10 +796,9 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       _customerInsightError = null;
     });
     try {
-      final insight = await context.read<AppState>().fetchCustomerSalesInsight(
-        customer,
-        company: _activeCompany(),
-      );
+      final insight = await context
+          .read<SalesOrderState>()
+          .fetchCustomerSalesInsight(customer, company: _activeCompany());
       if (!mounted) return;
       setState(() {
         _customerInsight = insight;
@@ -844,7 +847,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       final qty =
           double.tryParse((row?.qtyController ?? _qtyCtrl).text.trim()) ?? 1;
       final insight = await _withTransientRetry(
-        () => context.read<AppState>().fetchItemSalesInsight(
+        () => context.read<SalesOrderState>().fetchItemSalesInsight(
           itemCode,
           customer: _customerCtrl.text.trim(),
           company: _activeCompany(),
@@ -1041,7 +1044,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     final query = value.trim();
     if (query.isEmpty) return _itemOptions.take(20);
 
-    final remoteRows = await context.read<AppState>().fetchSellableItems(
+    final remoteRows = await context.read<SalesOrderState>().fetchSellableItems(
       query: query,
       limit: 50,
     );
@@ -1382,7 +1385,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   List<_CustomerOption> _salesScopedCustomerOptions() {
-    final appState = context.read<AppState>();
+    final appState = context.read<SalesOrderState>();
     if (!appState.mobileAccess.isSalesUser) return _customerOptions;
 
     final salesPerson = appState.currentSalesPerson?.trim() ?? '';
@@ -1503,7 +1506,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                         ),
                       ),
                       if (!context
-                          .read<AppState>()
+                          .read<SalesOrderState>()
                           .mobileAccess
                           .isSalesUser) ...[
                         Padding(
@@ -1671,7 +1674,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   Future<void> _showAddCustomerSheet() async {
-    final appState = context.read<AppState>();
+    final appState = context.read<SalesOrderState>();
     final company = _activeCompany();
     final nameCtrl = TextEditingController(text: _customerCtrl.text.trim());
     final formKey = GlobalKey<FormState>();
@@ -1958,7 +1961,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       );
       return;
     }
-    final appState = context.read<AppState>();
+    final appState = context.read<SalesOrderState>();
     final customerSalesTeam = _selectedCustomerOption()?.salesTeam ?? const [];
     final isSalesUser = appState.mobileAccess.isSalesUser;
     if (isSalesUser && customerSalesTeam.isEmpty) {
@@ -2123,7 +2126,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   Future<void> _loadSelectors() async {
-    final appState = context.read<AppState>();
+    final appState = context.read<SalesOrderState>();
     setState(() {
       _isLoadingSelectors = true;
       _selectorLoadError = null;
@@ -2498,7 +2501,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         if (firstItem.warehouse.isNotEmpty) {
           _selectedWarehouse = firstItem.warehouse;
           final warehouse = _selectedWarehouseInfo(
-            _warehouseOptions(context.read<AppState>()),
+            _warehouseOptions(context.read<SalesOrderState>()),
           );
           if (warehouse?.company.isNotEmpty == true) {
             _selectedCompany = warehouse!.company;
@@ -2518,7 +2521,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final appState = context.watch<SalesOrderState>();
     final warehouseOptions = _warehousesForCompany(appState);
     final costCenterOptions = _costCentersForCompany();
 
@@ -4108,13 +4111,15 @@ class _CustomerHistorySheetState extends State<_CustomerHistorySheet>
       _error = null;
     });
     try {
-      final page = await context.read<AppState>().fetchCustomerPurchaseHistory(
-        customer: widget.customer,
-        doctype: doctype,
-        company: widget.company,
-        offset: _rows[doctype]!.length,
-        limit: _pageSize,
-      );
+      final page = await context
+          .read<SalesOrderState>()
+          .fetchCustomerPurchaseHistory(
+            customer: widget.customer,
+            doctype: doctype,
+            company: widget.company,
+            offset: _rows[doctype]!.length,
+            limit: _pageSize,
+          );
       if (!mounted) return;
       final known = _rows[doctype]!.map((row) => row.id).toSet();
       setState(() {
@@ -4132,7 +4137,7 @@ class _CustomerHistorySheetState extends State<_CustomerHistorySheet>
     showDialog<void>(
       context: context,
       builder: (context) => FutureBuilder<Map<String, dynamic>>(
-        future: context.read<AppState>().loadSalesHistoryDetail(
+        future: context.read<SalesOrderState>().loadSalesHistoryDetail(
           row.doctype,
           row.id,
         ),

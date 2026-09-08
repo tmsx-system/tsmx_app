@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../state/app_state.dart';
+import '../../state/warehouse/warehouse_stock_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/responsive/responsive_layout.dart';
 import '../shared/role_main_screen.dart';
@@ -63,7 +63,8 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
       title: widget.qualityOnly ? 'Quality Control' : 'Warehouse',
       fallbackUsername: widget.qualityOnly ? 'Quality Control' : 'Warehouse',
       initialTabIndex: initial,
-      onInitialize: (state) async {
+      onInitialize: (_) async {
+        final state = context.read<WarehouseStockState>();
         await Future.wait([
           if (permissions.canReadWarehouse) state.refreshWarehouses(),
           if (permissions.canReadStock) state.refreshInventory(),
@@ -138,11 +139,12 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
   }
 
   Future<_WarehouseDoctypePermissions> _loadPermissions() async {
-    final state = context.read<AppState>();
-    if (state.mobileAccess.isAdministrator ||
-        state.mobileAccess.isDeveloper ||
-        state.mobileAccess.isCompanyAdministrator ||
-        state.mobileAccess.isDirector) {
+    final state = context.read<WarehouseStockState>();
+    final access = state.appState.mobileAccess;
+    if (access.isAdministrator ||
+        access.isDeveloper ||
+        access.isCompanyAdministrator ||
+        access.isDirector) {
       return _WarehouseDoctypePermissions.fullAccess();
     }
     final results = await Future.wait([
@@ -168,9 +170,9 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
       canCreateQualityInspection: results[8],
     );
     if (!permissions.hasAnyAccess &&
-        (state.canUseWarehouse ||
-            state.canUseStock ||
-            state.canUseQualityControl)) {
+        (state.appState.canUseWarehouse ||
+            state.appState.canUseStock ||
+            state.appState.canUseQualityControl)) {
       return _WarehouseDoctypePermissions.legacyModuleAccess(
         stockOnly: widget.stockOnly,
         qualityOnly: widget.qualityOnly,

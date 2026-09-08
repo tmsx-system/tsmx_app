@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../state/app_state.dart';
+import '../../state/logistics/logistics_delivery_state.dart';
+import '../../state/logistics/logistics_overview_state.dart';
+import '../../state/logistics/logistics_tracking_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/responsive/responsive_layout.dart';
 import '../shared/role_main_screen.dart';
@@ -58,9 +60,16 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
     return RoleMainScreen(
       title: 'Logistics',
       fallbackUsername: 'Logistics',
-      onInitialize: (state) async {
+      onInitialize: (_) async {
         if (permissions.canReadDeliveryNote) {
-          await state.refreshDeliveryNotes();
+          await Future.wait([
+            if (!widget.trackingOnly && !widget.deliveryOnly)
+              context.read<LogisticsOverviewState>().refreshDeliveryNotes(),
+            if (!widget.deliveryOnly)
+              context.read<LogisticsTrackingState>().refreshDeliveryNotes(),
+            if (!widget.trackingOnly)
+              context.read<LogisticsDeliveryState>().refreshDeliveryNotes(),
+          ]);
         }
       },
       screensBuilder: (onMenuSelected) => entries
@@ -120,11 +129,12 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
   }
 
   Future<_LogisticsDoctypePermissions> _loadPermissions() async {
-    final state = context.read<AppState>();
-    if (state.mobileAccess.isAdministrator ||
-        state.mobileAccess.isDeveloper ||
-        state.mobileAccess.isCompanyAdministrator ||
-        state.mobileAccess.isDirector) {
+    final state = context.read<LogisticsOverviewState>();
+    final access = state.appState.mobileAccess;
+    if (access.isAdministrator ||
+        access.isDeveloper ||
+        access.isCompanyAdministrator ||
+        access.isDirector) {
       return _LogisticsDoctypePermissions.fullAccess();
     }
     final results = await Future.wait([
@@ -139,7 +149,7 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
       canReadFile: results[2],
       canCreateFile: results[3],
     );
-    if (!permissions.hasAnyAccess && state.canUseLogistics) {
+    if (!permissions.hasAnyAccess && state.appState.canUseLogistics) {
       return _LogisticsDoctypePermissions.legacyModuleAccess();
     }
     return permissions;

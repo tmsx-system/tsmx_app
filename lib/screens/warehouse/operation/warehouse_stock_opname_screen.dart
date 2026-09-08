@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../models/inventory_item.dart';
 import '../../../models/warehouse_info.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../shared/warehouse_widgets.dart';
 
@@ -36,7 +36,7 @@ class _WarehouseStockOpnameScreenState
     if (warehouse == null) return const [];
     final items =
         context
-            .read<AppState>()
+            .read<WarehouseStockState>()
             .inventory
             .where((item) => item.warehouseId == warehouse)
             .toList()
@@ -51,7 +51,7 @@ class _WarehouseStockOpnameScreenState
   }
 
   Future<void> _load() async {
-    final state = context.read<AppState>();
+    final state = context.read<WarehouseStockState>();
     setState(() {
       _loading = true;
       _error = null;
@@ -95,18 +95,20 @@ class _WarehouseStockOpnameScreenState
       _error = null;
     });
     try {
-      final created = await context.read<AppState>().createStockReconciliation(
-        company: warehouse.company,
-        warehouse: warehouse.name,
-        items: [
-          for (final row in _rows)
-            {
-              'item_code': row.item.sku,
-              'qty': row.physicalQty,
-              'valuation_rate': row.item.unitValue,
-            },
-        ],
-      );
+      final created = await context
+          .read<WarehouseStockState>()
+          .createStockReconciliation(
+            company: warehouse.company,
+            warehouse: warehouse.name,
+            items: [
+              for (final row in _rows)
+                {
+                  'item_code': row.item.sku,
+                  'qty': row.physicalQty,
+                  'valuation_rate': row.item.unitValue,
+                },
+            ],
+          );
       if (!mounted) return;
       final id = created['name']?.toString() ?? '';
       ScaffoldMessenger.of(context).showSnackBar(

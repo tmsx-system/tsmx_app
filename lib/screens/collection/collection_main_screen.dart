@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../state/app_state.dart';
+import '../../state/auth/auth_state.dart';
+import '../../state/selling/selling_filter_state.dart';
 import '../../theme/app_colors.dart';
 import '../sales/collection/sales_collection_tab.dart';
 import '../shared/role_main_screen.dart';
@@ -23,7 +24,7 @@ class _CollectionMainScreenState extends State<CollectionMainScreen> {
   }
 
   Future<bool> _loadAccess() async {
-    final state = context.read<AppState>();
+    final state = context.read<AuthState>();
     if (state.mobileAccess.isAdministrator ||
         state.mobileAccess.isDeveloper ||
         state.mobileAccess.isCompanyAdministrator ||
@@ -52,7 +53,8 @@ class _CollectionMainScreenState extends State<CollectionMainScreen> {
         return RoleMainScreen(
           title: 'Collection',
           fallbackUsername: 'Collection',
-          onInitialize: (state) => state.loadSellingFilterOptions(),
+          onInitialize: (context) =>
+              context.read<SellingFilterState>().loadSellingFilterOptions(),
           screensBuilder: (_) => const [SalesCollectionTab()],
           destinations: const [
             NavigationDestination(

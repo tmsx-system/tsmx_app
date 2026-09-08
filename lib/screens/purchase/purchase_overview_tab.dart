@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/purchase_order.dart';
-import '../../state/app_state.dart';
+import '../../state/purchasing/purchase_invoice_state.dart';
+import '../../state/purchasing/purchase_order_state.dart';
+import '../../state/purchasing/purchase_receipt_state.dart';
+import '../../state/purchasing/purchasing_filter_state.dart';
+import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_format.dart';
 
-class PurchaseOverviewTab extends StatelessWidget {
+class PurchaseOverviewTab extends StatefulWidget {
   final ValueChanged<int> onMenuSelected;
   final List<PurchaseOverviewAction> actions;
 
@@ -17,9 +21,42 @@ class PurchaseOverviewTab extends StatelessWidget {
   });
 
   @override
+  State<PurchaseOverviewTab> createState() => _PurchaseOverviewTabState();
+}
+
+class _PurchaseOverviewTabState extends State<PurchaseOverviewTab> {
+  bool _didInitialLoad = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInitialLoad) return;
+    _didInitialLoad = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final orderState = context.read<PurchaseOrderState>();
+      final receiptState = context.read<PurchaseReceiptState>();
+      final invoiceState = context.read<PurchaseInvoiceState>();
+      Future.wait([
+        context.read<PurchasingFilterState>().refreshBuyingSummaries(),
+        if (orderState.purchaseOrders.isEmpty)
+          orderState.refreshPurchaseOrders(),
+        if (receiptState.purchaseReceipts.isEmpty)
+          receiptState.refreshPurchaseReceipts(),
+        if (invoiceState.purchaseInvoices.isEmpty)
+          invoiceState.refreshPurchaseInvoices(),
+      ]);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final outstandingPo = state.purchaseOrders
+    final state = context.watch<PurchasingFilterState>();
+    final orderState = context.watch<PurchaseOrderState>();
+    final receiptState = context.watch<PurchaseReceiptState>();
+    final invoiceState = context.watch<PurchaseInvoiceState>();
+    final todoState = context.watch<TodoState>();
+    final outstandingPo = orderState.purchaseOrders
         .where(
           (po) =>
               po.statusKey != PurchaseOrderStatusKey.completed &&
@@ -27,14 +64,14 @@ class PurchaseOverviewTab extends StatelessWidget {
               po.statusKey != PurchaseOrderStatusKey.closed,
         )
         .length;
-    final outstandingDebt = state.purchaseInvoices.fold<double>(
+    final outstandingDebt = invoiceState.purchaseInvoices.fold<double>(
       0,
       (sum, invoice) => sum + invoice.outstandingAmount,
     );
-    final overdueInvoices = state.purchaseInvoices
+    final overdueInvoices = invoiceState.purchaseInvoices
         .where((invoice) => invoice.isOverdue)
         .length;
-    final receiptIssues = state.purchaseReceipts
+    final receiptIssues = receiptState.purchaseReceipts
         .where(
           (receipt) =>
               receipt.totalRejectedQty > 0 ||
@@ -46,9 +83,9 @@ class PurchaseOverviewTab extends StatelessWidget {
       onRefresh: () async {
         await Future.wait([
           state.refreshBuyingSummaries(),
-          state.refreshPurchaseOrders(),
-          state.refreshPurchaseReceipts(),
-          state.refreshPurchaseInvoices(),
+          orderState.refreshPurchaseOrders(),
+          receiptState.refreshPurchaseReceipts(),
+          invoiceState.refreshPurchaseInvoices(),
           state.refreshInventory(),
         ]);
       },
@@ -58,18 +95,18 @@ class PurchaseOverviewTab extends StatelessWidget {
         children: [
           _PurchaseHeroCard(
             outstandingPo: outstandingPo,
-            approvalCount: state.purchaseApprovalTodoCount,
+            approvalCount: todoState.purchaseApprovalTodoCount,
             overdueInvoices: overdueInvoices,
             outstandingDebt: outstandingDebt,
           ),
-          if (actions.isNotEmpty) ...[
+          if (widget.actions.isNotEmpty) ...[
             const SizedBox(height: 18),
-            _PurchaseShortcutGrid(actions: actions),
+            _PurchaseShortcutGrid(actions: widget.actions),
           ],
           const SizedBox(height: 18),
           _PurchaseMetricGrid(
             outstandingPo: outstandingPo,
-            approvalCount: state.purchaseApprovalTodoCount,
+            approvalCount: todoState.purchaseApprovalTodoCount,
             overdueInvoices: overdueInvoices,
             outstandingDebt: outstandingDebt,
           ),
@@ -80,7 +117,9 @@ class PurchaseOverviewTab extends StatelessWidget {
               message:
                   '$receiptIssues receipt memiliki rejected qty atau selisih quantity.',
               onTap: () {
-                final receiptAction = actions.where((a) => a.key == 'pr');
+                final receiptAction = widget.actions.where(
+                  (action) => action.key == 'pr',
+                );
                 if (receiptAction.isNotEmpty) receiptAction.first.onTap();
               },
             ),

@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/erp_approval_todo.dart';
 import '../../models/sales_order_approval.dart';
-import '../../state/app_state.dart';
+import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_doc_utils.dart';
 import '../../utils/erp_format.dart';
@@ -75,7 +75,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final cachedRows = _filterRows(
-        context.read<AppState>().cachedApprovalTodos,
+        context.read<TodoState>().cachedApprovalTodos,
       );
       if (cachedRows.isNotEmpty) {
         setState(() {
@@ -124,7 +124,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
         _historyError = null;
       });
     }
-    final appState = context.read<AppState>();
+    final appState = context.read<TodoState>();
     try {
       final rows = await appState.fetchApprovalTodos(
         forceRefresh: forceRefresh,
@@ -1484,7 +1484,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       _error = null;
     });
     try {
-      final appState = context.read<AppState>();
+      final appState = context.read<TodoState>();
       final results = await Future.wait<dynamic>([
         appState.fetchApprovalDocument(
           doctype: widget.approval.doctype,
@@ -1530,7 +1530,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       _error = null;
     });
     try {
-      await context.read<AppState>().applyDocumentWorkflow(
+      await context.read<TodoState>().applyDocumentWorkflow(
         doctype: widget.approval.doctype,
         name: widget.approval.name,
         action: action,
@@ -1622,7 +1622,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       _error = null;
     });
     try {
-      await context.read<AppState>().addSalesOrderAdditionalApprover(
+      await context.read<TodoState>().addSalesOrderAdditionalApprover(
         salesOrder: widget.approval.name,
         approver: selected,
         reason: reason,
@@ -1684,7 +1684,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       _error = null;
     });
     try {
-      await context.read<AppState>().decideSalesOrderAdditionalApproval(
+      await context.read<TodoState>().decideSalesOrderAdditionalApproval(
         salesOrder: widget.approval.name,
         approverRow: row,
         approved: approved,
@@ -2345,7 +2345,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
   }
 
   bool _hasPendingAdditionalForCurrentUser(Map<String, dynamic> detail) {
-    final currentUser = context.read<AppState>().currentUser?.trim() ?? '';
+    final currentUser = context.read<TodoState>().currentUser?.trim() ?? '';
     if (currentUser.isEmpty) return false;
     return _additionalApproverRows(detail).any((row) {
       final approver = _text(row['approver']);
@@ -2523,7 +2523,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         _additionalApprovalProcessing) {
       return false;
     }
-    final currentUser = context.read<AppState>().currentUser?.trim() ?? '';
+    final currentUser = context.read<TodoState>().currentUser?.trim() ?? '';
     if (currentUser.isEmpty) return false;
     final approver = _text(row['approver']);
     final approvalType = _text(row['approval_type']).isEmpty
@@ -2761,7 +2761,7 @@ class _SalesOrderApprovalHistoryDetailPageState
       _error = null;
     });
     try {
-      final appState = context.read<AppState>();
+      final appState = context.read<TodoState>();
       final results = await Future.wait<dynamic>([
         appState.fetchApprovalDocument(
           doctype: widget.group.doctype,
@@ -3425,7 +3425,7 @@ class _ApproverPickerSheetState extends State<_ApproverPickerSheet> {
   @override
   void initState() {
     super.initState();
-    _future = context.read<AppState>().fetchEnabledUsersForApproval();
+    _future = context.read<TodoState>().fetchEnabledUsersForApproval();
     _search.addListener(() => setState(() {}));
   }
 
@@ -3634,7 +3634,7 @@ class _SalesOrderApprovalDetailPageState
     });
     try {
       final detail = await context
-          .read<AppState>()
+          .read<TodoState>()
           .fetchSalesOrderApprovalDetail(widget.approval.name);
       if (!mounted) return;
       setState(() => _detail = detail);
@@ -3662,7 +3662,7 @@ class _SalesOrderApprovalDetailPageState
       _error = null;
     });
     try {
-      await context.read<AppState>().applySalesOrderWorkflow(
+      await context.read<TodoState>().applySalesOrderWorkflow(
         approval: widget.approval,
         action: action,
         reason: decision.reason,

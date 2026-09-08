@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/warehouse_tracking_record.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../shared/warehouse_widgets.dart';
@@ -70,7 +70,7 @@ class _BatchViewState extends State<_BatchView> {
       _error = null;
     });
     try {
-      _rows = await context.read<AppState>().fetchWarehouseBatches(
+      _rows = await context.read<WarehouseStockState>().fetchWarehouseBatches(
         forceRefresh: forceRefresh,
       );
     } catch (error) {
@@ -201,7 +201,7 @@ class _SerialViewState extends State<_SerialView> {
       _error = null;
     });
     try {
-      final state = context.read<AppState>();
+      final state = context.read<WarehouseStockState>();
       if (state.warehouses.isEmpty) {
         await state.refreshWarehouses();
       }
@@ -217,7 +217,7 @@ class _SerialViewState extends State<_SerialView> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<WarehouseStockState>();
     final query = _search.text.trim().toLowerCase();
     final warehouseSet = <String>{
       ...state.warehouses

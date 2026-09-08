@@ -7,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../models/sales_workspace.dart';
 import '../../../services/local_app_database.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/sales_overview_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../utils/num_parse.dart';
@@ -90,7 +90,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   String get _periodKey =>
       '${_filterDate.year}-${_filterDate.month.toString().padLeft(2, '0')}-${_filterDate.day.toString().padLeft(2, '0')}';
 
-  String _scopeKey(AppState state) {
+  String _scopeKey(SalesOverviewState state) {
     final salesPerson = state.mobileAccess.shouldScopeSalesData
         ? state.currentSalesPerson ?? ''
         : '';
@@ -103,7 +103,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     ].join('|');
   }
 
-  String _dailyCacheKey(AppState state, _DailySalesDocType type) {
+  String _dailyCacheKey(SalesOverviewState state, _DailySalesDocType type) {
     return [
       _salesOverviewCachePrefix,
       'daily',
@@ -113,7 +113,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     ].join('|');
   }
 
-  String _topCustomersCacheKey(AppState state) {
+  String _topCustomersCacheKey(SalesOverviewState state) {
     return [
       _salesOverviewCachePrefix,
       'top_customers',
@@ -122,7 +122,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     ].join('|');
   }
 
-  String _rankingCacheKey(AppState state) {
+  String _rankingCacheKey(SalesOverviewState state) {
     return [
       _salesOverviewCachePrefix,
       'collection_ranking',
@@ -146,7 +146,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   }
 
   Future<void> _loadFilterOptions() async {
-    final state = context.read<AppState>();
+    final state = context.read<SalesOverviewState>();
     try {
       if (state.mobileAccess.shouldScopeSalesData) {
         await state.loadSellingFilterOptions();
@@ -184,7 +184,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
 
   Future<void> _loadDailyReport({bool forceRemote = false}) async {
     final requestVersion = ++_dailyRequestVersion;
-    final state = context.read<AppState>();
+    final state = context.read<SalesOverviewState>();
     if (!state.canUseSales) {
       if (mounted) {
         setState(() {
@@ -265,7 +265,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
         companies: _companyOptions,
         salesGroups: _salesGroupOptions,
         lockSalesPerson: context
-            .read<AppState>()
+            .read<SalesOverviewState>()
             .mobileAccess
             .shouldScopeSalesData,
         loading: _filterLoading,
@@ -282,7 +282,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
 
   Future<void> _loadRanking({bool forceRemote = false}) async {
     final requestVersion = ++_rankingRequestVersion;
-    final state = context.read<AppState>();
+    final state = context.read<SalesOverviewState>();
     final canViewTopCustomers = _canViewTopCustomers(state);
     final canViewRanking = _canViewRanking(state);
     if (!canViewTopCustomers && !canViewRanking) {
@@ -324,7 +324,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   }
 
   Future<void> _loadTopCustomers({
-    required AppState state,
+    required SalesOverviewState state,
     required int requestVersion,
     required String? parentSalesPerson,
     bool forceRemote = false,
@@ -372,7 +372,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   }
 
   Future<void> _loadCollectionRanking({
-    required AppState state,
+    required SalesOverviewState state,
     required int requestVersion,
     required String? parentSalesPerson,
     bool forceRemote = false,
@@ -430,7 +430,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   }
 
   Future<void> _loadVisitSnapshot({bool forceRefresh = false}) async {
-    final state = context.read<AppState>();
+    final state = context.read<SalesOverviewState>();
     if (!state.canUseSales) {
       if (mounted) {
         setState(() {
@@ -463,7 +463,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   }
 
   Future<void> _loadProfileImage() async {
-    final state = context.read<AppState>();
+    final state = context.read<SalesOverviewState>();
     try {
       final profile = await state.fetchCurrentUserProfile();
       final image = profile['user_image']?.toString().trim() ?? '';
@@ -518,7 +518,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
       _visitError = null;
     });
     try {
-      await context.read<AppState>().checkOutSalesVisit(visit.id);
+      await context.read<SalesOverviewState>().checkOutSalesVisit(visit.id);
       await _loadVisitSnapshot();
     } catch (error) {
       if (!mounted) return;
@@ -714,7 +714,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     };
   }
 
-  bool _canViewRanking(AppState state) {
+  bool _canViewRanking(SalesOverviewState state) {
     return state.isSalesManagerRole ||
         state.mobileAccess.isAdministrator ||
         state.mobileAccess.isDeveloper ||
@@ -722,11 +722,11 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
         state.mobileAccess.isDirector;
   }
 
-  bool _canViewTopCustomers(AppState state) {
+  bool _canViewTopCustomers(SalesOverviewState state) {
     return state.canUseSales;
   }
 
-  String? _selectedParentSalesPerson(AppState state) {
+  String? _selectedParentSalesPerson(SalesOverviewState state) {
     if (state.mobileAccess.shouldScopeSalesData) return null;
     final group = _selectedSalesGroup.trim();
     if (group.isEmpty || group.toLowerCase() == 'all') return null;
@@ -879,7 +879,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<SalesOverviewState>();
     final canViewTopCustomers = _canViewTopCustomers(state);
     final canViewRanking = _canViewRanking(state);
     final topCustomerSubtitle = state.mobileAccess.shouldScopeSalesData

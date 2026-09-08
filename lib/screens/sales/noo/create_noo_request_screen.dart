@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/noo_request.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/noo_state.dart';
 import '../../../theme/app_colors.dart';
 import '../shared/sales_ui.dart';
 
@@ -65,7 +65,7 @@ class _CreateNooRequestScreenState extends State<CreateNooRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<NooState>();
     final companies = state.sellingCompanies;
     final preferredCompany = state.preferredCompany(companies);
     if (_selectedCompany == null && preferredCompany != null) {
@@ -78,13 +78,13 @@ class _CreateNooRequestScreenState extends State<CreateNooRequestScreen> {
     if (!state.isSalesUserRole && !_salesPersonOptionsRequested) {
       _salesPersonOptionsRequested = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _loadSalesPersonOptions(context.read<AppState>());
+        if (mounted) _loadSalesPersonOptions(context.read<NooState>());
       });
     }
     if (!_paymentTermsOptionsRequested) {
       _paymentTermsOptionsRequested = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _loadPaymentTermsOptions(context.read<AppState>());
+        if (mounted) _loadPaymentTermsOptions(context.read<NooState>());
       });
     }
 
@@ -463,7 +463,7 @@ class _CreateNooRequestScreenState extends State<CreateNooRequestScreen> {
 
     final company = _selectedCompany?.trim();
     if (company == null || company.isEmpty) return;
-    final state = context.read<AppState>();
+    final state = context.read<NooState>();
     final salesPerson =
         (state.isSalesUserRole
                 ? state.currentSalesPerson
@@ -506,7 +506,7 @@ class _CreateNooRequestScreenState extends State<CreateNooRequestScreen> {
     }
   }
 
-  Future<void> _loadSalesPersonOptions(AppState state) async {
+  Future<void> _loadSalesPersonOptions(NooState state) async {
     setState(() {
       _isLoadingSalesPersons = true;
       _salesPersonLoadError = null;
@@ -559,7 +559,7 @@ class _CreateNooRequestScreenState extends State<CreateNooRequestScreen> {
     }
   }
 
-  Future<void> _loadPaymentTermsOptions(AppState state) async {
+  Future<void> _loadPaymentTermsOptions(NooState state) async {
     setState(() {
       _isLoadingPaymentTerms = true;
       _paymentTermsLoadError = null;

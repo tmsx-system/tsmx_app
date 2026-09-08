@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/local_app_database.dart';
-import '../../state/app_state.dart';
+import '../../state/dashboard/dashboard_state.dart';
 import '../../theme/app_colors.dart';
 
 class DashboardActivityCarousel extends StatefulWidget {
@@ -39,7 +39,7 @@ class _DashboardActivityCarouselState extends State<DashboardActivityCarousel> {
   }
 
   Future<List<_DashboardActivitySection>> _load() async {
-    final appState = context.read<AppState>();
+    final appState = context.read<DashboardState>();
     final cacheKey = _cacheKey(appState);
     final cached = await LocalAppDatabase.instance.readJson(cacheKey);
     final cachedSections = _sectionsFromCache(cached);
@@ -72,7 +72,7 @@ class _DashboardActivityCarouselState extends State<DashboardActivityCarousel> {
   }
 
   Future<List<_DashboardActivitySection>> _fetchRemoteSections() async {
-    final appState = context.read<AppState>();
+    final appState = context.read<DashboardState>();
     final service = appState.frappeService;
 
     final sections = await Future.wait([
@@ -171,7 +171,7 @@ class _DashboardActivityCarouselState extends State<DashboardActivityCarousel> {
     final title = section.title;
     if (_loadingMore.contains(title) || _exhausted.contains(title)) return;
 
-    final cacheKey = _cacheKey(context.read<AppState>());
+    final cacheKey = _cacheKey(context.read<DashboardState>());
     final currentSections = _sections ?? await _future;
     final index = currentSections.indexWhere((item) => item.title == title);
     if (index < 0) return;
@@ -208,7 +208,7 @@ class _DashboardActivityCarouselState extends State<DashboardActivityCarousel> {
     String title, {
     required int limitStart,
   }) {
-    final service = context.read<AppState>().frappeService;
+    final service = context.read<DashboardState>().frappeService;
     switch (title) {
       case 'Activity Log':
         return _fetchWithFallback(
@@ -266,7 +266,7 @@ class _DashboardActivityCarouselState extends State<DashboardActivityCarousel> {
     }
   }
 
-  String _cacheKey(AppState appState) {
+  String _cacheKey(DashboardState appState) {
     return [
       'dashboard_activity_cache',
       appState.selectedSiteBaseUrl.trim(),

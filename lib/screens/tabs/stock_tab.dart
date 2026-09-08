@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../state/app_state.dart';
+import '../../state/warehouse/warehouse_stock_state.dart';
 import '../../theme/app_colors.dart';
 import '../../models/inventory_item.dart';
 import '../../models/stock_area_option.dart';
@@ -39,7 +39,7 @@ class _StockTabState extends State<StockTab> {
   }
 
   Future<void> _bootstrap() async {
-    final appState = context.read<AppState>();
+    final appState = context.read<WarehouseStockState>();
     if (appState.warehouses.isEmpty) {
       await appState.refreshWarehouses();
     }
@@ -57,7 +57,7 @@ class _StockTabState extends State<StockTab> {
     }
   }
 
-  void _applyDefaultSelection(AppState appState) {
+  void _applyDefaultSelection(WarehouseStockState appState) {
     final companies = appState.stockCompanies;
     if (companies.isEmpty) return;
 
@@ -72,7 +72,7 @@ class _StockTabState extends State<StockTab> {
   }
 
   Future<void> _onPullRefresh() async {
-    final appState = context.read<AppState>();
+    final appState = context.read<WarehouseStockState>();
     await appState.refreshWarehouses();
     await appState.refreshItemGroups();
     if (!mounted) return;
@@ -84,7 +84,7 @@ class _StockTabState extends State<StockTab> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = Provider.of<AppState>(context);
+    final appState = Provider.of<WarehouseStockState>(context);
     final companies = appState.stockCompanies;
 
     if (!_selectionInitialized && companies.isNotEmpty) {
@@ -512,7 +512,7 @@ class _StockTabState extends State<StockTab> {
     };
   }
 
-  Widget _buildStockEntriesSection(AppState appState) {
+  Widget _buildStockEntriesSection(WarehouseStockState appState) {
     final entries = appState.stockEntries.take(8).toList();
 
     if (appState.isStockEntriesLoading) {
@@ -743,7 +743,7 @@ class _StockTabState extends State<StockTab> {
     required List<InventoryItem> currentItems,
     required List<String> itemGroupOptions,
   }) async {
-    final appState = context.read<AppState>();
+    final appState = context.read<WarehouseStockState>();
     final result = await showModalBottomSheet<_StockFilterValue>(
       context: context,
       isScrollControlled: true,

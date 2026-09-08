@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/purchase_invoice.dart';
-import '../../../state/app_state.dart';
+import '../../../../state/purchasing/purchase_invoice_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -51,9 +51,9 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appState = context.read<AppState>();
-      if (appState.purchaseInvoices.isEmpty) {
-        appState.refreshPurchaseInvoices();
+      final purchasingState = context.read<PurchaseInvoiceState>();
+      if (purchasingState.purchaseInvoices.isEmpty) {
+        purchasingState.refreshPurchaseInvoices();
       }
     });
   }
@@ -81,7 +81,7 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {
-        context.read<AppState>().setPurchaseInvoiceQuery(
+        context.read<PurchaseInvoiceState>().setPurchaseInvoiceQuery(
           search: value,
           status: _statusText,
         );
@@ -102,11 +102,11 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
   }
 
   Future<void> _openDetail(PurchaseInvoice doc) async {
-    final appState = context.read<AppState>();
-    final detail = await appState.loadPurchaseInvoiceDetail(doc.id);
+    final purchasingState = context.read<PurchaseInvoiceState>();
+    final detail = await purchasingState.loadPurchaseInvoiceDetail(doc.id);
     var workflowActions = <String>[];
     try {
-      workflowActions = await appState.fetchDocumentWorkflowActions(
+      workflowActions = await purchasingState.fetchDocumentWorkflowActions(
         doctype: 'Purchase Invoice',
         name: detail.id,
       );
@@ -199,8 +199,10 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
     if (!mounted) return;
     final ok = await runErpWorkflowAction(
       context,
-      action: () =>
-          context.read<AppState>().submitDocument('Purchase Invoice', id),
+      action: () => context.read<PurchaseInvoiceState>().submitDocument(
+        'Purchase Invoice',
+        id,
+      ),
       successMessage: 'Purchase Invoice berhasil diajukan',
     );
     if (ok && mounted) Navigator.pop(context);
@@ -265,7 +267,7 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
 
     final ok = await runErpWorkflowAction(
       context,
-      action: () => context.read<AppState>().applyDocumentWorkflow(
+      action: () => context.read<PurchaseInvoiceState>().applyDocumentWorkflow(
         doctype: doctype,
         name: name,
         action: action,
@@ -306,8 +308,8 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final filtered = _filter(appState.purchaseInvoices);
+    final purchasingState = context.watch<PurchaseInvoiceState>();
+    final filtered = _filter(purchasingState.purchaseInvoices);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -316,9 +318,9 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
           title: 'Purchase Invoice',
           emptyMessage:
               'Belum ada nilai Purchase Invoice dari Purchase Analytics pada periode ini.',
-          points: appState.purchaseInvoiceTrendPoints,
-          selectedYear: appState.buyingPeriodYear,
-          selectedMonth: appState.buyingPeriodMonth,
+          points: purchasingState.purchaseInvoiceTrendPoints,
+          selectedYear: purchasingState.buyingPeriodYear,
+          selectedMonth: purchasingState.buyingPeriodMonth,
           sourceLabel: 'Sumber: Purchase Analytics ERPNext',
         ),
 
@@ -329,9 +331,9 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
           hintText: 'Cari invoice atau supplier...',
         ),
 
-        if (appState.purchaseInvoicesError != null) ...[
+        if (purchasingState.purchaseInvoicesError != null) ...[
           const SizedBox(height: 10),
-          ErpErrorBox(message: appState.purchaseInvoicesError!),
+          ErpErrorBox(message: purchasingState.purchaseInvoicesError!),
         ],
 
         const SizedBox(height: 10),
@@ -341,7 +343,7 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
           selected: _statusFilter,
           onSelected: (v) {
             setState(() => _statusFilter = v);
-            context.read<AppState>().setPurchaseInvoiceQuery(
+            context.read<PurchaseInvoiceState>().setPurchaseInvoiceQuery(
               search: _search,
               status: _statusText,
             );
@@ -350,7 +352,7 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
 
         const SizedBox(height: 12),
 
-        if (filtered.isEmpty && !appState.isPurchaseInvoicesLoading)
+        if (filtered.isEmpty && !purchasingState.isPurchaseInvoicesLoading)
           const ErpEmptyState(
             title: 'Belum ada Purchase Invoice',
             message:
@@ -371,16 +373,18 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
                 )
                 .toList(),
           ),
-        if (appState.hasMorePurchaseInvoices ||
-            appState.isMorePurchaseInvoicesLoading) ...[
+        if (purchasingState.hasMorePurchaseInvoices ||
+            purchasingState.isMorePurchaseInvoicesLoading) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: appState.isMorePurchaseInvoicesLoading
+              onPressed: purchasingState.isMorePurchaseInvoicesLoading
                   ? null
-                  : () => context.read<AppState>().loadMorePurchaseInvoices(),
-              icon: appState.isMorePurchaseInvoicesLoading
+                  : () => context
+                        .read<PurchaseInvoiceState>()
+                        .loadMorePurchaseInvoices(),
+              icon: purchasingState.isMorePurchaseInvoicesLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -388,7 +392,7 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
                     )
                   : const Icon(Icons.expand_more_rounded),
               label: Text(
-                appState.isMorePurchaseInvoicesLoading
+                purchasingState.isMorePurchaseInvoicesLoading
                     ? 'Memuat invoice...'
                     : 'Muat invoice lainnya',
               ),

@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/inactive_customer.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/customer_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
@@ -36,7 +36,7 @@ class _InactiveCustomerTabState extends State<InactiveCustomerTab> {
     _initialized = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<AppState>().refreshInactiveCustomers(
+      context.read<CustomerState>().refreshInactiveCustomers(
         daysSinceLastOrder: _days,
         doctypes: _selectedDocumentTypes,
       );
@@ -52,13 +52,13 @@ class _InactiveCustomerTabState extends State<InactiveCustomerTab> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<CustomerState>();
     final customers = _filterCustomers(state.inactiveCustomers);
 
     return ColoredBox(
       color: AppColors.background,
       child: RefreshIndicator(
-        onRefresh: () => context.read<AppState>().refreshInactiveCustomers(
+        onRefresh: () => context.read<CustomerState>().refreshInactiveCustomers(
           daysSinceLastOrder: _days,
           doctypes: _selectedDocumentTypes,
           forceRemote: true,
@@ -79,7 +79,7 @@ class _InactiveCustomerTabState extends State<InactiveCustomerTab> {
                     ..clear()
                     ..addAll(value.documentTypes);
                 });
-                context.read<AppState>().refreshInactiveCustomers(
+                context.read<CustomerState>().refreshInactiveCustomers(
                   daysSinceLastOrder: _days,
                   doctypes: _selectedDocumentTypes,
                   forceRemote: true,
@@ -92,7 +92,7 @@ class _InactiveCustomerTabState extends State<InactiveCustomerTab> {
               ErpErrorBox(
                 message: state.inactiveCustomersError!,
                 onRetry: () =>
-                    context.read<AppState>().refreshInactiveCustomers(
+                    context.read<CustomerState>().refreshInactiveCustomers(
                       daysSinceLastOrder: _days,
                       doctypes: _selectedDocumentTypes,
                       forceRemote: true,

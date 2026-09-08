@@ -3,7 +3,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/inventory_item.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../shared/warehouse_widgets.dart';
 
@@ -80,7 +80,7 @@ class _WarehouseBarcodeScannerScreenState
       _error = null;
     });
     try {
-      final state = context.read<AppState>();
+      final state = context.read<WarehouseStockState>();
       if (state.inventory.isEmpty) await state.refreshInventory();
     } catch (error) {
       _error = _friendlyError(error);
@@ -103,7 +103,7 @@ class _WarehouseBarcodeScannerScreenState
   Future<void> _findCode(String value) async {
     if (!mounted) return;
     final normalized = value.trim().toLowerCase();
-    final inventory = context.read<AppState>().inventory;
+    final inventory = context.read<WarehouseStockState>().inventory;
     setState(() {
       _scannedCode = value.trim();
       _manualCode.text = value.trim();

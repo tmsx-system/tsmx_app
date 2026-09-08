@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/delivery_note.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/delivery_note_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -58,9 +58,9 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appState = context.read<AppState>();
-      if (appState.deliveryNotes.isEmpty) {
-        appState.refreshDeliveryNotes();
+      final sellingState = context.read<DeliveryNoteState>();
+      if (sellingState.deliveryNotes.isEmpty) {
+        sellingState.refreshDeliveryNotes();
       }
     });
   }
@@ -88,7 +88,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {
-        context.read<AppState>().setDeliveryNoteQuery(
+        context.read<DeliveryNoteState>().setDeliveryNoteQuery(
           search: value,
           status: _statusText,
         );
@@ -243,13 +243,16 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
       _sortOption = SellingSortOption.newest;
       _advancedFilters = SellingAdvancedFilters.empty;
     });
-    context.read<AppState>().setDeliveryNoteQuery(search: '', status: null);
+    context.read<DeliveryNoteState>().setDeliveryNoteQuery(
+      search: '',
+      status: null,
+    );
   }
 
   Future<void> _openDetail(DeliveryNote doc) async {
-    final detail = await context.read<AppState>().loadDeliveryNoteDetail(
-      doc.id,
-    );
+    final detail = await context
+        .read<DeliveryNoteState>()
+        .loadDeliveryNoteDetail(doc.id);
     if (!mounted) return;
 
     final canSubmit = isDocDraft(detail.docStatus);
@@ -315,7 +318,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
     final ok = await runErpWorkflowAction(
       context,
       action: () =>
-          context.read<AppState>().submitDocument('Delivery Note', id),
+          context.read<DeliveryNoteState>().submitDocument('Delivery Note', id),
       successMessage: 'Delivery Note submitted',
     );
     if (ok && mounted) Navigator.pop(context);
@@ -323,8 +326,8 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final filtered = _filter(appState.deliveryNotes);
+    final sellingState = context.watch<DeliveryNoteState>();
+    final filtered = _filter(sellingState.deliveryNotes);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -332,11 +335,11 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
           title: 'Delivery Note',
           emptyMessage:
               'Belum ada nilai Delivery Note dari Sales Analytics pada periode ini.',
-          points: appState.deliveryNoteTrendPoints,
-          selectedYear: appState.sellingPeriodYear,
-          selectedMonth: appState.sellingPeriodMonth,
+          points: sellingState.deliveryNoteTrendPoints,
+          selectedYear: sellingState.sellingPeriodYear,
+          selectedMonth: sellingState.sellingPeriodMonth,
           sourceLabel: 'Sumber: Sales Analytics ERPNext',
-          isLoading: appState.isOrderSummaryLoading,
+          isLoading: sellingState.isOrderSummaryLoading,
         ),
 
         const SizedBox(height: 12),
@@ -364,9 +367,9 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
           ),
         ),
 
-        if (appState.deliveryNotesError != null) ...[
+        if (sellingState.deliveryNotesError != null) ...[
           const SizedBox(height: 10),
-          ErpErrorBox(message: appState.deliveryNotesError!),
+          ErpErrorBox(message: sellingState.deliveryNotesError!),
         ],
 
         const SizedBox(height: 10),
@@ -387,7 +390,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
           selected: _statusFilter,
           onSelected: (v) {
             setState(() => _statusFilter = v);
-            context.read<AppState>().setDeliveryNoteQuery(
+            context.read<DeliveryNoteState>().setDeliveryNoteQuery(
               search: _search,
               status: _statusText,
             );
@@ -396,7 +399,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
 
         const SizedBox(height: 12),
 
-        if (filtered.isEmpty && !appState.isDeliveryNotesLoading)
+        if (filtered.isEmpty && !sellingState.isDeliveryNotesLoading)
           const ErpEmptyState(title: 'No delivery notes found')
         else
           TmsxResponsiveCardGrid(
@@ -414,16 +417,18 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
                 .toList(),
           ),
 
-        if (appState.hasMoreDeliveryNotes ||
-            appState.isMoreDeliveryNotesLoading) ...[
+        if (sellingState.hasMoreDeliveryNotes ||
+            sellingState.isMoreDeliveryNotesLoading) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: appState.isMoreDeliveryNotesLoading
+              onPressed: sellingState.isMoreDeliveryNotesLoading
                   ? null
-                  : () => context.read<AppState>().loadMoreDeliveryNotes(),
-              icon: appState.isMoreDeliveryNotesLoading
+                  : () => context
+                        .read<DeliveryNoteState>()
+                        .loadMoreDeliveryNotes(),
+              icon: sellingState.isMoreDeliveryNotesLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -431,7 +436,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
                     )
                   : const Icon(Icons.expand_more_rounded),
               label: Text(
-                appState.isMoreDeliveryNotesLoading
+                sellingState.isMoreDeliveryNotesLoading
                     ? 'Loading delivery notes...'
                     : 'Load more delivery notes',
               ),

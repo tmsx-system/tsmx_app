@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/inventory_item.dart';
 import '../../../models/material_request.dart';
-import '../../../state/app_state.dart';
+import '../../../../state/purchasing/material_request_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -63,12 +63,12 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final appState = context.read<AppState>();
-      if (appState.materialRequests.isEmpty) {
-        appState.refreshMaterialRequests();
+      final purchasingState = context.read<MaterialRequestState>();
+      if (purchasingState.materialRequests.isEmpty) {
+        purchasingState.refreshMaterialRequests();
       }
-      if (appState.inventory.isEmpty) {
-        appState.refreshInventory();
+      if (purchasingState.inventory.isEmpty) {
+        purchasingState.refreshInventory();
       }
     });
   }
@@ -84,7 +84,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {
-        context.read<AppState>().setMaterialRequestQuery(
+        context.read<MaterialRequestState>().setMaterialRequestQuery(
           search: value,
           status: _statusFilter,
         );
@@ -163,9 +163,9 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
     return message.replaceFirst('Exception: ', '');
   }
 
-  List<InventoryItem> _planningItems(AppState appState) {
+  List<InventoryItem> _planningItems(MaterialRequestState purchasingState) {
     final rows =
-        appState.inventory
+        purchasingState.inventory
             .where(
               (item) =>
                   item.quantity <= 0 ||
@@ -192,7 +192,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
       ),
     );
     if (mounted) {
-      await context.read<AppState>().refreshMaterialRequests();
+      await context.read<MaterialRequestState>().refreshMaterialRequests();
     }
   }
 
@@ -206,9 +206,9 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
 
   Future<void> _createDraftMrFor(InventoryItem item) async {
     final qty = _recommendedQty(item).toDouble();
-    final appState = context.read<AppState>();
+    final purchasingState = context.read<MaterialRequestState>();
     try {
-      await appState.createMaterialRequest(
+      await purchasingState.createMaterialRequest(
         materialRequestType: 'Purchase',
         itemCode: item.sku,
         qty: qty,
@@ -241,16 +241,16 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
       ),
     );
     if (mounted) {
-      await context.read<AppState>().refreshPurchaseOrders();
+      await context.read<MaterialRequestState>().refreshPurchaseOrders();
     }
   }
 
   Future<void> _openDetail(MaterialRequest doc) async {
-    final appState = context.read<AppState>();
-    final detail = await appState.loadMaterialRequestDetail(doc.id);
+    final purchasingState = context.read<MaterialRequestState>();
+    final detail = await purchasingState.loadMaterialRequestDetail(doc.id);
     var workflowActions = <String>[];
     try {
-      workflowActions = await appState.fetchDocumentWorkflowActions(
+      workflowActions = await purchasingState.fetchDocumentWorkflowActions(
         doctype: 'Material Request',
         name: detail.id,
       );
@@ -381,7 +381,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
 
     final ok = await runErpWorkflowAction(
       context,
-      action: () => context.read<AppState>().applyDocumentWorkflow(
+      action: () => context.read<MaterialRequestState>().applyDocumentWorkflow(
         doctype: doctype,
         name: name,
         action: action,
@@ -431,8 +431,10 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
     if (!mounted) return;
     final ok = await runErpWorkflowAction(
       context,
-      action: () =>
-          context.read<AppState>().submitDocument('Material Request', id),
+      action: () => context.read<MaterialRequestState>().submitDocument(
+        'Material Request',
+        id,
+      ),
       successMessage: 'Material Request berhasil diajukan',
     );
     if (ok && mounted) Navigator.pop(context);
@@ -440,15 +442,16 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final filtered = _filter(appState.materialRequests);
-    final planningItems = _planningItems(appState);
+    final purchasingState = context.watch<MaterialRequestState>();
+    final filtered = _filter(purchasingState.materialRequests);
+    final planningItems = _planningItems(purchasingState);
     final focusSummary = _MaterialRequestFocusSummary.from(
-      appState.materialRequests,
+      purchasingState.materialRequests,
     );
-    final materialRequestError = appState.materialRequestsError;
+    final materialRequestError = purchasingState.materialRequestsError;
     final hasBlockingError =
-        materialRequestError != null && appState.materialRequests.isEmpty;
+        materialRequestError != null &&
+        purchasingState.materialRequests.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -457,9 +460,9 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
           title: 'Material Request',
           emptyMessage:
               'Belum ada kebutuhan barang pada periode dan filter ini.',
-          points: appState.materialRequestTrendPoints,
-          selectedYear: appState.buyingPeriodYear,
-          selectedMonth: appState.buyingPeriodMonth,
+          points: purchasingState.materialRequestTrendPoints,
+          selectedYear: purchasingState.buyingPeriodYear,
+          selectedMonth: purchasingState.buyingPeriodMonth,
           valuePrefix: '',
           valueSuffix: ' qty',
           sourceLabel: 'Sumber: Material Request ERPNext',
@@ -501,7 +504,8 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
           const SizedBox(height: 10),
           ErpErrorBox(
             message: _friendlyError(materialRequestError),
-            onRetry: () => context.read<AppState>().refreshMaterialRequests(),
+            onRetry: () =>
+                context.read<MaterialRequestState>().refreshMaterialRequests(),
           ),
         ],
 
@@ -514,7 +518,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
             onSelected: (value) {
               final status = value == _allStatusFilter ? null : value;
               setState(() => _statusFilter = status);
-              context.read<AppState>().setMaterialRequestQuery(
+              context.read<MaterialRequestState>().setMaterialRequestQuery(
                 search: _search,
                 status: status,
               );
@@ -524,8 +528,8 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
           const SizedBox(height: 12),
 
           if (filtered.isEmpty &&
-              !appState.isMaterialRequestsLoading &&
-              appState.materialRequestsError == null)
+              !purchasingState.isMaterialRequestsLoading &&
+              purchasingState.materialRequestsError == null)
             ErpEmptyState(
               title: _focusFilter == _MaterialRequestFocusFilter.all
                   ? 'Belum ada request'
@@ -544,17 +548,19 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
                   .toList(),
             ),
         ],
-        if (appState.materialRequestsError == null &&
-            (appState.hasMoreMaterialRequests ||
-                appState.isMoreMaterialRequestsLoading)) ...[
+        if (purchasingState.materialRequestsError == null &&
+            (purchasingState.hasMoreMaterialRequests ||
+                purchasingState.isMoreMaterialRequestsLoading)) ...[
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: appState.isMoreMaterialRequestsLoading
+              onPressed: purchasingState.isMoreMaterialRequestsLoading
                   ? null
-                  : () => context.read<AppState>().loadMoreMaterialRequests(),
-              icon: appState.isMoreMaterialRequestsLoading
+                  : () => context
+                        .read<MaterialRequestState>()
+                        .loadMoreMaterialRequests(),
+              icon: purchasingState.isMoreMaterialRequestsLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -562,7 +568,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
                     )
                   : const Icon(Icons.expand_more_rounded),
               label: Text(
-                appState.isMoreMaterialRequestsLoading
+                purchasingState.isMoreMaterialRequestsLoading
                     ? 'Memuat request...'
                     : 'Muat request lainnya',
               ),

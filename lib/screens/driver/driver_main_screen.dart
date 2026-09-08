@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../state/logistics/logistics_delivery_state.dart';
 import '../logistics/logistics_delivery_tab.dart';
 import '../shared/role_main_screen.dart';
 
@@ -11,8 +13,8 @@ class DriverMainScreen extends StatelessWidget {
     return RoleMainScreen(
       title: 'Driver',
       fallbackUsername: 'Driver',
-      onInitialize: (state) async {
-        await state.refreshDeliveryNotes();
+      onInitialize: (context) async {
+        await context.read<LogisticsDeliveryState>().refreshDeliveryNotes();
       },
       screensBuilder: (_) => [const LogisticsDeliveryTab()],
       destinations: const [

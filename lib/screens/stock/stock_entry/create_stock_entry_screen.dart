@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../theme/app_colors.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../models/warehouse_info.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 
@@ -31,7 +31,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   }
 
   Future<void> _load() async {
-    final appState = context.read<AppState>();
+    final appState = context.read<WarehouseStockState>();
     if (appState.warehouses.isEmpty) await appState.refreshWarehouses();
     List<Map<String, dynamic>> rows;
     try {
@@ -73,7 +73,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      final appState = context.read<AppState>();
+      final appState = context.read<WarehouseStockState>();
       final qty = double.parse(_qtyCtrl.text.trim());
 
       final items = [

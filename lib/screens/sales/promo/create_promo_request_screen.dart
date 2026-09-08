@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/promo_request.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/promo_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/sales_ui.dart';
@@ -43,7 +43,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<PromoState>();
     final companies = state.sellingCompanies;
     final preferredCompany = state.preferredCompany(companies);
     if (_selectedCompany == null && preferredCompany != null) {
@@ -622,7 +622,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
   }
 
   Future<void> _pickItem(int index) async {
-    final state = context.read<AppState>();
+    final state = context.read<PromoState>();
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -630,7 +630,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => _ItemSearchSheet(state: context.read<AppState>()),
+      builder: (_) => _ItemSearchSheet(state: context.read<PromoState>()),
     );
     if (picked == null || !mounted) return;
     final itemCode = _text(picked['name']);
@@ -663,7 +663,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => _LinkSearchSheet(
-        state: context.read<AppState>(),
+        state: context.read<PromoState>(),
         title: 'Pilih Sales Person',
         searchHint: 'Cari sales person',
         emptyText: 'Sales Person tidak ditemukan',
@@ -694,7 +694,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => _LinkSearchSheet(
-        state: context.read<AppState>(),
+        state: context.read<PromoState>(),
         title: 'Pilih Customer Group',
         searchHint: 'Cari customer group',
         emptyText: 'Customer Group tidak ditemukan',
@@ -721,7 +721,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => _LinkSearchSheet(
-        state: context.read<AppState>(),
+        state: context.read<PromoState>(),
         title: 'Pilih Customer',
         searchHint: 'Cari nama atau kode customer',
         emptyText: 'Customer tidak ditemukan',
@@ -755,10 +755,12 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
     final normalizedCustomer = customer.trim();
     if (normalizedCustomer.isEmpty) return;
     try {
-      final insight = await context.read<AppState>().fetchCustomerSalesInsight(
-        normalizedCustomer,
-        company: _selectedCompany?.trim(),
-      );
+      final insight = await context
+          .read<PromoState>()
+          .fetchCustomerSalesInsight(
+            normalizedCustomer,
+            company: _selectedCompany?.trim(),
+          );
       if (!mounted || _customerController.text.trim() != normalizedCustomer) {
         return;
       }
@@ -775,7 +777,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
   }
 
   Future<_ItemPriceResult?> _loadItemPrice(
-    AppState state, {
+    PromoState state, {
     required String itemCode,
     required String uom,
   }) async {
@@ -932,7 +934,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
         promoNote: _noteController.text,
         items: drafts,
       );
-      await context.read<AppState>().createPromoRequest(draft);
+      await context.read<PromoState>().createPromoRequest(draft);
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (error) {
@@ -1041,7 +1043,7 @@ class _LinkSearchSheet extends StatefulWidget {
     this.orderBy = 'modified desc',
   });
 
-  final AppState state;
+  final PromoState state;
   final String title;
   final String searchHint;
   final String emptyText;
@@ -1245,7 +1247,7 @@ class _LinkSearchSheetState extends State<_LinkSearchSheet> {
 class _ItemSearchSheet extends StatefulWidget {
   const _ItemSearchSheet({required this.state});
 
-  final AppState state;
+  final PromoState state;
 
   @override
   State<_ItemSearchSheet> createState() => _ItemSearchSheetState();

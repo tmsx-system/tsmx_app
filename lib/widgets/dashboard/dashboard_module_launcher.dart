@@ -8,7 +8,12 @@ import '../../models/mobile_boot.dart';
 import '../../models/purchase_order.dart';
 import '../../models/sales_order.dart';
 import '../../screens/shared/module_screen_registry.dart';
-import '../../state/app_state.dart';
+import '../../state/dashboard/dashboard_state.dart';
+import '../../state/logistics/logistics_overview_state.dart';
+import '../../state/purchasing/purchase_order_state.dart';
+import '../../state/selling/sales_order_state.dart';
+import '../../state/todo/todo_state.dart';
+import '../../state/warehouse/warehouse_stock_state.dart';
 import '../../theme/app_colors.dart';
 
 class DashboardModuleLauncher extends StatefulWidget {
@@ -31,8 +36,20 @@ class _DashboardModuleLauncherState extends State<DashboardModuleLauncher> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final groups = _buildGroups(appState);
+    final appState = context.watch<DashboardState>();
+    final salesState = context.watch<SalesOrderState>();
+    final purchaseState = context.watch<PurchaseOrderState>();
+    final stockState = context.watch<WarehouseStockState>();
+    final logisticsState = context.watch<LogisticsOverviewState>();
+    final todoState = context.watch<TodoState>();
+    final groups = _buildGroups(
+      appState,
+      salesState: salesState,
+      purchaseState: purchaseState,
+      stockState: stockState,
+      logisticsState: logisticsState,
+      todoState: todoState,
+    );
     if (groups.isEmpty) return const SizedBox.shrink();
     final entries = [for (final group in groups) ...group.entries];
 
@@ -103,7 +120,14 @@ class _DashboardModuleLauncherState extends State<DashboardModuleLauncher> {
     return pages;
   }
 
-  List<_ModuleGroup> _buildGroups(AppState appState) {
+  List<_ModuleGroup> _buildGroups(
+    DashboardState appState, {
+    required SalesOrderState salesState,
+    required PurchaseOrderState purchaseState,
+    required WarehouseStockState stockState,
+    required LogisticsOverviewState logisticsState,
+    required TodoState todoState,
+  }) {
     final enabled = appState.mobileAccess.enabledModules;
     final launchEntries = ModuleScreenRegistry.launchEntriesFor(enabled);
     if (launchEntries.isEmpty) return const [];
@@ -128,8 +152,16 @@ class _DashboardModuleLauncherState extends State<DashboardModuleLauncher> {
                     )
                   : entry.title,
               subtitle: entry.subtitle,
-              badgeLabel: _badgeForEntry(appState, entry),
-              badgeColor: _badgeColorForEntry(appState, entry),
+              badgeLabel: _badgeForEntry(
+                appState,
+                entry,
+                salesState: salesState,
+                purchaseState: purchaseState,
+                stockState: stockState,
+                logisticsState: logisticsState,
+                todoState: todoState,
+              ),
+              badgeColor: _badgeColorForEntry(todoState, entry),
             ),
           );
     }
@@ -160,27 +192,35 @@ class _DashboardModuleLauncherState extends State<DashboardModuleLauncher> {
     return order;
   }
 
-  String _badgeForEntry(AppState appState, ModuleLaunchEntry entry) {
+  String _badgeForEntry(
+    DashboardState appState,
+    ModuleLaunchEntry entry, {
+    required SalesOrderState salesState,
+    required PurchaseOrderState purchaseState,
+    required WarehouseStockState stockState,
+    required LogisticsOverviewState logisticsState,
+    required TodoState todoState,
+  }) {
     switch (entry.routeKey) {
       case MobileModule.sales:
-        final openSales = appState.dashboardSalesOrders.where((order) {
+        final openSales = salesState.salesOrders.where((order) {
           return order.statusKey != SalesOrderStatusKey.completed &&
               order.statusKey != SalesOrderStatusKey.cancelled &&
               order.statusKey != SalesOrderStatusKey.closed;
         }).length;
         return _countLabel(openSales, 'open');
       case MobileModule.purchase:
-        if (appState.purchaseApprovalTodoCount > 0) {
-          return '${appState.purchaseApprovalTodoCount} approval';
+        if (todoState.purchaseApprovalTodoCount > 0) {
+          return '${todoState.purchaseApprovalTodoCount} approval';
         }
-        final openPurchases = appState.dashboardPurchaseOrders.where((order) {
+        final openPurchases = purchaseState.purchaseOrders.where((order) {
           return order.statusKey != PurchaseOrderStatusKey.completed &&
               order.statusKey != PurchaseOrderStatusKey.cancelled &&
               order.statusKey != PurchaseOrderStatusKey.closed;
         }).length;
         return _countLabel(openPurchases, 'open');
       case MobileModule.stock:
-        final alertCount = appState.inventory
+        final alertCount = stockState.inventory
             .where(
               (item) =>
                   item.status == StockStatus.lowStock ||
@@ -189,10 +229,10 @@ class _DashboardModuleLauncherState extends State<DashboardModuleLauncher> {
             .length;
         return _countLabel(alertCount, 'alert');
       case MobileModule.warehouse:
-        return _countLabel(appState.warehouses.length, 'gudang');
+        return _countLabel(stockState.warehouses.length, 'gudang');
       case MobileModule.logistics:
       case 'logistics.delivery':
-        final outstanding = appState.deliveryNotes.where((doc) {
+        final outstanding = logisticsState.deliveryNotes.where((doc) {
           return doc.statusKey != DeliveryNoteStatusKey.completed &&
               doc.statusKey != DeliveryNoteStatusKey.cancelled &&
               doc.statusKey != DeliveryNoteStatusKey.closed;
@@ -203,9 +243,9 @@ class _DashboardModuleLauncherState extends State<DashboardModuleLauncher> {
     }
   }
 
-  Color _badgeColorForEntry(AppState appState, ModuleLaunchEntry entry) {
+  Color _badgeColorForEntry(TodoState todoState, ModuleLaunchEntry entry) {
     if (entry.moduleKey == MobileModule.purchase &&
-        appState.purchaseApprovalTodoCount > 0) {
+        todoState.purchaseApprovalTodoCount > 0) {
       return AppColors.danger;
     }
     if (entry.moduleKey == MobileModule.stock) return AppColors.warning;
@@ -218,7 +258,7 @@ class _DashboardModuleLauncherState extends State<DashboardModuleLauncher> {
     return '$count $suffix';
   }
 
-  Widget _screenForEntry(AppState appState, ModuleLaunchEntry entry) {
+  Widget _screenForEntry(DashboardState appState, ModuleLaunchEntry entry) {
     return entry.screen;
   }
 }

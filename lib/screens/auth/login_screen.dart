@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../config/app_config.dart';
-import '../../state/app_state.dart';
+import '../../state/auth/auth_state.dart';
 import '../../theme/app_colors.dart';
 import '../app_main_screen.dart';
 import 'register_site_screen.dart';
@@ -28,11 +28,11 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final appState = context.read<AppState>();
-      if (appState.selectedSiteCode.trim().isNotEmpty) {
-        _siteController.text = appState.selectedSiteCode;
+      final authState = context.read<AuthState>();
+      if (authState.selectedSiteCode.trim().isNotEmpty) {
+        _siteController.text = authState.selectedSiteCode;
       }
-      final history = (await appState.loadFrappeSiteHistory())
+      final history = (await authState.loadFrappeSiteHistory())
           .where((site) => (site['siteCode'] ?? '').trim().isNotEmpty)
           .toList();
       if (!mounted) return;
@@ -52,12 +52,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
-    final appState = context.read<AppState>();
+    final authState = context.read<AuthState>();
     final siteInput = _siteController.text.trim();
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
 
-    final configured = await appState.configureFrappeSite(codeOrUrl: siteInput);
+    final configured = await authState.configureFrappeSite(
+      codeOrUrl: siteInput,
+    );
 
     if (!mounted) return;
 
@@ -65,26 +67,26 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(appState.lastAuthError ?? 'Site tidak valid.'),
+          content: Text(authState.lastAuthError ?? 'Site tidak valid.'),
           backgroundColor: Colors.redAccent,
         ),
       );
       return;
     }
 
-    final success = await appState.login(
+    final success = await authState.login(
       username,
       password,
-      baseUrl: appState.selectedSiteBaseUrl,
+      baseUrl: authState.selectedSiteBaseUrl,
     );
 
     if (success) {
-      await appState.saveFrappeConfig(
+      await authState.saveFrappeConfig(
         username: username,
         password: password,
-        baseUrl: appState.selectedSiteBaseUrl,
-        siteCode: appState.selectedSiteCode,
-        siteName: appState.selectedSiteName,
+        baseUrl: authState.selectedSiteBaseUrl,
+        siteCode: authState.selectedSiteCode,
+        siteName: authState.selectedSiteName,
       );
 
       if (!mounted) return;
@@ -93,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } else {
       if (!mounted) return;
-      final err = appState.lastAuthError;
+      final err = authState.lastAuthError;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -122,8 +124,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _continueSample() async {
     setState(() => _isLoading = true);
 
-    final appState = context.read<AppState>();
-    appState.loginSample();
+    final authState = context.read<AuthState>();
+    authState.loginSample();
     if (!mounted) return;
     Navigator.of(
       context,
@@ -195,7 +197,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final authState = context.watch<AuthState>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -224,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                  child: Form(key: _formKey, child: _loginForm(appState)),
+                  child: Form(key: _formKey, child: _loginForm(authState)),
                 ),
                 const SizedBox(height: 26),
                 Text(
@@ -243,7 +245,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _loginForm(AppState appState) {
+  Widget _loginForm(AuthState authState) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -352,20 +354,20 @@ class _LoginScreenState extends State<LoginScreen> {
         InkWell(
           borderRadius: BorderRadius.circular(20),
           onTap: () {
-            appState.setRememberDevice(!appState.rememberDevice);
+            authState.setRememberDevice(!authState.rememberDevice);
           },
           child: Row(
             children: [
               Transform.scale(
                 scale: 0.78,
                 child: Switch(
-                  value: appState.rememberDevice,
+                  value: authState.rememberDevice,
                   activeThumbColor: Colors.white,
                   activeTrackColor: AppColors.primary,
                   inactiveThumbColor: Colors.white,
                   inactiveTrackColor: AppColors.softGreen,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onChanged: appState.setRememberDevice,
+                  onChanged: authState.setRememberDevice,
                 ),
               ),
               const SizedBox(width: 4),

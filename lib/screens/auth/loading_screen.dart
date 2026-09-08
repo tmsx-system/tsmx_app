@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../config/app_config.dart';
-import '../../state/app_state.dart';
+import '../../state/auth/auth_state.dart';
 import '../../theme/app_colors.dart';
 import '../app_main_screen.dart';
 import 'login_screen.dart';
@@ -22,16 +22,16 @@ class _LoadingScreenState extends State<LoadingScreen> {
   }
 
   Future<void> _startApp() async {
-    final appState = context.read<AppState>();
+    final authState = context.read<AuthState>();
 
     await Future.wait([
       Future.delayed(const Duration(milliseconds: 1200)),
-      appState.initApp(),
+      authState.initApp(),
     ]);
 
     if (!mounted) return;
 
-    final destination = appState.isAuthenticated
+    final destination = authState.isAuthenticated
         ? const AppMainScreen()
         : const LoginScreen();
 

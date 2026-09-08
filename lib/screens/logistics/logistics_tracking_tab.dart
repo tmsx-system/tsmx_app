@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/delivery_activity_log.dart';
 import '../../models/delivery_note.dart';
-import '../../state/app_state.dart';
+import '../../state/logistics/logistics_tracking_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_format.dart';
 import '../../widgets/erp/erp_empty_state.dart';
@@ -33,12 +33,12 @@ class _LogisticsTrackingTabState extends State<LogisticsTrackingTab> {
   }
 
   Future<void> _refresh(BuildContext context) {
-    return context.read<AppState>().refreshDeliveryNotes();
+    return context.read<LogisticsTrackingState>().refreshDeliveryNotes();
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<LogisticsTrackingState>();
     final docs = state.deliveryNotes;
     final visibleDocs = docs.where(_matchesFilter).toList();
     final toBill = docs
@@ -646,7 +646,7 @@ class _TrackingProofSummaryState extends State<_TrackingProofSummary> {
   @override
   void initState() {
     super.initState();
-    _future = context.read<AppState>().fetchDocumentAttachments(
+    _future = context.read<LogisticsTrackingState>().fetchDocumentAttachments(
       doctype: 'Delivery Note',
       documentName: widget.deliveryNoteId,
     );
@@ -779,7 +779,7 @@ class _DeliveryActivitySectionState extends State<_DeliveryActivitySection> {
   }
 
   Future<List<DeliveryActivityLog>> _load() {
-    return context.read<AppState>().fetchDeliveryActivityLogs(
+    return context.read<LogisticsTrackingState>().fetchDeliveryActivityLogs(
       widget.deliveryNote.id,
     );
   }
@@ -801,7 +801,7 @@ class _DeliveryActivitySectionState extends State<_DeliveryActivitySection> {
       _error = null;
     });
     try {
-      await context.read<AppState>().recordDeliveryActivity(
+      await context.read<LogisticsTrackingState>().recordDeliveryActivity(
         deliveryNote: widget.deliveryNote,
         activityStatus: status,
         notes: notes,
@@ -1307,7 +1307,7 @@ class _TrackingItemsSectionState extends State<_TrackingItemsSection> {
   @override
   void initState() {
     super.initState();
-    _future = context.read<AppState>().loadDeliveryNoteDetail(
+    _future = context.read<LogisticsTrackingState>().loadDeliveryNoteDetail(
       widget.initialRow.id,
     );
   }

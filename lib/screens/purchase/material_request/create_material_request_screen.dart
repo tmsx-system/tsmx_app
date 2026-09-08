@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../models/inventory_item.dart';
 import '../../../models/warehouse_info.dart';
-import '../../../state/app_state.dart';
+import '../../../state/purchasing/material_request_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
@@ -104,7 +104,7 @@ class _CreateMaterialRequestScreenState
       _error = null;
     });
     try {
-      final appState = context.read<AppState>();
+      final appState = context.read<MaterialRequestState>();
       if (appState.warehouses.isEmpty) await appState.refreshWarehouses();
       if (appState.buyingCompanies.isEmpty) {
         await appState.loadBuyingFilterOptions();
@@ -144,7 +144,7 @@ class _CreateMaterialRequestScreenState
   }
 
   Future<List<_Option>> _options(
-    AppState appState,
+    MaterialRequestState appState,
     String doctype,
     String labelField,
   ) async {
@@ -183,7 +183,10 @@ class _CreateMaterialRequestScreenState
     return null;
   }
 
-  Future<List<String>> _names(AppState appState, String doctype) async {
+  Future<List<String>> _names(
+    MaterialRequestState appState,
+    String doctype,
+  ) async {
     final rows = await appState.frappeService.fetchResource(
       doctype,
       fields: const ['name'],
@@ -222,7 +225,7 @@ class _CreateMaterialRequestScreenState
     }
     setState(() => _saving = true);
     try {
-      await context.read<AppState>().createMaterialRequest(
+      await context.read<MaterialRequestState>().createMaterialRequest(
         materialRequestType: _requestType,
         items: _buildItemsPayload(),
         transactionDate: _transactionDate,

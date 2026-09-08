@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../../models/sales_order_insight.dart';
 import '../../../models/sales_workspace.dart';
-import '../../../state/app_state.dart';
+import '../../../state/selling/customer_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
@@ -59,7 +59,9 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
       _customerError = null;
     });
     try {
-      final customers = await context.read<AppState>().fetchSalesCustomers();
+      final customers = await context
+          .read<CustomerState>()
+          .fetchSalesCustomers();
       if (!mounted) return;
       setState(() {
         _customers = customers;
@@ -82,7 +84,7 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
       _priceError = null;
     });
     try {
-      final state = context.read<AppState>();
+      final state = context.read<CustomerState>();
       final insight = await state.fetchCustomerSalesInsight(customer.id);
       final prices = await state.fetchCustomerItemPrices(
         customer: customer.id,

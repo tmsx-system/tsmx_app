@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../state/app_state.dart';
+import '../../../state/selling/collection_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/date_range_presets.dart';
 import 'ar_aging_tab.dart';
@@ -24,12 +24,12 @@ class _SalesCollectionTabState extends State<SalesCollectionTab> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final state = context.read<AppState>();
+    final state = context.read<CollectionState>();
     final companies = state.sellingCompanies;
     if (state.sellingCompanyFilter.isEmpty && companies.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final current = context.read<AppState>();
+        final current = context.read<CollectionState>();
         if (current.sellingCompanyFilter.isNotEmpty) return;
         final preferred = current.preferredCompany(current.sellingCompanies);
         if (preferred == null || preferred.isEmpty) return;
@@ -44,7 +44,7 @@ class _SalesCollectionTabState extends State<SalesCollectionTab> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<CollectionState>();
     final companies = state.sellingCompanies;
     final selectedCompany = state.sellingCompanyFilter.isNotEmpty
         ? state.sellingCompanyFilter
@@ -126,7 +126,7 @@ class _SalesCollectionTabState extends State<SalesCollectionTab> {
   }
 
   Future<void> _openCollectionPeriodFilter() async {
-    final state = context.read<AppState>();
+    final state = context.read<CollectionState>();
     final result = await showModalBottomSheet<_CollectionPeriodFilterValue>(
       context: context,
       isScrollControlled: true,
@@ -165,7 +165,7 @@ class _SalesCollectionTabState extends State<SalesCollectionTab> {
     CollectionAgingDateBasis? dateBasis,
     bool? applyDateFilter,
   }) {
-    context.read<AppState>().setSellingPeriod(
+    context.read<CollectionState>().setSellingPeriod(
       year: year,
       month: month,
       company: company,

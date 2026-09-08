@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../state/app_state.dart';
+import '../../../state/spg/spg_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
@@ -33,7 +33,7 @@ class _SpgDailyActivityTabState extends State<SpgDailyActivityTab> {
       _error = null;
     });
     try {
-      final records = await context.read<AppState>().fetchSpgDailyActivities();
+      final records = await context.read<SpgState>().fetchSpgDailyActivities();
       if (!mounted) return;
       setState(() => _records = records);
     } catch (error) {
@@ -196,7 +196,7 @@ class _SpgDailyActivityTabState extends State<SpgDailyActivityTab> {
 
   Future<void> _showDetail(String name) async {
     try {
-      final detail = await context.read<AppState>().fetchSpgDailyActivityDetail(
+      final detail = await context.read<SpgState>().fetchSpgDailyActivityDetail(
         name,
       );
       if (!mounted) return;
@@ -328,7 +328,7 @@ class _SpgDailyActivityDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.read<AppState>();
+    final state = context.read<SpgState>();
     final rows = _childRows(detail['activity_photos']);
     return DraggableScrollableSheet(
       initialChildSize: 0.72,
@@ -399,7 +399,7 @@ class _SpgDailyActivityDetailSheet extends StatelessWidget {
         .toList();
   }
 
-  Widget _photoCard(AppState state, Map<String, dynamic> row) {
+  Widget _photoCard(SpgState state, Map<String, dynamic> row) {
     final photo = row['photo']?.toString() ?? '';
     final url = _absoluteFileUrl(state.selectedSiteBaseUrl, photo);
     return Card(

@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../models/inventory_item.dart';
 import '../../../models/warehouse_info.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../shared/warehouse_widgets.dart';
 
@@ -66,7 +66,7 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
   }
 
   Future<void> _load() async {
-    final state = context.read<AppState>();
+    final state = context.read<WarehouseStockState>();
     setState(() {
       _loading = true;
       _error = null;
@@ -146,7 +146,7 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
             if (_needsTarget) 't_warehouse': _targetWarehouse,
           },
       ];
-      await context.read<AppState>().createStockEntry(
+      await context.read<WarehouseStockState>().createStockEntry(
         stockEntryType: widget.operation.stockEntryType,
         items: payload,
       );
@@ -171,7 +171,7 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
     if (!_needsSource || _sourceWarehouse == null) return null;
     for (final row in _rows) {
       final available = context
-          .read<AppState>()
+          .read<WarehouseStockState>()
           .inventory
           .where(
             (item) =>

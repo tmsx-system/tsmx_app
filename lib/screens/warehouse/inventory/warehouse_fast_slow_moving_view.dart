@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/stock_ledger_movement.dart';
-import '../../../state/app_state.dart';
+import '../../../state/warehouse/warehouse_dead_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../shared/warehouse_widgets.dart';
@@ -46,10 +46,12 @@ class _WarehouseFastSlowMovingViewState
       _error = null;
     });
     try {
-      _rows = await context.read<AppState>().fetchStockMovementVelocity(
-        periodDays: _periodDays,
-        forceRefresh: forceRefresh,
-      );
+      _rows = await context
+          .read<WarehouseDeadStockState>()
+          .fetchStockMovementVelocity(
+            periodDays: _periodDays,
+            forceRefresh: forceRefresh,
+          );
     } catch (error) {
       _error = _friendlyError(error);
     } finally {
