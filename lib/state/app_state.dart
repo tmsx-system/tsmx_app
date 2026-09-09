@@ -6428,6 +6428,27 @@ class AppState with ChangeNotifier {
     ]);
   }
 
+  void updateSellingFilterSnapshot({
+    required int year,
+    required int month,
+    String? company,
+    String? customerType,
+  }) {
+    final nextCompany = company ?? _sellingCompanyFilter;
+    final nextCustomerType = customerType ?? _sellingCustomerTypeFilter;
+    if (_sellingPeriodYear == year &&
+        _sellingPeriodMonth == month &&
+        _sellingCompanyFilter == nextCompany &&
+        _sellingCustomerTypeFilter == nextCustomerType) {
+      return;
+    }
+    _sellingPeriodYear = year;
+    _sellingPeriodMonth = month;
+    _sellingCompanyFilter = nextCompany;
+    _sellingCustomerTypeFilter = nextCustomerType;
+    notifyListeners();
+  }
+
   Future<void> loadSellingFilterOptions() async {
     if (!_isAuthenticated) return;
     try {
@@ -6833,6 +6854,31 @@ class AppState with ChangeNotifier {
       fetchMaterialRequestsFromFrappe(),
       refreshBuyingSummaries(),
     ]);
+  }
+
+  void updateBuyingFilterSnapshot({
+    required int year,
+    required int month,
+    String? company,
+    String? supplierType,
+  }) {
+    final nextCompany = company ?? _buyingCompanyFilter;
+    final nextSupplierType = supplierType ?? _buyingSupplierTypeFilter;
+    if (_buyingPeriodYear == year &&
+        _buyingPeriodMonth == month &&
+        _buyingCompanyFilter == nextCompany &&
+        _buyingSupplierTypeFilter == nextSupplierType) {
+      return;
+    }
+    _buyingPeriodYear = year;
+    _buyingPeriodMonth = month;
+    _buyingCompanyFilter = nextCompany;
+    if (_buyingSupplierTypeFilter != nextSupplierType) {
+      _buyingSupplierTypeIdsCacheKey = null;
+      _buyingSupplierTypeIdsCache = null;
+    }
+    _buyingSupplierTypeFilter = nextSupplierType;
+    notifyListeners();
   }
 
   List<DocumentTrendPoint> _emptyBuyingTrendPoints() {

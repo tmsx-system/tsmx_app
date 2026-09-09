@@ -219,7 +219,7 @@ class SellingTabState extends State<SellingTab>
     );
     if (result == null || !mounted) return;
 
-    await context.read<SellingFilterState>().setSellingPeriod(
+    context.read<SellingFilterState>().setSellingPeriod(
       year: result.year,
       month: result.month,
       company: result.company,
@@ -227,13 +227,18 @@ class SellingTabState extends State<SellingTab>
       documentType: _activeDocumentType,
     );
     if (!mounted) return;
-    await switch (_activeDocumentType) {
-      'Delivery Note' =>
-        context.read<DeliveryNoteState>().refreshDeliveryNotes(),
-      'Sales Invoice' =>
-        context.read<SalesInvoiceState>().refreshSalesInvoices(),
-      _ => context.read<SalesOrderState>().refreshSalesOrders(),
-    };
+    await Future.wait([
+      context.read<SellingSummaryState>().refreshSellingSummaries(
+        documentType: _activeDocumentType,
+      ),
+      switch (_activeDocumentType) {
+        'Delivery Note' =>
+          context.read<DeliveryNoteState>().refreshDeliveryNotes(),
+        'Sales Invoice' =>
+          context.read<SalesInvoiceState>().refreshSalesInvoices(),
+        _ => context.read<SalesOrderState>().refreshSalesOrders(),
+      },
+    ]);
   }
 
   @override

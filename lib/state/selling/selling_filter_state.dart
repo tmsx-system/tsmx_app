@@ -29,33 +29,34 @@ class SellingFilterState extends AppStateProxyNotifier {
   String get sellingCustomerTypeFilter => _sellingCustomerTypeFilter;
   List<String> get sellingCompanies => appState.sellingCompanies;
   List<String> get sellingSalesGroups => appState.sellingSalesGroups;
-  DateTime get sellingPeriodFrom =>
-      DateTime(_sellingPeriodYear, _sellingPeriodMonth, 1);
-  DateTime get sellingPeriodTo =>
-      DateTime(_sellingPeriodYear, _sellingPeriodMonth + 1, 0);
+  DateTime get sellingPeriodFrom => _sellingPeriodMonth == 0
+      ? DateTime(_sellingPeriodYear, 1, 1)
+      : DateTime(_sellingPeriodYear, _sellingPeriodMonth, 1);
+  DateTime get sellingPeriodTo => _sellingPeriodMonth == 0
+      ? DateTime(_sellingPeriodYear, 12, 31)
+      : DateTime(_sellingPeriodYear, _sellingPeriodMonth + 1, 0);
 
   Future<void> loadSellingFilterOptions() {
     return appState.loadSellingFilterOptions();
   }
 
-  Future<void> setSellingPeriod({
+  void setSellingPeriod({
     required int year,
     required int month,
     String? company,
     String? customerType,
     String documentType = 'Sales Order',
-  }) async {
+  }) {
     _sellingPeriodYear = year;
     _sellingPeriodMonth = month;
     _sellingCompanyFilter = company?.trim() ?? '';
     _sellingCustomerTypeFilter = customerType?.trim() ?? 'All';
     notifyListeners();
-    await appState.setSellingPeriod(
+    appState.updateSellingFilterSnapshot(
       year: year,
       month: month,
       company: _sellingCompanyFilter,
       customerType: _sellingCustomerTypeFilter,
-      documentType: documentType,
     );
   }
 }

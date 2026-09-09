@@ -29,10 +29,12 @@ class PurchasingFilterState extends AppStateProxyNotifier {
   String get buyingCompanyFilter => _buyingCompanyFilter;
   String get buyingSupplierTypeFilter => _buyingSupplierTypeFilter;
   List<String> get buyingCompanies => appState.buyingCompanies;
-  DateTime get buyingPeriodFrom =>
-      DateTime(_buyingPeriodYear, _buyingPeriodMonth, 1);
-  DateTime get buyingPeriodTo =>
-      DateTime(_buyingPeriodYear, _buyingPeriodMonth + 1, 0);
+  DateTime get buyingPeriodFrom => _buyingPeriodMonth == 0
+      ? DateTime(_buyingPeriodYear, 1, 1)
+      : DateTime(_buyingPeriodYear, _buyingPeriodMonth, 1);
+  DateTime get buyingPeriodTo => _buyingPeriodMonth == 0
+      ? DateTime(_buyingPeriodYear, 12, 31)
+      : DateTime(_buyingPeriodYear, _buyingPeriodMonth + 1, 0);
 
   Future<bool> canReadDoctype(String doctype) {
     return appState.canReadDoctype(doctype);
@@ -45,18 +47,18 @@ class PurchasingFilterState extends AppStateProxyNotifier {
   Future<void> loadBuyingFilterOptions() => appState.loadBuyingFilterOptions();
   Future<void> refreshInventory() => appState.refreshInventory();
 
-  Future<void> setBuyingPeriod({
+  void setBuyingPeriod({
     required int year,
     required int month,
     String? company,
     String? supplierType,
-  }) async {
+  }) {
     _buyingPeriodYear = year;
     _buyingPeriodMonth = month;
     _buyingCompanyFilter = company?.trim() ?? '';
     _buyingSupplierTypeFilter = supplierType?.trim() ?? 'All';
     notifyListeners();
-    await appState.setBuyingPeriod(
+    appState.updateBuyingFilterSnapshot(
       year: year,
       month: month,
       company: _buyingCompanyFilter,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -41,6 +42,16 @@ import 'theme/app_colors.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
   NativeNotificationService.instance.initialize();
   final services = ErpServices();
   runApp(
@@ -86,12 +97,23 @@ void main() {
               (state ?? SellingFilterState(appState: appState))
                 ..updateAppState(appState),
         ),
-        ChangeNotifierProxyProvider<AppState, SellingSummaryState>(
-          create: (context) =>
-              SellingSummaryState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? SellingSummaryState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          SellingFilterState,
+          SellingSummaryState
+        >(
+          create: (context) => SellingSummaryState(
+            appState: context.read<AppState>(),
+            filterState: context.read<SellingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    SellingSummaryState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
         ChangeNotifierProxyProvider2<
           AppState,
@@ -219,12 +241,23 @@ void main() {
               (state ?? PurchasingFilterState(appState: appState))
                 ..updateAppState(appState),
         ),
-        ChangeNotifierProxyProvider<AppState, PurchasingSummaryState>(
-          create: (context) =>
-              PurchasingSummaryState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? PurchasingSummaryState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          PurchasingFilterState,
+          PurchasingSummaryState
+        >(
+          create: (context) => PurchasingSummaryState(
+            appState: context.read<AppState>(),
+            filterState: context.read<PurchasingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    PurchasingSummaryState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
         ChangeNotifierProxyProvider2<
           AppState,

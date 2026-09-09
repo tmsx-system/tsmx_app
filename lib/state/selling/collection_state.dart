@@ -32,14 +32,14 @@ class CollectionState extends AppStateProxyNotifier {
     return appState.preferredCompany(options);
   }
 
-  Future<void> setSellingPeriod({
+  void setSellingPeriod({
     required int year,
     required int month,
     String? company,
     String? customerType,
     String documentType = 'Sales Invoice',
   }) {
-    return filterState.setSellingPeriod(
+    filterState.setSellingPeriod(
       year: year,
       month: month,
       company: company,

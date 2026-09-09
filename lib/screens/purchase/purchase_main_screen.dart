@@ -366,14 +366,17 @@ class _PurchasePane extends StatelessWidget {
     );
     if (result == null || !context.mounted) return;
 
-    await context.read<PurchasingFilterState>().setBuyingPeriod(
+    context.read<PurchasingFilterState>().setBuyingPeriod(
       year: result.year,
       month: result.month,
       company: result.company,
       supplierType: result.supplierType,
     );
     if (!context.mounted) return;
-    await _refreshActiveDoctype(context);
+    await Future.wait([
+      context.read<PurchasingSummaryState>().refreshBuyingSummaries(),
+      _refreshActiveDoctype(context),
+    ]);
   }
 
   @override
