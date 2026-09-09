@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/auth/auth_state.dart';
 import '../../state/selling/sales_order_state.dart';
-import '../../state/selling/selling_filter_state.dart';
+import '../../state/selling/selling_summary_state.dart';
 import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
 import '../shared/role_main_screen.dart';
@@ -264,14 +264,14 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
 
   Future<void> _openCreateSalesOrder(BuildContext context) async {
     final salesOrderState = context.read<SalesOrderState>();
-    final sellingFilterState = context.read<SellingFilterState>();
+    final sellingSummaryState = context.read<SellingSummaryState>();
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const CreateSalesOrderScreen()));
     if (!context.mounted) return;
     await Future.wait([
       salesOrderState.refreshSalesOrders(),
-      sellingFilterState.refreshSellingSummaries(documentType: 'Sales Order'),
+      sellingSummaryState.refreshSellingSummaries(documentType: 'Sales Order'),
     ]);
   }
 }

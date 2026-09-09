@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/purchase_invoice.dart';
 import '../../../../state/purchasing/purchase_invoice_state.dart';
+import '../../../../state/purchasing/purchasing_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -309,6 +310,7 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
   @override
   Widget build(BuildContext context) {
     final purchasingState = context.watch<PurchaseInvoiceState>();
+    final summaryState = context.watch<PurchasingSummaryState>();
     final filtered = _filter(purchasingState.purchaseInvoices);
 
     return Column(
@@ -318,9 +320,9 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
           title: 'Purchase Invoice',
           emptyMessage:
               'Belum ada nilai Purchase Invoice dari Purchase Analytics pada periode ini.',
-          points: purchasingState.purchaseInvoiceTrendPoints,
-          selectedYear: purchasingState.buyingPeriodYear,
-          selectedMonth: purchasingState.buyingPeriodMonth,
+          points: summaryState.purchaseInvoiceTrendPoints,
+          selectedYear: summaryState.buyingPeriodYear,
+          selectedMonth: summaryState.buyingPeriodMonth,
           sourceLabel: 'Sumber: Purchase Analytics ERPNext',
         ),
 

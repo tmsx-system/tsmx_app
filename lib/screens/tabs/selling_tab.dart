@@ -4,6 +4,7 @@ import '../../state/selling/delivery_note_state.dart';
 import '../../state/selling/sales_invoice_state.dart';
 import '../../state/selling/sales_order_state.dart';
 import '../../state/selling/selling_filter_state.dart';
+import '../../state/selling/selling_summary_state.dart';
 import '../../theme/app_colors.dart';
 import '../sales/shared/sales_ui.dart';
 import '../sales/delivery_note/delivery_note_panel.dart';
@@ -69,9 +70,10 @@ class SellingTabState extends State<SellingTab>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final sellingState = context.read<SellingFilterState>();
+      final summaryState = context.read<SellingSummaryState>();
 
       sellingState.loadSellingFilterOptions();
-      sellingState.refreshSellingSummaries(documentType: _activeDocumentType);
+      summaryState.refreshSellingSummaries(documentType: _activeDocumentType);
       _ensureActiveDocumentLoaded();
     });
   }
@@ -110,8 +112,9 @@ class SellingTabState extends State<SellingTab>
 
     widget.onSegmentChanged?.call(id);
 
-    final sellingState = context.read<SellingFilterState>();
-    sellingState.refreshSellingSummaries(documentType: _activeDocumentType);
+    context.read<SellingSummaryState>().refreshSellingSummaries(
+      documentType: _activeDocumentType,
+    );
     _ensureActiveDocumentLoaded();
   }
 
@@ -147,10 +150,10 @@ class SellingTabState extends State<SellingTab>
     final controller = _tabController;
     if (controller == null) return;
 
-    final sellingState = context.read<SellingFilterState>();
+    final summaryState = context.read<SellingSummaryState>();
 
     await Future.wait([
-      sellingState.refreshSellingSummaries(
+      summaryState.refreshSellingSummaries(
         forceRemote: true,
         documentType: _activeDocumentType,
       ),
@@ -186,6 +189,7 @@ class SellingTabState extends State<SellingTab>
 
   Future<void> _openSellingPeriodFilter() async {
     final sellingState = context.read<SellingFilterState>();
+    final summaryState = context.read<SellingSummaryState>();
     final salesGroupFilter =
         sellingState.sellingCustomerTypeFilter == 'all' ||
             sellingState.sellingSalesGroups.contains(
@@ -210,7 +214,7 @@ class SellingTabState extends State<SellingTab>
         companies: sellingState.sellingCompanies,
         salesGroups: sellingState.sellingSalesGroups,
         lockSalesPerson: sellingState.mobileAccess.shouldScopeSalesData,
-        loading: sellingState.isOrderSummaryLoading,
+        loading: summaryState.isOrderSummaryLoading,
       ),
     );
     if (result == null || !mounted) return;
@@ -235,6 +239,7 @@ class SellingTabState extends State<SellingTab>
   @override
   Widget build(BuildContext context) {
     final sellingState = context.watch<SellingFilterState>();
+    final summaryState = context.watch<SellingSummaryState>();
     final salesGroupFilter =
         sellingState.sellingCustomerTypeFilter == 'all' ||
             sellingState.sellingSalesGroups.contains(
@@ -277,7 +282,7 @@ class SellingTabState extends State<SellingTab>
                         : salesGroupFilter,
                     lockSalesPerson:
                         sellingState.mobileAccess.shouldScopeSalesData,
-                    loading: sellingState.isOrderSummaryLoading,
+                    loading: summaryState.isOrderSummaryLoading,
                     onOpenFilter: _openSellingPeriodFilter,
                   ),
 

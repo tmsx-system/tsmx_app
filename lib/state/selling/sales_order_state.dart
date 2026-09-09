@@ -1,5 +1,4 @@
 import '../../models/delivery_note.dart';
-import '../../models/erp_summary.dart';
 import '../../models/sales_invoice.dart';
 import '../../models/sales_order.dart';
 import '../../models/sales_order_insight.dart';
@@ -11,9 +10,10 @@ import '../../utils/date_range_presets.dart';
 import '../../utils/frappe_page_walker.dart';
 import '../../utils/mobile_access.dart';
 import '../app_state_proxy_notifier.dart';
+import 'selling_filter_state.dart';
 
 class SalesOrderState extends AppStateProxyNotifier {
-  SalesOrderState({required super.appState}) {
+  SalesOrderState({required super.appState, required this.filterState}) {
     startWatchingAppState();
   }
 
@@ -29,6 +29,7 @@ class SalesOrderState extends AppStateProxyNotifier {
   String? _salesOrderStatus;
   int _salesOrderQueryVersion = 0;
   Future<void>? _salesOrdersFetchInFlight;
+  SellingFilterState filterState;
 
   @override
   List<Object?> get watchFields => [
@@ -37,19 +38,10 @@ class SalesOrderState extends AppStateProxyNotifier {
     appState.mobileAccess,
     appState.mobileBoot,
     appState.currentSalesPerson,
-    appState.sellingPeriodYear,
-    appState.sellingPeriodMonth,
-    appState.sellingCompanyFilter,
-    appState.sellingCustomerTypeFilter,
-    appState.isOrderSummaryLoading,
-    appState.salesOrderTrendPoints,
   ];
 
-  int get sellingPeriodYear => appState.sellingPeriodYear;
-  int get sellingPeriodMonth => appState.sellingPeriodMonth;
-  bool get isOrderSummaryLoading => appState.isOrderSummaryLoading;
-  List<DocumentTrendPoint> get salesOrderTrendPoints =>
-      appState.salesOrderTrendPoints;
+  int get sellingPeriodYear => filterState.sellingPeriodYear;
+  int get sellingPeriodMonth => filterState.sellingPeriodMonth;
   FrappeService get frappeService => appState.frappeService;
   MobileAccess get mobileAccess => appState.mobileAccess;
   String? get currentSalesPerson => appState.currentSalesPerson;
@@ -62,6 +54,10 @@ class SalesOrderState extends AppStateProxyNotifier {
   bool get isMoreSalesOrdersLoading => _isMoreSalesOrdersLoading;
   bool get hasMoreSalesOrders => _hasMoreSalesOrders;
   String? get salesOrdersError => _salesOrdersError;
+
+  void updateFilterState(SellingFilterState value) {
+    filterState = value;
+  }
 
   Future<void> refreshSalesOrders() {
     final inFlight = _salesOrdersFetchInFlight;
@@ -260,15 +256,15 @@ class SalesOrderState extends AppStateProxyNotifier {
       [
         dateField,
         '>=',
-        DateRangePresets.toFrappeDate(appState.sellingPeriodFrom),
+        DateRangePresets.toFrappeDate(filterState.sellingPeriodFrom),
       ],
       [
         dateField,
         '<=',
-        DateRangePresets.toFrappeDate(appState.sellingPeriodTo),
+        DateRangePresets.toFrappeDate(filterState.sellingPeriodTo),
       ],
     ];
-    final company = appState.sellingCompanyFilter.trim();
+    final company = filterState.sellingCompanyFilter.trim();
     if (company.isNotEmpty) {
       filters.add(['company', '=', company]);
     }

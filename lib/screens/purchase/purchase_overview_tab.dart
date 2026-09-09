@@ -6,6 +6,7 @@ import '../../state/purchasing/purchase_invoice_state.dart';
 import '../../state/purchasing/purchase_order_state.dart';
 import '../../state/purchasing/purchase_receipt_state.dart';
 import '../../state/purchasing/purchasing_filter_state.dart';
+import '../../state/purchasing/purchasing_summary_state.dart';
 import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_format.dart';
@@ -37,8 +38,9 @@ class _PurchaseOverviewTabState extends State<PurchaseOverviewTab> {
       final orderState = context.read<PurchaseOrderState>();
       final receiptState = context.read<PurchaseReceiptState>();
       final invoiceState = context.read<PurchaseInvoiceState>();
+      final summaryState = context.read<PurchasingSummaryState>();
       Future.wait([
-        context.read<PurchasingFilterState>().refreshBuyingSummaries(),
+        summaryState.refreshBuyingSummaries(),
         if (orderState.purchaseOrders.isEmpty)
           orderState.refreshPurchaseOrders(),
         if (receiptState.purchaseReceipts.isEmpty)
@@ -52,6 +54,7 @@ class _PurchaseOverviewTabState extends State<PurchaseOverviewTab> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<PurchasingFilterState>();
+    final summaryState = context.watch<PurchasingSummaryState>();
     final orderState = context.watch<PurchaseOrderState>();
     final receiptState = context.watch<PurchaseReceiptState>();
     final invoiceState = context.watch<PurchaseInvoiceState>();
@@ -82,7 +85,7 @@ class _PurchaseOverviewTabState extends State<PurchaseOverviewTab> {
     return RefreshIndicator(
       onRefresh: () async {
         await Future.wait([
-          state.refreshBuyingSummaries(),
+          summaryState.refreshBuyingSummaries(),
           orderState.refreshPurchaseOrders(),
           receiptState.refreshPurchaseReceipts(),
           invoiceState.refreshPurchaseInvoices(),

@@ -1,13 +1,18 @@
 import '../../models/delivery_note.dart';
-import '../../models/erp_summary.dart';
 import '../app_state_proxy_notifier.dart';
 import 'selling_document_query_mixin.dart';
+import 'selling_filter_state.dart';
 
 class DeliveryNoteState extends AppStateProxyNotifier
     with SellingDocumentQueryMixin {
-  DeliveryNoteState({required super.appState}) {
+  DeliveryNoteState({required super.appState, required this.filterState}) {
     startWatchingAppState();
   }
+
+  SellingFilterState filterState;
+
+  @override
+  SellingFilterState get sellingFilterState => filterState;
 
   List<DeliveryNote> _deliveryNotes = const [];
   bool _isDeliveryNotesLoading = false;
@@ -26,24 +31,20 @@ class DeliveryNoteState extends AppStateProxyNotifier
     appState.mobileAccess,
     appState.mobileBoot,
     appState.currentSalesPerson,
-    appState.sellingPeriodYear,
-    appState.sellingPeriodMonth,
-    appState.sellingCompanyFilter,
-    appState.isOrderSummaryLoading,
-    appState.deliveryNoteTrendPoints,
   ];
 
-  int get sellingPeriodYear => appState.sellingPeriodYear;
-  int get sellingPeriodMonth => appState.sellingPeriodMonth;
-  bool get isOrderSummaryLoading => appState.isOrderSummaryLoading;
-  List<DocumentTrendPoint> get deliveryNoteTrendPoints =>
-      appState.deliveryNoteTrendPoints;
+  int get sellingPeriodYear => filterState.sellingPeriodYear;
+  int get sellingPeriodMonth => filterState.sellingPeriodMonth;
 
   List<DeliveryNote> get deliveryNotes => _deliveryNotes;
   bool get isDeliveryNotesLoading => _isDeliveryNotesLoading;
   bool get isMoreDeliveryNotesLoading => _isMoreDeliveryNotesLoading;
   bool get hasMoreDeliveryNotes => _hasMoreDeliveryNotes;
   String? get deliveryNotesError => _deliveryNotesError;
+
+  void updateFilterState(SellingFilterState value) {
+    filterState = value;
+  }
 
   Future<void> refreshDeliveryNotes() {
     final inFlight = _deliveryNotesFetchInFlight;

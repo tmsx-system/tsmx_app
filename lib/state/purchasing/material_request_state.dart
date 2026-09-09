@@ -1,4 +1,3 @@
-import '../../models/erp_summary.dart';
 import '../../models/inventory_item.dart';
 import '../../models/material_request.dart';
 import '../../models/warehouse_info.dart';
@@ -6,9 +5,10 @@ import '../../services/frappe_service.dart';
 import '../../utils/date_range_presets.dart';
 import '../../utils/frappe_page_walker.dart';
 import '../app_state_proxy_notifier.dart';
+import 'purchasing_filter_state.dart';
 
 class MaterialRequestState extends AppStateProxyNotifier {
-  MaterialRequestState({required super.appState}) {
+  MaterialRequestState({required super.appState, required this.filterState}) {
     startWatchingAppState();
   }
 
@@ -24,24 +24,19 @@ class MaterialRequestState extends AppStateProxyNotifier {
   String? _materialRequestStatus;
   int _materialRequestQueryVersion = 0;
   Future<void>? _materialRequestsFetchInFlight;
+  PurchasingFilterState filterState;
 
   @override
   List<Object?> get watchFields => [
     appState.isAuthenticated,
     appState.isSampleMode,
-    appState.buyingPeriodYear,
-    appState.buyingPeriodMonth,
-    appState.buyingCompanyFilter,
-    appState.materialRequestTrendPoints,
     appState.inventory,
     appState.warehouses,
     appState.buyingCompanies,
   ];
 
-  int get buyingPeriodYear => appState.buyingPeriodYear;
-  int get buyingPeriodMonth => appState.buyingPeriodMonth;
-  List<DocumentTrendPoint> get materialRequestTrendPoints =>
-      appState.materialRequestTrendPoints;
+  int get buyingPeriodYear => filterState.buyingPeriodYear;
+  int get buyingPeriodMonth => filterState.buyingPeriodMonth;
   List<InventoryItem> get inventory => appState.inventory;
   List<WarehouseInfo> get warehouses => appState.warehouses;
   List<String> get buyingCompanies => appState.buyingCompanies;
@@ -52,6 +47,10 @@ class MaterialRequestState extends AppStateProxyNotifier {
   bool get isMoreMaterialRequestsLoading => _isMoreMaterialRequestsLoading;
   bool get hasMoreMaterialRequests => _hasMoreMaterialRequests;
   String? get materialRequestsError => _materialRequestsError;
+
+  void updateFilterState(PurchasingFilterState value) {
+    filterState = value;
+  }
 
   Future<void> refreshInventory() => appState.refreshInventory();
   Future<void> refreshWarehouses() => appState.refreshWarehouses();
@@ -321,11 +320,15 @@ class MaterialRequestState extends AppStateProxyNotifier {
       [
         dateField,
         '>=',
-        DateRangePresets.toFrappeDate(appState.buyingPeriodFrom),
+        DateRangePresets.toFrappeDate(filterState.buyingPeriodFrom),
       ],
-      [dateField, '<=', DateRangePresets.toFrappeDate(appState.buyingPeriodTo)],
+      [
+        dateField,
+        '<=',
+        DateRangePresets.toFrappeDate(filterState.buyingPeriodTo),
+      ],
     ];
-    final company = appState.buyingCompanyFilter.trim();
+    final company = filterState.buyingCompanyFilter.trim();
     if (company.isNotEmpty) {
       filters.add(['company', '=', company]);
     }

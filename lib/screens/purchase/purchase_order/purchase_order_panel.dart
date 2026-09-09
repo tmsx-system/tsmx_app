@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/purchase_order.dart';
 import '../../../models/supplier_price_comparison.dart';
 import '../../../../state/purchasing/purchase_order_state.dart';
+import '../../../../state/purchasing/purchasing_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -644,6 +645,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
   @override
   Widget build(BuildContext context) {
     final purchasingState = context.watch<PurchaseOrderState>();
+    final summaryState = context.watch<PurchasingSummaryState>();
     final filtered = _filter(purchasingState.purchaseOrders);
 
     return Column(
@@ -653,9 +655,9 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
           title: 'Purchase Order',
           emptyMessage:
               'Belum ada nilai Purchase Order dari Purchase Analytics pada periode ini.',
-          points: purchasingState.purchaseOrderTrendPoints,
-          selectedYear: purchasingState.buyingPeriodYear,
-          selectedMonth: purchasingState.buyingPeriodMonth,
+          points: summaryState.purchaseOrderTrendPoints,
+          selectedYear: summaryState.buyingPeriodYear,
+          selectedMonth: summaryState.buyingPeriodMonth,
           sourceLabel: 'Sumber: Purchase Analytics ERPNext',
         ),
 

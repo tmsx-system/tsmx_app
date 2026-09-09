@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/inventory_item.dart';
 import '../../../models/material_request.dart';
 import '../../../../state/purchasing/material_request_state.dart';
+import '../../../../state/purchasing/purchasing_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -443,6 +444,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
   @override
   Widget build(BuildContext context) {
     final purchasingState = context.watch<MaterialRequestState>();
+    final summaryState = context.watch<PurchasingSummaryState>();
     final filtered = _filter(purchasingState.materialRequests);
     final planningItems = _planningItems(purchasingState);
     final focusSummary = _MaterialRequestFocusSummary.from(
@@ -460,9 +462,9 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
           title: 'Material Request',
           emptyMessage:
               'Belum ada kebutuhan barang pada periode dan filter ini.',
-          points: purchasingState.materialRequestTrendPoints,
-          selectedYear: purchasingState.buyingPeriodYear,
-          selectedMonth: purchasingState.buyingPeriodMonth,
+          points: summaryState.materialRequestTrendPoints,
+          selectedYear: summaryState.buyingPeriodYear,
+          selectedMonth: summaryState.buyingPeriodMonth,
           valuePrefix: '',
           valueSuffix: ' qty',
           sourceLabel: 'Sumber: Material Request ERPNext',

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/sales_invoice.dart';
 import '../../../state/selling/sales_invoice_state.dart';
+import '../../../state/selling/selling_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -332,6 +333,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
   @override
   Widget build(BuildContext context) {
     final sellingState = context.watch<SalesInvoiceState>();
+    final summaryState = context.watch<SellingSummaryState>();
     final filtered = _filter(sellingState.salesInvoices);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,11 +342,11 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
           title: 'Sales Invoice',
           emptyMessage:
               'Belum ada nilai Sales Invoice dari Sales Analytics pada periode ini.',
-          points: sellingState.salesInvoiceTrendPoints,
-          selectedYear: sellingState.sellingPeriodYear,
-          selectedMonth: sellingState.sellingPeriodMonth,
+          points: summaryState.salesInvoiceTrendPoints,
+          selectedYear: summaryState.sellingPeriodYear,
+          selectedMonth: summaryState.sellingPeriodMonth,
           sourceLabel: 'Sumber: Sales Analytics ERPNext',
-          isLoading: sellingState.isOrderSummaryLoading,
+          isLoading: summaryState.isOrderSummaryLoading,
         ),
 
         const SizedBox(height: 12),

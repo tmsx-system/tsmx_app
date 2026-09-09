@@ -12,6 +12,7 @@ import '../../state/purchasing/material_request_state.dart';
 import '../../state/purchasing/purchase_invoice_state.dart';
 import '../../state/purchasing/purchase_order_state.dart';
 import '../../state/purchasing/purchase_receipt_state.dart';
+import '../../state/purchasing/purchasing_summary_state.dart';
 import 'purchase_order/create_purchase_order_screen.dart';
 import 'purchase_order/purchase_order_panel.dart';
 import 'purchase_overview_tab.dart';
@@ -338,6 +339,7 @@ class _PurchasePane extends StatelessWidget {
 
   Future<void> _openPurchasePeriodFilter(BuildContext context) async {
     final purchasingState = context.read<PurchasingFilterState>();
+    final summaryState = context.read<PurchasingSummaryState>();
     final supplierType =
         _purchaseSupplierTypeOptions.containsKey(
           purchasingState.buyingSupplierTypeFilter,
@@ -359,7 +361,7 @@ class _PurchasePane extends StatelessWidget {
         initialCompany: purchasingState.buyingCompanyFilter,
         initialSupplierType: supplierType,
         companies: purchasingState.buyingCompanies,
-        loading: purchasingState.isOrderSummaryLoading,
+        loading: summaryState.isOrderSummaryLoading,
       ),
     );
     if (result == null || !context.mounted) return;
@@ -377,6 +379,7 @@ class _PurchasePane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<PurchasingFilterState>();
+    final summaryState = context.watch<PurchasingSummaryState>();
     return RefreshIndicator(
       color: AppColors.primary,
       onRefresh: () => _refreshActiveDoctype(context),
@@ -389,7 +392,7 @@ class _PurchasePane extends StatelessWidget {
             selectedMonth: state.buyingPeriodMonth,
             selectedCompany: state.buyingCompanyFilter,
             selectedSupplierType: state.buyingSupplierTypeFilter,
-            loading: state.isOrderSummaryLoading,
+            loading: summaryState.isOrderSummaryLoading,
             onOpenFilter: () => _openPurchasePeriodFilter(context),
           ),
           const SizedBox(height: 14),

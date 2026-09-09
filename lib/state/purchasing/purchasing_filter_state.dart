@@ -2,30 +2,37 @@ import '../../utils/mobile_access.dart';
 import '../app_state_proxy_notifier.dart';
 
 class PurchasingFilterState extends AppStateProxyNotifier {
-  PurchasingFilterState({required super.appState}) {
+  PurchasingFilterState({required super.appState})
+    : _buyingPeriodYear = appState.buyingPeriodYear,
+      _buyingPeriodMonth = appState.buyingPeriodMonth,
+      _buyingCompanyFilter = appState.buyingCompanyFilter,
+      _buyingSupplierTypeFilter = appState.buyingSupplierTypeFilter {
     startWatchingAppState();
   }
+
+  int _buyingPeriodYear;
+  int _buyingPeriodMonth;
+  String _buyingCompanyFilter;
+  String _buyingSupplierTypeFilter;
 
   @override
   List<Object?> get watchFields => [
     appState.mobileAccess,
     appState.canUsePurchase,
-    appState.isOrderSummaryLoading,
-    appState.buyingPeriodYear,
-    appState.buyingPeriodMonth,
-    appState.buyingCompanyFilter,
-    appState.buyingSupplierTypeFilter,
     appState.buyingCompanies,
   ];
 
   MobileAccess get mobileAccess => appState.mobileAccess;
   bool get canUsePurchase => appState.canUsePurchase;
-  bool get isOrderSummaryLoading => appState.isOrderSummaryLoading;
-  int get buyingPeriodYear => appState.buyingPeriodYear;
-  int get buyingPeriodMonth => appState.buyingPeriodMonth;
-  String get buyingCompanyFilter => appState.buyingCompanyFilter;
-  String get buyingSupplierTypeFilter => appState.buyingSupplierTypeFilter;
+  int get buyingPeriodYear => _buyingPeriodYear;
+  int get buyingPeriodMonth => _buyingPeriodMonth;
+  String get buyingCompanyFilter => _buyingCompanyFilter;
+  String get buyingSupplierTypeFilter => _buyingSupplierTypeFilter;
   List<String> get buyingCompanies => appState.buyingCompanies;
+  DateTime get buyingPeriodFrom =>
+      DateTime(_buyingPeriodYear, _buyingPeriodMonth, 1);
+  DateTime get buyingPeriodTo =>
+      DateTime(_buyingPeriodYear, _buyingPeriodMonth + 1, 0);
 
   Future<bool> canReadDoctype(String doctype) {
     return appState.canReadDoctype(doctype);
@@ -36,7 +43,6 @@ class PurchasingFilterState extends AppStateProxyNotifier {
   }
 
   Future<void> loadBuyingFilterOptions() => appState.loadBuyingFilterOptions();
-  Future<void> refreshBuyingSummaries() => appState.refreshBuyingSummaries();
   Future<void> refreshInventory() => appState.refreshInventory();
 
   Future<void> setBuyingPeriod({
@@ -44,12 +50,17 @@ class PurchasingFilterState extends AppStateProxyNotifier {
     required int month,
     String? company,
     String? supplierType,
-  }) {
-    return appState.setBuyingPeriod(
+  }) async {
+    _buyingPeriodYear = year;
+    _buyingPeriodMonth = month;
+    _buyingCompanyFilter = company?.trim() ?? '';
+    _buyingSupplierTypeFilter = supplierType?.trim() ?? 'All';
+    notifyListeners();
+    await appState.setBuyingPeriod(
       year: year,
       month: month,
-      company: company,
-      supplierType: supplierType,
+      company: _buyingCompanyFilter,
+      supplierType: _buyingSupplierTypeFilter,
     );
   }
 }

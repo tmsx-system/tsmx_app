@@ -15,6 +15,7 @@ import 'state/purchasing/purchase_invoice_state.dart';
 import 'state/purchasing/purchase_order_state.dart';
 import 'state/purchasing/purchase_receipt_state.dart';
 import 'state/purchasing/purchasing_filter_state.dart';
+import 'state/purchasing/purchasing_summary_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/selling/collection_state.dart';
 import 'state/selling/customer_state.dart';
@@ -25,6 +26,7 @@ import 'state/selling/sales_invoice_state.dart';
 import 'state/selling/sales_order_state.dart';
 import 'state/selling/sales_overview_state.dart';
 import 'state/selling/selling_filter_state.dart';
+import 'state/selling/selling_summary_state.dart';
 import 'state/spg/spg_state.dart';
 import 'state/todo/todo_state.dart';
 import 'state/visits/visit_state.dart';
@@ -84,33 +86,84 @@ void main() {
               (state ?? SellingFilterState(appState: appState))
                 ..updateAppState(appState),
         ),
-        ChangeNotifierProxyProvider<AppState, SalesOrderState>(
+        ChangeNotifierProxyProvider<AppState, SellingSummaryState>(
           create: (context) =>
-              SalesOrderState(appState: context.read<AppState>()),
+              SellingSummaryState(appState: context.read<AppState>()),
           update: (_, appState, state) =>
-              (state ?? SalesOrderState(appState: appState))
+              (state ?? SellingSummaryState(appState: appState))
                 ..updateAppState(appState),
         ),
-        ChangeNotifierProxyProvider<AppState, SalesOverviewState>(
-          create: (context) =>
-              SalesOverviewState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? SalesOverviewState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          SellingFilterState,
+          SalesOrderState
+        >(
+          create: (context) => SalesOrderState(
+            appState: context.read<AppState>(),
+            filterState: context.read<SellingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    SalesOrderState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
-        ChangeNotifierProxyProvider<AppState, DeliveryNoteState>(
-          create: (context) =>
-              DeliveryNoteState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? DeliveryNoteState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          SellingFilterState,
+          SalesOverviewState
+        >(
+          create: (context) => SalesOverviewState(
+            appState: context.read<AppState>(),
+            filterState: context.read<SellingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    SalesOverviewState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
-        ChangeNotifierProxyProvider<AppState, SalesInvoiceState>(
-          create: (context) =>
-              SalesInvoiceState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? SalesInvoiceState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          SellingFilterState,
+          DeliveryNoteState
+        >(
+          create: (context) => DeliveryNoteState(
+            appState: context.read<AppState>(),
+            filterState: context.read<SellingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    DeliveryNoteState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
+        ),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          SellingFilterState,
+          SalesInvoiceState
+        >(
+          create: (context) => SalesInvoiceState(
+            appState: context.read<AppState>(),
+            filterState: context.read<SellingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    SalesInvoiceState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
         ChangeNotifierProxyProvider<AppState, CustomerState>(
           create: (context) =>
@@ -119,12 +172,23 @@ void main() {
               (state ?? CustomerState(appState: appState))
                 ..updateAppState(appState),
         ),
-        ChangeNotifierProxyProvider<AppState, CollectionState>(
-          create: (context) =>
-              CollectionState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? CollectionState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          SellingFilterState,
+          CollectionState
+        >(
+          create: (context) => CollectionState(
+            appState: context.read<AppState>(),
+            filterState: context.read<SellingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    CollectionState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
         ChangeNotifierProxyProvider<AppState, NooState>(
           create: (context) => NooState(appState: context.read<AppState>()),
@@ -155,33 +219,84 @@ void main() {
               (state ?? PurchasingFilterState(appState: appState))
                 ..updateAppState(appState),
         ),
-        ChangeNotifierProxyProvider<AppState, MaterialRequestState>(
+        ChangeNotifierProxyProvider<AppState, PurchasingSummaryState>(
           create: (context) =>
-              MaterialRequestState(appState: context.read<AppState>()),
+              PurchasingSummaryState(appState: context.read<AppState>()),
           update: (_, appState, state) =>
-              (state ?? MaterialRequestState(appState: appState))
+              (state ?? PurchasingSummaryState(appState: appState))
                 ..updateAppState(appState),
         ),
-        ChangeNotifierProxyProvider<AppState, PurchaseOrderState>(
-          create: (context) =>
-              PurchaseOrderState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? PurchaseOrderState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          PurchasingFilterState,
+          MaterialRequestState
+        >(
+          create: (context) => MaterialRequestState(
+            appState: context.read<AppState>(),
+            filterState: context.read<PurchasingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    MaterialRequestState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
-        ChangeNotifierProxyProvider<AppState, PurchaseReceiptState>(
-          create: (context) =>
-              PurchaseReceiptState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? PurchaseReceiptState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          PurchasingFilterState,
+          PurchaseOrderState
+        >(
+          create: (context) => PurchaseOrderState(
+            appState: context.read<AppState>(),
+            filterState: context.read<PurchasingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    PurchaseOrderState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
-        ChangeNotifierProxyProvider<AppState, PurchaseInvoiceState>(
-          create: (context) =>
-              PurchaseInvoiceState(appState: context.read<AppState>()),
-          update: (_, appState, state) =>
-              (state ?? PurchaseInvoiceState(appState: appState))
-                ..updateAppState(appState),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          PurchasingFilterState,
+          PurchaseReceiptState
+        >(
+          create: (context) => PurchaseReceiptState(
+            appState: context.read<AppState>(),
+            filterState: context.read<PurchasingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    PurchaseReceiptState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
+        ),
+        ChangeNotifierProxyProvider2<
+          AppState,
+          PurchasingFilterState,
+          PurchaseInvoiceState
+        >(
+          create: (context) => PurchaseInvoiceState(
+            appState: context.read<AppState>(),
+            filterState: context.read<PurchasingFilterState>(),
+          ),
+          update: (_, appState, filterState, state) =>
+              (state ??
+                    PurchaseInvoiceState(
+                      appState: appState,
+                      filterState: filterState,
+                    ))
+                ..updateAppState(appState)
+                ..updateFilterState(filterState),
         ),
         ChangeNotifierProxyProvider<AppState, WarehouseStockState>(
           create: (context) =>

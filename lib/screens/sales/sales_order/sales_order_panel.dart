@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../models/sales_order.dart';
 import '../../../state/selling/sales_order_state.dart';
+import '../../../state/selling/selling_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -714,6 +715,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
   @override
   Widget build(BuildContext context) {
     final sellingState = context.watch<SalesOrderState>();
+    final summaryState = context.watch<SellingSummaryState>();
     final baseFiltered = _baseFilter(sellingState.salesOrders);
     final filtered = _filter(sellingState.salesOrders);
     final statusChips = _statusChips(baseFiltered);
@@ -724,11 +726,11 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
           title: 'Pendapatan',
           emptyMessage:
               'Belum ada nilai Sales Order dari Sales Analytics pada periode ini.',
-          points: sellingState.salesOrderTrendPoints,
-          selectedYear: sellingState.sellingPeriodYear,
-          selectedMonth: sellingState.sellingPeriodMonth,
+          points: summaryState.salesOrderTrendPoints,
+          selectedYear: summaryState.sellingPeriodYear,
+          selectedMonth: summaryState.sellingPeriodMonth,
           sourceLabel: 'Sumber: Sales Analytics ERPNext',
-          isLoading: sellingState.isOrderSummaryLoading,
+          isLoading: summaryState.isOrderSummaryLoading,
           accent: _soGreen,
         ),
 

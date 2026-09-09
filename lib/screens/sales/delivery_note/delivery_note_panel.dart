@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../models/delivery_note.dart';
 import '../../../state/selling/delivery_note_state.dart';
+import '../../../state/selling/selling_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -327,6 +328,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
   @override
   Widget build(BuildContext context) {
     final sellingState = context.watch<DeliveryNoteState>();
+    final summaryState = context.watch<SellingSummaryState>();
     final filtered = _filter(sellingState.deliveryNotes);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -335,11 +337,11 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
           title: 'Delivery Note',
           emptyMessage:
               'Belum ada nilai Delivery Note dari Sales Analytics pada periode ini.',
-          points: sellingState.deliveryNoteTrendPoints,
-          selectedYear: sellingState.sellingPeriodYear,
-          selectedMonth: sellingState.sellingPeriodMonth,
+          points: summaryState.deliveryNoteTrendPoints,
+          selectedYear: summaryState.sellingPeriodYear,
+          selectedMonth: summaryState.sellingPeriodMonth,
           sourceLabel: 'Sumber: Sales Analytics ERPNext',
-          isLoading: sellingState.isOrderSummaryLoading,
+          isLoading: summaryState.isOrderSummaryLoading,
         ),
 
         const SizedBox(height: 12),

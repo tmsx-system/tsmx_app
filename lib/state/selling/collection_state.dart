@@ -1,11 +1,14 @@
 import '../../models/sales_invoice.dart';
 import '../../models/sales_workspace.dart';
 import '../app_state_proxy_notifier.dart';
+import 'selling_filter_state.dart';
 
 class CollectionState extends AppStateProxyNotifier {
-  CollectionState({required super.appState}) {
+  CollectionState({required super.appState, required this.filterState}) {
     startWatchingAppState();
   }
+
+  SellingFilterState filterState;
 
   @override
   List<Object?> get watchFields => [
@@ -13,18 +16,17 @@ class CollectionState extends AppStateProxyNotifier {
     appState.isSampleMode,
     appState.mobileAccess,
     appState.currentSalesPerson,
-    appState.sellingPeriodYear,
-    appState.sellingPeriodMonth,
-    appState.sellingCompanyFilter,
     appState.sellingCompanies,
-    appState.isOrderSummaryLoading,
   ];
 
-  int get sellingPeriodYear => appState.sellingPeriodYear;
-  int get sellingPeriodMonth => appState.sellingPeriodMonth;
-  String get sellingCompanyFilter => appState.sellingCompanyFilter;
-  List<String> get sellingCompanies => appState.sellingCompanies;
-  bool get isOrderSummaryLoading => appState.isOrderSummaryLoading;
+  int get sellingPeriodYear => filterState.sellingPeriodYear;
+  int get sellingPeriodMonth => filterState.sellingPeriodMonth;
+  String get sellingCompanyFilter => filterState.sellingCompanyFilter;
+  List<String> get sellingCompanies => filterState.sellingCompanies;
+
+  void updateFilterState(SellingFilterState value) {
+    filterState = value;
+  }
 
   String? preferredCompany(Iterable<String> options) {
     return appState.preferredCompany(options);
@@ -37,7 +39,7 @@ class CollectionState extends AppStateProxyNotifier {
     String? customerType,
     String documentType = 'Sales Invoice',
   }) {
-    return appState.setSellingPeriod(
+    return filterState.setSellingPeriod(
       year: year,
       month: month,
       company: company,

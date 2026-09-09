@@ -1,25 +1,28 @@
 import '../../utils/date_range_presets.dart';
 import '../../utils/frappe_page_walker.dart';
 import '../app_state_proxy_notifier.dart';
+import 'selling_filter_state.dart';
 
 mixin SellingDocumentQueryMixin on AppStateProxyNotifier {
   static const int documentPageSize = 50;
   static const int pageSize = 500;
+
+  SellingFilterState get sellingFilterState;
 
   List<List<dynamic>> sellingPeriodFilters(String dateField) {
     final filters = <List<dynamic>>[
       [
         dateField,
         '>=',
-        DateRangePresets.toFrappeDate(appState.sellingPeriodFrom),
+        DateRangePresets.toFrappeDate(sellingFilterState.sellingPeriodFrom),
       ],
       [
         dateField,
         '<=',
-        DateRangePresets.toFrappeDate(appState.sellingPeriodTo),
+        DateRangePresets.toFrappeDate(sellingFilterState.sellingPeriodTo),
       ],
     ];
-    final company = appState.sellingCompanyFilter.trim();
+    final company = sellingFilterState.sellingCompanyFilter.trim();
     if (company.isNotEmpty) {
       filters.add(['company', '=', company]);
     }

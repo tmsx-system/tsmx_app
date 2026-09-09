@@ -1,4 +1,3 @@
-import '../../models/erp_summary.dart';
 import '../../models/purchase_receipt.dart';
 import '../../models/quality_inspection_record.dart';
 import '../../models/warehouse_info.dart';
@@ -7,9 +6,10 @@ import '../../utils/date_range_presets.dart';
 import '../../utils/frappe_page_walker.dart';
 import '../../utils/num_parse.dart';
 import '../app_state_proxy_notifier.dart';
+import 'purchasing_filter_state.dart';
 
 class PurchaseReceiptState extends AppStateProxyNotifier {
-  PurchaseReceiptState({required super.appState}) {
+  PurchaseReceiptState({required super.appState, required this.filterState}) {
     startWatchingAppState();
   }
 
@@ -27,31 +27,29 @@ class PurchaseReceiptState extends AppStateProxyNotifier {
   Future<void>? _purchaseReceiptsFetchInFlight;
   String? _buyingSupplierTypeIdsCacheKey;
   List<String>? _buyingSupplierTypeIdsCache;
+  PurchasingFilterState filterState;
 
   @override
   List<Object?> get watchFields => [
     appState.isAuthenticated,
     appState.isSampleMode,
-    appState.buyingPeriodYear,
-    appState.buyingPeriodMonth,
-    appState.buyingCompanyFilter,
-    appState.buyingSupplierTypeFilter,
-    appState.purchaseReceiptTrendPoints,
     appState.warehouses,
   ];
 
   FrappeService get frappeService => appState.frappeService;
   List<WarehouseInfo> get warehouses => appState.warehouses;
-  int get buyingPeriodYear => appState.buyingPeriodYear;
-  int get buyingPeriodMonth => appState.buyingPeriodMonth;
-  List<DocumentTrendPoint> get purchaseReceiptTrendPoints =>
-      appState.purchaseReceiptTrendPoints;
+  int get buyingPeriodYear => filterState.buyingPeriodYear;
+  int get buyingPeriodMonth => filterState.buyingPeriodMonth;
 
   List<PurchaseReceipt> get purchaseReceipts => _purchaseReceipts;
   bool get isPurchaseReceiptsLoading => _isPurchaseReceiptsLoading;
   bool get isMorePurchaseReceiptsLoading => _isMorePurchaseReceiptsLoading;
   bool get hasMorePurchaseReceipts => _hasMorePurchaseReceipts;
   String? get purchaseReceiptsError => _purchaseReceiptsError;
+
+  void updateFilterState(PurchasingFilterState value) {
+    filterState = value;
+  }
 
   Future<void> refreshPurchaseReceipts() {
     final inFlight = _purchaseReceiptsFetchInFlight;
@@ -335,11 +333,15 @@ class PurchaseReceiptState extends AppStateProxyNotifier {
       [
         dateField,
         '>=',
-        DateRangePresets.toFrappeDate(appState.buyingPeriodFrom),
+        DateRangePresets.toFrappeDate(filterState.buyingPeriodFrom),
       ],
-      [dateField, '<=', DateRangePresets.toFrappeDate(appState.buyingPeriodTo)],
+      [
+        dateField,
+        '<=',
+        DateRangePresets.toFrappeDate(filterState.buyingPeriodTo),
+      ],
     ];
-    final company = appState.buyingCompanyFilter.trim();
+    final company = filterState.buyingCompanyFilter.trim();
     if (company.isNotEmpty) {
       filters.add(['company', '=', company]);
     }
@@ -371,7 +373,7 @@ class PurchaseReceiptState extends AppStateProxyNotifier {
   }
 
   Future<List<String>?> _buyingSupplierTypeSupplierIds() async {
-    final type = appState.buyingSupplierTypeFilter.trim().toLowerCase();
+    final type = filterState.buyingSupplierTypeFilter.trim().toLowerCase();
     if (type.isEmpty || type == 'all') return null;
     if (_buyingSupplierTypeIdsCacheKey == type &&
         _buyingSupplierTypeIdsCache != null) {

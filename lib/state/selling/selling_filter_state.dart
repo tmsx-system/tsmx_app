@@ -2,43 +2,40 @@ import '../../utils/mobile_access.dart';
 import '../app_state_proxy_notifier.dart';
 
 class SellingFilterState extends AppStateProxyNotifier {
-  SellingFilterState({required super.appState}) {
+  SellingFilterState({required super.appState})
+    : _sellingPeriodYear = appState.sellingPeriodYear,
+      _sellingPeriodMonth = appState.sellingPeriodMonth,
+      _sellingCompanyFilter = appState.sellingCompanyFilter,
+      _sellingCustomerTypeFilter = appState.sellingCustomerTypeFilter {
     startWatchingAppState();
   }
+
+  int _sellingPeriodYear;
+  int _sellingPeriodMonth;
+  String _sellingCompanyFilter;
+  String _sellingCustomerTypeFilter;
 
   @override
   List<Object?> get watchFields => [
     appState.mobileAccess,
-    appState.sellingPeriodYear,
-    appState.sellingPeriodMonth,
-    appState.sellingCompanyFilter,
-    appState.sellingCustomerTypeFilter,
     appState.sellingCompanies,
     appState.sellingSalesGroups,
-    appState.isOrderSummaryLoading,
   ];
 
   MobileAccess get mobileAccess => appState.mobileAccess;
-  int get sellingPeriodYear => appState.sellingPeriodYear;
-  int get sellingPeriodMonth => appState.sellingPeriodMonth;
-  String get sellingCompanyFilter => appState.sellingCompanyFilter;
-  String get sellingCustomerTypeFilter => appState.sellingCustomerTypeFilter;
+  int get sellingPeriodYear => _sellingPeriodYear;
+  int get sellingPeriodMonth => _sellingPeriodMonth;
+  String get sellingCompanyFilter => _sellingCompanyFilter;
+  String get sellingCustomerTypeFilter => _sellingCustomerTypeFilter;
   List<String> get sellingCompanies => appState.sellingCompanies;
   List<String> get sellingSalesGroups => appState.sellingSalesGroups;
-  bool get isOrderSummaryLoading => appState.isOrderSummaryLoading;
+  DateTime get sellingPeriodFrom =>
+      DateTime(_sellingPeriodYear, _sellingPeriodMonth, 1);
+  DateTime get sellingPeriodTo =>
+      DateTime(_sellingPeriodYear, _sellingPeriodMonth + 1, 0);
 
   Future<void> loadSellingFilterOptions() {
     return appState.loadSellingFilterOptions();
-  }
-
-  Future<void> refreshSellingSummaries({
-    bool forceRemote = false,
-    String documentType = 'Sales Order',
-  }) {
-    return appState.refreshSellingSummaries(
-      forceRemote: forceRemote,
-      documentType: documentType,
-    );
   }
 
   Future<void> setSellingPeriod({
@@ -47,12 +44,17 @@ class SellingFilterState extends AppStateProxyNotifier {
     String? company,
     String? customerType,
     String documentType = 'Sales Order',
-  }) {
-    return appState.setSellingPeriod(
+  }) async {
+    _sellingPeriodYear = year;
+    _sellingPeriodMonth = month;
+    _sellingCompanyFilter = company?.trim() ?? '';
+    _sellingCustomerTypeFilter = customerType?.trim() ?? 'All';
+    notifyListeners();
+    await appState.setSellingPeriod(
       year: year,
       month: month,
-      company: company,
-      customerType: customerType,
+      company: _sellingCompanyFilter,
+      customerType: _sellingCustomerTypeFilter,
       documentType: documentType,
     );
   }

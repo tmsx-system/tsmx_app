@@ -1,13 +1,18 @@
-import '../../models/erp_summary.dart';
 import '../../models/sales_invoice.dart';
 import '../app_state_proxy_notifier.dart';
 import 'selling_document_query_mixin.dart';
+import 'selling_filter_state.dart';
 
 class SalesInvoiceState extends AppStateProxyNotifier
     with SellingDocumentQueryMixin {
-  SalesInvoiceState({required super.appState}) {
+  SalesInvoiceState({required super.appState, required this.filterState}) {
     startWatchingAppState();
   }
+
+  SellingFilterState filterState;
+
+  @override
+  SellingFilterState get sellingFilterState => filterState;
 
   List<SalesInvoice> _salesInvoices = const [];
   bool _isSalesInvoicesLoading = false;
@@ -26,24 +31,20 @@ class SalesInvoiceState extends AppStateProxyNotifier
     appState.mobileAccess,
     appState.mobileBoot,
     appState.currentSalesPerson,
-    appState.sellingPeriodYear,
-    appState.sellingPeriodMonth,
-    appState.sellingCompanyFilter,
-    appState.isOrderSummaryLoading,
-    appState.salesInvoiceTrendPoints,
   ];
 
-  int get sellingPeriodYear => appState.sellingPeriodYear;
-  int get sellingPeriodMonth => appState.sellingPeriodMonth;
-  bool get isOrderSummaryLoading => appState.isOrderSummaryLoading;
-  List<DocumentTrendPoint> get salesInvoiceTrendPoints =>
-      appState.salesInvoiceTrendPoints;
+  int get sellingPeriodYear => filterState.sellingPeriodYear;
+  int get sellingPeriodMonth => filterState.sellingPeriodMonth;
 
   List<SalesInvoice> get salesInvoices => _salesInvoices;
   bool get isSalesInvoicesLoading => _isSalesInvoicesLoading;
   bool get isMoreSalesInvoicesLoading => _isMoreSalesInvoicesLoading;
   bool get hasMoreSalesInvoices => _hasMoreSalesInvoices;
   String? get salesInvoicesError => _salesInvoicesError;
+
+  void updateFilterState(SellingFilterState value) {
+    filterState = value;
+  }
 
   Future<void> refreshSalesInvoices() {
     final inFlight = _salesInvoicesFetchInFlight;

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../models/purchase_receipt.dart';
 import '../../../models/quality_inspection_record.dart';
 import '../../../../state/purchasing/purchase_receipt_state.dart';
+import '../../../../state/purchasing/purchasing_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
@@ -319,6 +320,7 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
   @override
   Widget build(BuildContext context) {
     final purchasingState = context.watch<PurchaseReceiptState>();
+    final summaryState = context.watch<PurchasingSummaryState>();
     final filtered = _filter(purchasingState.purchaseReceipts);
 
     return Column(
@@ -328,9 +330,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
           title: 'Purchase Receipt',
           emptyMessage:
               'Belum ada nilai Purchase Receipt dari Purchase Analytics pada periode ini.',
-          points: purchasingState.purchaseReceiptTrendPoints,
-          selectedYear: purchasingState.buyingPeriodYear,
-          selectedMonth: purchasingState.buyingPeriodMonth,
+          points: summaryState.purchaseReceiptTrendPoints,
+          selectedYear: summaryState.buyingPeriodYear,
+          selectedMonth: summaryState.buyingPeriodMonth,
           sourceLabel: 'Sumber: Purchase Analytics ERPNext',
         ),
         const SizedBox(height: 12),

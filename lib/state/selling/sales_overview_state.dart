@@ -2,11 +2,14 @@ import '../../models/sales_workspace.dart';
 import '../../services/frappe_service.dart';
 import '../../utils/mobile_access.dart';
 import '../app_state_proxy_notifier.dart';
+import 'selling_filter_state.dart';
 
 class SalesOverviewState extends AppStateProxyNotifier {
-  SalesOverviewState({required super.appState}) {
+  SalesOverviewState({required super.appState, required this.filterState}) {
     startWatchingAppState();
   }
+
+  SellingFilterState filterState;
 
   @override
   List<Object?> get watchFields => [
@@ -14,7 +17,6 @@ class SalesOverviewState extends AppStateProxyNotifier {
     appState.isSampleMode,
     appState.mobileAccess,
     appState.currentSalesPerson,
-    appState.sellingCompanyFilter,
     appState.sellingCompanies,
     appState.sellingSalesGroups,
     appState.activeSalesVisit,
@@ -27,12 +29,16 @@ class SalesOverviewState extends AppStateProxyNotifier {
   String? get currentUser => appState.currentUser;
   String get selectedSiteBaseUrl => appState.selectedSiteBaseUrl;
   String? get currentSalesPerson => appState.currentSalesPerson;
-  String get sellingCompanyFilter => appState.sellingCompanyFilter;
-  List<String> get sellingCompanies => appState.sellingCompanies;
-  List<String> get sellingSalesGroups => appState.sellingSalesGroups;
+  String get sellingCompanyFilter => filterState.sellingCompanyFilter;
+  List<String> get sellingCompanies => filterState.sellingCompanies;
+  List<String> get sellingSalesGroups => filterState.sellingSalesGroups;
   SalesVisit? get activeSalesVisit => appState.activeSalesVisit;
   bool get canUseSales => appState.canUseSales;
   bool get isSalesManagerRole => appState.isSalesManagerRole;
+
+  void updateFilterState(SellingFilterState value) {
+    filterState = value;
+  }
 
   String? preferredCompany(Iterable<String> options) {
     return appState.preferredCompany(options);

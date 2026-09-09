@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../state/selling/collection_state.dart';
+import '../../../state/selling/selling_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/date_range_presets.dart';
 import 'ar_aging_tab.dart';
@@ -45,6 +46,7 @@ class _SalesCollectionTabState extends State<SalesCollectionTab> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<CollectionState>();
+    final summaryState = context.watch<SellingSummaryState>();
     final companies = state.sellingCompanies;
     final selectedCompany = state.sellingCompanyFilter.isNotEmpty
         ? state.sellingCompanyFilter
@@ -73,7 +75,7 @@ class _SalesCollectionTabState extends State<SalesCollectionTab> {
                       range: _range,
                       dateBasis: _dateBasis,
                       applyDateFilter: _applyDateFilter,
-                      loading: state.isOrderSummaryLoading,
+                      loading: summaryState.isOrderSummaryLoading,
                       onOpenFilter: _openCollectionPeriodFilter,
                     ),
                   ],
@@ -143,7 +145,7 @@ class _SalesCollectionTabState extends State<SalesCollectionTab> {
         initialDateBasis: _dateBasis,
         initialApplyDateFilter: _applyDateFilter,
         companies: state.sellingCompanies,
-        loading: state.isOrderSummaryLoading,
+        loading: context.read<SellingSummaryState>().isOrderSummaryLoading,
       ),
     );
     if (result == null || !mounted) return;
