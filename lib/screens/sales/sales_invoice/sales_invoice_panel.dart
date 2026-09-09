@@ -356,19 +356,34 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
           onChanged: _searchChanged,
           decoration: InputDecoration(
             hintText: 'Search SI or customer…',
-            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              size: 20,
+              color: AppColors.navy,
+            ),
             filled: true,
             fillColor: AppColors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(22),
               borderSide: BorderSide(
                 color: AppColors.primary.withValues(alpha: 0.1),
               ),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(22),
               borderSide: BorderSide(
                 color: AppColors.primary.withValues(alpha: 0.1),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(22),
+              borderSide: BorderSide(
+                color: AppColors.primary.withValues(alpha: 0.38),
+                width: 1.4,
               ),
             ),
           ),
