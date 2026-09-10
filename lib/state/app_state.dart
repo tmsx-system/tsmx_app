@@ -1068,10 +1068,7 @@ class AppState with ChangeNotifier {
     final user = _currentUser;
     final baseUrl = _frappeService.baseUrl;
     try {
-      await Future.wait([
-        if (canUseApprovals) fetchApprovalTodos(),
-        refreshNotifications(silent: true),
-      ]);
+      await refreshNotifications(silent: true);
       if (!_isSameRuntime(generation, user: user, baseUrl: baseUrl)) return;
     } catch (_) {
       // Prefetch failures should not block login.

@@ -13,6 +13,8 @@ typedef RoleScreensBuilder =
     List<Widget> Function(ValueChanged<int> onMenuSelected);
 typedef RoleFloatingActionButtonBuilder =
     Widget? Function(BuildContext context, int currentIndex);
+typedef RoleTabChangedCallback =
+    FutureOr<void> Function(BuildContext context, int currentIndex);
 
 class RoleMainScreen extends StatefulWidget {
   final String title;
@@ -20,6 +22,7 @@ class RoleMainScreen extends StatefulWidget {
   final List<NavigationDestination> destinations;
   final RoleScreensBuilder screensBuilder;
   final FutureOr<void> Function(BuildContext context)? onInitialize;
+  final RoleTabChangedCallback? onTabChanged;
   final RoleFloatingActionButtonBuilder? floatingActionButtonBuilder;
   final int initialTabIndex;
 
@@ -30,6 +33,7 @@ class RoleMainScreen extends StatefulWidget {
     required this.destinations,
     required this.screensBuilder,
     this.onInitialize,
+    this.onTabChanged,
     this.floatingActionButtonBuilder,
     this.initialTabIndex = 0,
   });
@@ -53,13 +57,24 @@ class _RoleMainScreenState extends State<RoleMainScreen> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      widget.onInitialize?.call(context);
+      unawaited(_runInitialLoad());
     });
+  }
+
+  Future<void> _runInitialLoad() async {
+    await widget.onInitialize?.call(context);
+    if (!mounted) return;
+    await _notifyTabChanged(_currentIndex);
+  }
+
+  Future<void> _notifyTabChanged(int index) async {
+    await widget.onTabChanged?.call(context, index);
   }
 
   void _changeTab(int index) {
     if (index < 0 || index >= _screens.length || index == _currentIndex) return;
     setState(() => _currentIndex = index);
+    unawaited(_notifyTabChanged(index));
   }
 
   void _redirectToLogin() {

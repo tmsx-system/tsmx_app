@@ -1,12 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/dashboard/dashboard_state.dart';
-import '../../state/logistics/logistics_overview_state.dart';
-import '../../state/purchasing/purchase_order_state.dart';
-import '../../state/selling/sales_order_state.dart';
 import '../../state/todo/todo_state.dart';
-import '../../state/warehouse/warehouse_stock_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/dashboard/dashboard_activity_carousel.dart';
 import '../../widgets/dashboard/dashboard_module_launcher.dart';
@@ -31,20 +29,9 @@ class _DashboardTabState extends State<DashboardTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final dashboardState = context.read<DashboardState>();
-      final showStockKpi =
-          dashboardState.canUseStock || dashboardState.canUseWarehouse;
-      Future.wait([
-        if (dashboardState.canUseSales)
-          context.read<SalesOrderState>().refreshSalesOrders(),
-        if (dashboardState.canUsePurchase)
-          context.read<PurchaseOrderState>().refreshPurchaseOrders(),
-        if (showStockKpi)
-          context.read<WarehouseStockState>().refreshInventory(),
-        if (dashboardState.canUseLogistics)
-          context.read<LogisticsOverviewState>().refreshDeliveryNotes(),
-        if (dashboardState.canUseApprovals)
-          context.read<TodoState>().fetchApprovalTodos(),
-      ]);
+      if (dashboardState.canUseApprovals) {
+        unawaited(context.read<TodoState>().fetchApprovalTodos());
+      }
     });
   }
 
@@ -52,23 +39,14 @@ class _DashboardTabState extends State<DashboardTab> {
   Widget build(BuildContext context) {
     final appState = context.watch<DashboardState>();
 
-    final showStockKpi = appState.canUseStock || appState.canUseWarehouse;
-
     return RefreshIndicator(
       color: AppColors.primary,
       onRefresh: () async {
-        await Future.wait([
-          if (appState.canUseSales)
-            context.read<SalesOrderState>().refreshSalesOrders(),
-          if (appState.canUsePurchase)
-            context.read<PurchaseOrderState>().refreshPurchaseOrders(),
-          if (showStockKpi)
-            context.read<WarehouseStockState>().refreshInventory(),
-          if (appState.canUseLogistics)
-            context.read<LogisticsOverviewState>().refreshDeliveryNotes(),
-          if (appState.canUseApprovals)
-            context.read<TodoState>().fetchApprovalTodos(forceRefresh: true),
-        ]);
+        if (appState.canUseApprovals) {
+          await context.read<TodoState>().fetchApprovalTodos(
+            forceRefresh: true,
+          );
+        }
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),

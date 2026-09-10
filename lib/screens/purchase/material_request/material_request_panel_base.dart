@@ -61,20 +61,6 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final purchasingState = context.read<MaterialRequestState>();
-      if (purchasingState.materialRequests.isEmpty) {
-        purchasingState.refreshMaterialRequests();
-      }
-      if (purchasingState.inventory.isEmpty) {
-        purchasingState.refreshInventory();
-      }
-    });
-  }
-
-  @override
   void dispose() {
     _searchDebounce?.cancel();
     super.dispose();

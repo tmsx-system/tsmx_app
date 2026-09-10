@@ -63,17 +63,6 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final sellingState = context.read<SalesOrderState>();
-      if (sellingState.salesOrders.isEmpty) {
-        sellingState.refreshSalesOrders();
-      }
-    });
-  }
-
-  @override
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();

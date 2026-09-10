@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../state/warehouse/warehouse_stock_state.dart';
@@ -25,6 +27,7 @@ class _StockTabState extends State<StockTab> {
   _StockSortOption _stockSortOption = _StockSortOption.urgentFirst;
   String? _selectedItemGroup;
   bool _selectionInitialized = false;
+  bool _stockEntriesRequested = false;
 
   @override
   void initState() {
@@ -52,9 +55,7 @@ class _StockTabState extends State<StockTab> {
       await appState.refreshInventoryForCompany(_selectedCompany!);
     }
 
-    if (appState.stockEntries.isEmpty) {
-      await appState.refreshStockEntries();
-    }
+    _requestStockEntries(appState);
   }
 
   void _applyDefaultSelection(WarehouseStockState appState) {
@@ -80,6 +81,18 @@ class _StockTabState extends State<StockTab> {
     if (_selectedCompany != null) {
       await appState.refreshInventoryForCompany(_selectedCompany!);
     }
+    _stockEntriesRequested = false;
+    _requestStockEntries(appState);
+  }
+
+  void _requestStockEntries(WarehouseStockState appState) {
+    if (_stockEntriesRequested ||
+        appState.stockEntries.isNotEmpty ||
+        appState.isStockEntriesLoading) {
+      return;
+    }
+    _stockEntriesRequested = true;
+    unawaited(appState.refreshStockEntries());
   }
 
   @override
@@ -513,6 +526,7 @@ class _StockTabState extends State<StockTab> {
   }
 
   Widget _buildStockEntriesSection(WarehouseStockState appState) {
+    _requestStockEntries(appState);
     final entries = appState.stockEntries.take(8).toList();
 
     if (appState.isStockEntriesLoading) {

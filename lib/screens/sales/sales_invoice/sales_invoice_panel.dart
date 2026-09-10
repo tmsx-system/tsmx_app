@@ -51,17 +51,6 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final sellingState = context.read<SalesInvoiceState>();
-      if (sellingState.salesInvoices.isEmpty) {
-        sellingState.refreshSalesInvoices();
-      }
-    });
-  }
-
-  @override
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();

@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../models/purchase_order.dart';
-import '../../state/purchasing/purchase_invoice_state.dart';
-import '../../state/purchasing/purchase_order_state.dart';
-import '../../state/purchasing/purchase_receipt_state.dart';
-import '../../state/purchasing/purchasing_filter_state.dart';
 import '../../state/purchasing/purchasing_summary_state.dart';
 import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
@@ -35,62 +30,23 @@ class _PurchaseOverviewTabState extends State<PurchaseOverviewTab> {
     _didInitialLoad = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final orderState = context.read<PurchaseOrderState>();
-      final receiptState = context.read<PurchaseReceiptState>();
-      final invoiceState = context.read<PurchaseInvoiceState>();
       final summaryState = context.read<PurchasingSummaryState>();
-      Future.wait([
-        summaryState.refreshBuyingSummaries(),
-        if (orderState.purchaseOrders.isEmpty)
-          orderState.refreshPurchaseOrders(),
-        if (receiptState.purchaseReceipts.isEmpty)
-          receiptState.refreshPurchaseReceipts(),
-        if (invoiceState.purchaseInvoices.isEmpty)
-          invoiceState.refreshPurchaseInvoices(),
-      ]);
+      summaryState.refreshBuyingSummaries();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<PurchasingFilterState>();
     final summaryState = context.watch<PurchasingSummaryState>();
-    final orderState = context.watch<PurchaseOrderState>();
-    final receiptState = context.watch<PurchaseReceiptState>();
-    final invoiceState = context.watch<PurchaseInvoiceState>();
     final todoState = context.watch<TodoState>();
-    final outstandingPo = orderState.purchaseOrders
-        .where(
-          (po) =>
-              po.statusKey != PurchaseOrderStatusKey.completed &&
-              po.statusKey != PurchaseOrderStatusKey.cancelled &&
-              po.statusKey != PurchaseOrderStatusKey.closed,
-        )
-        .length;
-    final outstandingDebt = invoiceState.purchaseInvoices.fold<double>(
-      0,
-      (sum, invoice) => sum + invoice.outstandingAmount,
-    );
-    final overdueInvoices = invoiceState.purchaseInvoices
-        .where((invoice) => invoice.isOverdue)
-        .length;
-    final receiptIssues = receiptState.purchaseReceipts
-        .where(
-          (receipt) =>
-              receipt.totalRejectedQty > 0 ||
-              receipt.totalVarianceQty.abs() > 0.0001,
-        )
-        .length;
+    final outstandingPo = summaryState.purchaseOrderSummary.documentCount;
+    final outstandingDebt = summaryState.purchaseInvoiceSummary.totalValue;
+    const overdueInvoices = 0;
+    const receiptIssues = 0;
 
     return RefreshIndicator(
       onRefresh: () async {
-        await Future.wait([
-          summaryState.refreshBuyingSummaries(),
-          orderState.refreshPurchaseOrders(),
-          receiptState.refreshPurchaseReceipts(),
-          invoiceState.refreshPurchaseInvoices(),
-          state.refreshInventory(),
-        ]);
+        await summaryState.refreshBuyingSummaries();
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),

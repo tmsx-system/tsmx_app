@@ -28,6 +28,7 @@ class PurchaseMainScreen extends StatefulWidget {
 
 class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
   Future<_PurchaseDoctypePermissions>? _permissionsFuture;
+  final Set<String> _loadedDoctypeKeys = <String>{};
 
   @override
   void didChangeDependencies() {
@@ -68,6 +69,8 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
       onInitialize: (context) async {
         await context.read<PurchasingFilterState>().loadBuyingFilterOptions();
       },
+      onTabChanged: (context, index) =>
+          _ensureEntryLoaded(context, entries[index].key),
       screensBuilder: (onMenuSelected) => entries
           .map((entry) {
             if (entry.key == 'home') {
@@ -86,6 +89,16 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
       floatingActionButtonBuilder: (context, currentIndex) =>
           _buildPurchaseFab(context, currentIndex, entries),
       destinations: entries.map((entry) => entry.destination).toList(),
+    );
+  }
+
+  Future<void> _ensureEntryLoaded(BuildContext context, String key) async {
+    if (key == 'home') return;
+    if (!_loadedDoctypeKeys.add(key)) return;
+    await _refreshPurchaseDoctype(
+      context,
+      key,
+      includeInventoryForMaterialRequest: true,
     );
   }
 
@@ -322,12 +335,32 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
     await Navigator.of(context).push(route);
     if (!context.mounted) return;
 
-    await switch (key) {
-      'pr' => context.read<PurchaseReceiptState>().refreshPurchaseReceipts(),
-      'pi' => context.read<PurchaseInvoiceState>().refreshPurchaseInvoices(),
-      'mr' => context.read<MaterialRequestState>().refreshMaterialRequests(),
-      _ => context.read<PurchaseOrderState>().refreshPurchaseOrders(),
-    };
+    await _refreshPurchaseDoctype(context, key);
+  }
+}
+
+Future<void> _refreshPurchaseDoctype(
+  BuildContext context,
+  String key, {
+  bool includeInventoryForMaterialRequest = false,
+}) async {
+  switch (key) {
+    case 'pr':
+      await context.read<PurchaseReceiptState>().refreshPurchaseReceipts();
+      break;
+    case 'pi':
+      await context.read<PurchaseInvoiceState>().refreshPurchaseInvoices();
+      break;
+    case 'mr':
+      final state = context.read<MaterialRequestState>();
+      await state.refreshMaterialRequests();
+      if (includeInventoryForMaterialRequest && state.inventory.isEmpty) {
+        await state.refreshInventory();
+      }
+      break;
+    default:
+      await context.read<PurchaseOrderState>().refreshPurchaseOrders();
+      break;
   }
 }
 
@@ -406,12 +439,7 @@ class _PurchasePane extends StatelessWidget {
   }
 
   Future<void> _refreshActiveDoctype(BuildContext context) {
-    return switch (doctypeKey) {
-      'pr' => context.read<PurchaseReceiptState>().refreshPurchaseReceipts(),
-      'pi' => context.read<PurchaseInvoiceState>().refreshPurchaseInvoices(),
-      'mr' => context.read<MaterialRequestState>().refreshMaterialRequests(),
-      _ => context.read<PurchaseOrderState>().refreshPurchaseOrders(),
-    };
+    return _refreshPurchaseDoctype(context, doctypeKey);
   }
 }
 

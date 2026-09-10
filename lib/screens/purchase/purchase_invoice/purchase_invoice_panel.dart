@@ -49,17 +49,6 @@ class _PurchaseInvoicePanelState extends State<PurchaseInvoicePanel> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final purchasingState = context.read<PurchaseInvoiceState>();
-      if (purchasingState.purchaseInvoices.isEmpty) {
-        purchasingState.refreshPurchaseInvoices();
-      }
-    });
-  }
-
-  @override
   void dispose() {
     _searchDebounce?.cancel();
     super.dispose();

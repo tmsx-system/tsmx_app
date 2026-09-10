@@ -27,6 +27,7 @@ class LogisticsMainScreen extends StatefulWidget {
 
 class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
   Future<_LogisticsDoctypePermissions>? _permissionsFuture;
+  final Set<String> _loadedTabs = <String>{};
 
   @override
   void didChangeDependencies() {
@@ -60,23 +61,32 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
     return RoleMainScreen(
       title: 'Logistics',
       fallbackUsername: 'Logistics',
-      onInitialize: (_) async {
-        if (permissions.canReadDeliveryNote) {
-          await Future.wait([
-            if (!widget.trackingOnly && !widget.deliveryOnly)
-              context.read<LogisticsOverviewState>().refreshDeliveryNotes(),
-            if (!widget.deliveryOnly)
-              context.read<LogisticsTrackingState>().refreshDeliveryNotes(),
-            if (!widget.trackingOnly)
-              context.read<LogisticsDeliveryState>().refreshDeliveryNotes(),
-          ]);
-        }
-      },
+      onTabChanged: (context, index) =>
+          _ensureLogisticsTabLoaded(context, entries[index].key, permissions),
       screensBuilder: (onMenuSelected) => entries
           .map((entry) => entry.builder(onMenuSelected))
           .toList(growable: false),
       destinations: entries.map((entry) => entry.destination).toList(),
     );
+  }
+
+  Future<void> _ensureLogisticsTabLoaded(
+    BuildContext context,
+    String key,
+    _LogisticsDoctypePermissions permissions,
+  ) async {
+    if (!permissions.canReadDeliveryNote || !_loadedTabs.add(key)) return;
+    switch (key) {
+      case 'home':
+        await context.read<LogisticsOverviewState>().refreshDeliveryNotes();
+        break;
+      case 'tracking':
+        await context.read<LogisticsTrackingState>().refreshDeliveryNotes();
+        break;
+      case 'delivery':
+        await context.read<LogisticsDeliveryState>().refreshDeliveryNotes();
+        break;
+    }
   }
 
   List<_LogisticsMenuEntry> _buildMenuEntries(

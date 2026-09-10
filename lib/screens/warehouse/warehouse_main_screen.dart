@@ -28,6 +28,7 @@ class WarehouseMainScreen extends StatefulWidget {
 
 class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
   Future<_WarehouseDoctypePermissions>? _permissionsFuture;
+  final Set<String> _loadedTabs = <String>{};
 
   @override
   void didChangeDependencies() {
@@ -63,19 +64,40 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
       title: widget.qualityOnly ? 'Quality Control' : 'Warehouse',
       fallbackUsername: widget.qualityOnly ? 'Quality Control' : 'Warehouse',
       initialTabIndex: initial,
-      onInitialize: (_) async {
-        final state = context.read<WarehouseStockState>();
-        await Future.wait([
-          if (permissions.canReadWarehouse) state.refreshWarehouses(),
-          if (permissions.canReadStock) state.refreshInventory(),
-          if (permissions.canReadStockEntry) state.refreshStockEntries(),
-        ]);
-      },
+      onTabChanged: (context, index) =>
+          _ensureWarehouseTabLoaded(context, entries[index].key, permissions),
       screensBuilder: (onMenuSelected) => entries
           .map((entry) => entry.builder(onMenuSelected))
           .toList(growable: false),
       destinations: entries.map((entry) => entry.destination).toList(),
     );
+  }
+
+  Future<void> _ensureWarehouseTabLoaded(
+    BuildContext context,
+    String key,
+    _WarehouseDoctypePermissions permissions,
+  ) async {
+    if (!_loadedTabs.add(key)) return;
+    final state = context.read<WarehouseStockState>();
+    switch (key) {
+      case 'home':
+        await Future.wait([
+          if (permissions.canReadWarehouse && state.warehouses.isEmpty)
+            state.refreshWarehouses(),
+          if (permissions.canReadStock && state.inventory.isEmpty)
+            state.refreshInventory(),
+        ]);
+        break;
+      case 'ops':
+        if (permissions.canReadWarehouse && state.warehouses.isEmpty) {
+          await state.refreshWarehouses();
+        }
+        break;
+      case 'stock':
+      case 'qc':
+        break;
+    }
   }
 
   List<_WarehouseMenuEntry> _buildMenuEntries(

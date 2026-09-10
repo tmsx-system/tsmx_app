@@ -56,17 +56,6 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final sellingState = context.read<DeliveryNoteState>();
-      if (sellingState.deliveryNotes.isEmpty) {
-        sellingState.refreshDeliveryNotes();
-      }
-    });
-  }
-
-  @override
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
