@@ -419,27 +419,51 @@ class _PurchasePane extends StatelessWidget {
     return RefreshIndicator(
       color: AppColors.primary,
       onRefresh: () => _refreshActiveDoctype(context),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-        children: [
-          _PurchasePeriodFilterBar(
-            selectedYear: state.buyingPeriodYear,
-            selectedMonth: state.buyingPeriodMonth,
-            selectedCompany: state.buyingCompanyFilter,
-            selectedSupplierType: state.buyingSupplierTypeFilter,
-            loading: summaryState.isOrderSummaryLoading,
-            onOpenFilter: () => _openPurchasePeriodFilter(context),
-          ),
-          const SizedBox(height: 14),
-          child,
-        ],
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.extentAfter > 320) return false;
+          _loadMoreActiveDoctype(context);
+          return false;
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+          children: [
+            _PurchasePeriodFilterBar(
+              selectedYear: state.buyingPeriodYear,
+              selectedMonth: state.buyingPeriodMonth,
+              selectedCompany: state.buyingCompanyFilter,
+              selectedSupplierType: state.buyingSupplierTypeFilter,
+              loading: summaryState.isOrderSummaryLoading,
+              onOpenFilter: () => _openPurchasePeriodFilter(context),
+            ),
+            const SizedBox(height: 14),
+            child,
+          ],
+        ),
       ),
     );
   }
 
   Future<void> _refreshActiveDoctype(BuildContext context) {
     return _refreshPurchaseDoctype(context, doctypeKey);
+  }
+
+  void _loadMoreActiveDoctype(BuildContext context) {
+    switch (doctypeKey) {
+      case 'pr':
+        context.read<PurchaseReceiptState>().loadMorePurchaseReceipts();
+        break;
+      case 'pi':
+        context.read<PurchaseInvoiceState>().loadMorePurchaseInvoices();
+        break;
+      case 'mr':
+        context.read<MaterialRequestState>().loadMoreMaterialRequests();
+        break;
+      default:
+        context.read<PurchaseOrderState>().loadMorePurchaseOrders();
+        break;
+    }
   }
 }
 

@@ -8,6 +8,7 @@ import '../../models/stock_ledger_movement.dart';
 import '../../models/warehouse_info.dart';
 import '../../models/warehouse_tracking_record.dart';
 import '../../services/frappe_service.dart';
+import '../../services/local_app_database.dart';
 import '../../utils/date_range_presets.dart';
 import '../../utils/frappe_page_walker.dart';
 import '../../utils/num_parse.dart';
@@ -20,6 +21,9 @@ class WarehouseStockState extends AppStateProxyNotifier {
 
   static const int _pageSize = 500;
   static const int _listLimit = 500;
+  static const Duration _masterCacheTtl = Duration(hours: 12);
+  static const String _warehouseCachePrefix = 'warehouse_master_cache';
+  static const String _itemGroupCachePrefix = 'item_group_master_cache';
 
   List<WarehouseInfo> _warehouses = const [];
   List<InventoryItem> _inventory = const [];
@@ -113,6 +117,18 @@ class WarehouseStockState extends AppStateProxyNotifier {
       return;
     }
 
+    final cacheKey = _cacheKey(_warehouseCachePrefix);
+    if (_warehouses.isEmpty) {
+      final cachedRows = await _readCachedRows(cacheKey);
+      if (cachedRows != null) {
+        _warehouses = cachedRows
+            .map(WarehouseInfo.fromJson)
+            .where((row) => row.name.isNotEmpty && !row.isGroup)
+            .toList();
+        notifyListeners();
+      }
+    }
+
     try {
       await appState.frappeService.ensureLoggedIn();
       List<Map<String, dynamic>> rows;
@@ -155,6 +171,10 @@ class WarehouseStockState extends AppStateProxyNotifier {
           .map(WarehouseInfo.fromJson)
           .where((row) => row.name.isNotEmpty && !row.isGroup)
           .toList();
+      await _writeCachedRows(
+        cacheKey,
+        _warehouses.map(_warehouseToJson).toList(),
+      );
     } catch (_) {
       if (_warehouses.isEmpty) _warehouses = appState.warehouses;
     } finally {
@@ -167,6 +187,21 @@ class WarehouseStockState extends AppStateProxyNotifier {
       _itemGroups = _groupsFromInventory();
       notifyListeners();
       return;
+    }
+
+    final cacheKey = _cacheKey(_itemGroupCachePrefix);
+    if (_itemGroups.isEmpty) {
+      final cachedRows = await _readCachedRows(cacheKey);
+      if (cachedRows != null) {
+        _itemGroups =
+            cachedRows
+                .map((row) => row['name']?.toString().trim() ?? '')
+                .where((group) => group.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort();
+        notifyListeners();
+      }
     }
 
     try {
@@ -184,12 +219,52 @@ class WarehouseStockState extends AppStateProxyNotifier {
               .toSet()
               .toList()
             ..sort();
+      await _writeCachedRows(
+        cacheKey,
+        _itemGroups.map((name) => {'name': name}).toList(),
+      );
     } catch (_) {
       final fallback = _groupsFromInventory();
       if (fallback.isNotEmpty) _itemGroups = fallback;
     } finally {
       notifyListeners();
     }
+  }
+
+  String _cacheKey(String prefix) {
+    return [
+      prefix,
+      appState.selectedSiteBaseUrl.trim(),
+      appState.currentUser?.trim() ?? '',
+    ].join('|');
+  }
+
+  Future<List<Map<String, dynamic>>?> _readCachedRows(String key) async {
+    final json = await LocalAppDatabase.instance.readJson(key);
+    final rows = json?['rows'];
+    if (rows is! List) return null;
+    return rows
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<void> _writeCachedRows(String key, List<Map<String, dynamic>> rows) {
+    return LocalAppDatabase.instance.writeJson(key, {
+      'rows': rows,
+    }, ttl: _masterCacheTtl);
+  }
+
+  Map<String, dynamic> _warehouseToJson(WarehouseInfo warehouse) {
+    return {
+      'name': warehouse.name,
+      'warehouse_name': warehouse.displayName,
+      'company': warehouse.company,
+      if (warehouse.parentWarehouse != null)
+        'parent_warehouse': warehouse.parentWarehouse,
+      'is_group': warehouse.isGroup ? 1 : 0,
+      'disabled': warehouse.isDisabled == true ? 1 : 0,
+    };
   }
 
   Future<void> refreshInventory() {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -18,6 +20,7 @@ class LogisticsTrackingTab extends StatefulWidget {
 
 class _LogisticsTrackingTabState extends State<LogisticsTrackingTab> {
   final _search = TextEditingController();
+  Timer? _debounce;
   _TrackingScope _scope = _TrackingScope.all;
 
   @override
@@ -28,12 +31,23 @@ class _LogisticsTrackingTabState extends State<LogisticsTrackingTab> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _search.dispose();
     super.dispose();
   }
 
   Future<void> _refresh(BuildContext context) {
     return context.read<LogisticsTrackingState>().refreshDeliveryNotes();
+  }
+
+  void _searchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      context.read<LogisticsTrackingState>().setDeliveryNoteQuery(
+        search: value,
+      );
+    });
   }
 
   @override
@@ -57,90 +71,99 @@ class _LogisticsTrackingTabState extends State<LogisticsTrackingTab> {
 
     return RefreshIndicator(
       onRefresh: () => _refresh(context),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: logisticsPagePaddingOf(context),
-        children: [
-          LogisticsHeroSummaryCard(
-            title: 'Tracking Armada',
-            subtitle: 'Pantau status delivery dan bukti pengiriman',
-            icon: Icons.route_rounded,
-            stats: [
-              LogisticsHeroStat(
-                label: 'Outstanding',
-                value: '${docs.where(_isOutstanding).length}',
-              ),
-              LogisticsHeroStat(label: 'To Bill', value: '$toBill'),
-              LogisticsHeroStat(label: 'Completed', value: '$completed'),
-              LogisticsHeroStat(label: 'Return', value: '$returns'),
-            ],
-          ),
-          const SizedBox(height: 14),
-          LogisticsMetricGrid(
-            items: [
-              LogisticsMetricItem(
-                label: 'Outstanding',
-                value: '${docs.where(_isOutstanding).length}',
-                icon: Icons.pending_actions_rounded,
-                color: AppColors.warning,
-              ),
-              LogisticsMetricItem(
-                label: 'To Bill',
-                value: '$toBill',
-                icon: Icons.receipt_long_outlined,
-                color: AppColors.primary,
-              ),
-              LogisticsMetricItem(
-                label: 'Completed',
-                value: '$completed',
-                icon: Icons.task_alt_rounded,
-                color: AppColors.success,
-              ),
-              LogisticsMetricItem(
-                label: 'Return',
-                value: '$returns',
-                icon: Icons.undo_rounded,
-                color: AppColors.warning,
-              ),
-            ],
-          ),
-          if (state.isDeliveryNotesLoading) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
-          ],
-          if (state.deliveryNotesError != null) ...[
-            const SizedBox(height: 12),
-            LogisticsInfoPanel(
-              message: _friendlyError(state.deliveryNotesError!),
-              icon: Icons.error_outline_rounded,
-              color: AppColors.danger,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.extentAfter > 320) return false;
+          context.read<LogisticsTrackingState>().loadMoreDeliveryNotes();
+          return false;
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: logisticsPagePaddingOf(context),
+          children: [
+            LogisticsHeroSummaryCard(
+              title: 'Tracking Armada',
+              subtitle: 'Pantau status delivery dan bukti pengiriman',
+              icon: Icons.route_rounded,
+              stats: [
+                LogisticsHeroStat(
+                  label: 'Outstanding',
+                  value: '${docs.where(_isOutstanding).length}',
+                ),
+                LogisticsHeroStat(label: 'To Bill', value: '$toBill'),
+                LogisticsHeroStat(label: 'Completed', value: '$completed'),
+                LogisticsHeroStat(label: 'Return', value: '$returns'),
+              ],
             ),
+            const SizedBox(height: 14),
+            LogisticsMetricGrid(
+              items: [
+                LogisticsMetricItem(
+                  label: 'Outstanding',
+                  value: '${docs.where(_isOutstanding).length}',
+                  icon: Icons.pending_actions_rounded,
+                  color: AppColors.warning,
+                ),
+                LogisticsMetricItem(
+                  label: 'To Bill',
+                  value: '$toBill',
+                  icon: Icons.receipt_long_outlined,
+                  color: AppColors.primary,
+                ),
+                LogisticsMetricItem(
+                  label: 'Completed',
+                  value: '$completed',
+                  icon: Icons.task_alt_rounded,
+                  color: AppColors.success,
+                ),
+                LogisticsMetricItem(
+                  label: 'Return',
+                  value: '$returns',
+                  icon: Icons.undo_rounded,
+                  color: AppColors.warning,
+                ),
+              ],
+            ),
+            if (state.isDeliveryNotesLoading) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (state.deliveryNotesError != null) ...[
+              const SizedBox(height: 12),
+              LogisticsInfoPanel(
+                message: _friendlyError(state.deliveryNotesError!),
+                icon: Icons.error_outline_rounded,
+                color: AppColors.danger,
+              ),
+            ],
+            const SizedBox(height: 16),
+            LogisticsSectionHeader(
+              title: 'Monitoring Perjalanan',
+              subtitle:
+                  '${visibleDocs.length} dari ${docs.length} Delivery Note',
+              icon: Icons.map_outlined,
+            ),
+            const SizedBox(height: 12),
+            _TrackingScopeSelector(
+              selected: _scope,
+              onChanged: (scope) => setState(() => _scope = scope),
+            ),
+            const SizedBox(height: 12),
+            LogisticsSearchField(
+              controller: _search,
+              onChanged: _searchChanged,
+              hintText: 'Cari Delivery Note atau customer',
+            ),
+            const SizedBox(height: 12),
+            if (visibleDocs.isEmpty && !state.isDeliveryNotesLoading)
+              const ErpEmptyState(
+                title: 'Belum ada Delivery Note',
+                message: 'Ubah filter atau tarik layar untuk refresh.',
+              )
+            else
+              ...visibleDocs.map((doc) => _trackingCard(context, doc)),
           ],
-          const SizedBox(height: 16),
-          LogisticsSectionHeader(
-            title: 'Monitoring Perjalanan',
-            subtitle: '${visibleDocs.length} dari ${docs.length} Delivery Note',
-            icon: Icons.map_outlined,
-          ),
-          const SizedBox(height: 12),
-          _TrackingScopeSelector(
-            selected: _scope,
-            onChanged: (scope) => setState(() => _scope = scope),
-          ),
-          const SizedBox(height: 12),
-          LogisticsSearchField(
-            controller: _search,
-            hintText: 'Cari Delivery Note atau customer',
-          ),
-          const SizedBox(height: 12),
-          if (visibleDocs.isEmpty && !state.isDeliveryNotesLoading)
-            const ErpEmptyState(
-              title: 'Belum ada Delivery Note',
-              message: 'Ubah filter atau tarik layar untuk refresh.',
-            )
-          else
-            ...visibleDocs.map((doc) => _trackingCard(context, doc)),
-        ],
+        ),
       ),
     );
   }

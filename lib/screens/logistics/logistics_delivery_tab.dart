@@ -226,117 +226,124 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
 
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: logisticsPagePaddingOf(context),
-        children: [
-          LogisticsSectionHeader(
-            title: 'Delivery Monitoring',
-            subtitle: '$outstanding outstanding delivery perlu dicek',
-            icon: Icons.assignment_turned_in_rounded,
-          ),
-          const SizedBox(height: 14),
-          LogisticsMetricGrid(
-            footer: '${allRows.length} dokumen pengiriman dimuat',
-            items: [
-              LogisticsMetricItem(
-                label: 'Outstanding',
-                value: '$outstanding',
-                icon: Icons.pending_actions_rounded,
-                color: AppColors.warning,
-              ),
-              LogisticsMetricItem(
-                label: 'Completed',
-                value: '$completed',
-                icon: Icons.task_alt_rounded,
-                color: AppColors.success,
-              ),
-              LogisticsMetricItem(
-                label: 'Draft',
-                value: '$draft',
-                icon: Icons.edit_note_rounded,
-                color: AppColors.slate,
-              ),
-              LogisticsMetricItem(
-                label: 'Nilai Outstanding',
-                value: 'Rp ${formatErpCurrency(outstandingValue)}',
-                icon: Icons.payments_outlined,
-                color: AppColors.primary,
-                compactValue: true,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.extentAfter > 320) return false;
+          context.read<LogisticsDeliveryState>().loadMoreDeliveryNotes();
+          return false;
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: logisticsPagePaddingOf(context),
+          children: [
+            LogisticsSectionHeader(
+              title: 'Delivery Monitoring',
+              subtitle: '$outstanding outstanding delivery perlu dicek',
+              icon: Icons.assignment_turned_in_rounded,
+            ),
+            const SizedBox(height: 14),
+            LogisticsMetricGrid(
+              footer: '${allRows.length} dokumen pengiriman dimuat',
+              items: [
+                LogisticsMetricItem(
+                  label: 'Outstanding',
+                  value: '$outstanding',
+                  icon: Icons.pending_actions_rounded,
+                  color: AppColors.warning,
+                ),
+                LogisticsMetricItem(
+                  label: 'Completed',
+                  value: '$completed',
+                  icon: Icons.task_alt_rounded,
+                  color: AppColors.success,
+                ),
+                LogisticsMetricItem(
+                  label: 'Draft',
+                  value: '$draft',
+                  icon: Icons.edit_note_rounded,
+                  color: AppColors.slate,
+                ),
+                LogisticsMetricItem(
+                  label: 'Nilai Outstanding',
+                  value: 'Rp ${formatErpCurrency(outstandingValue)}',
+                  icon: Icons.payments_outlined,
+                  color: AppColors.primary,
+                  compactValue: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            LogisticsSearchField(
+              controller: _search,
+              onChanged: _searchChanged,
+              hintText: 'Cari Delivery Note atau customer',
+            ),
+            const SizedBox(height: 10),
+            _DeliveryScopeSelector(
+              selected: _scope,
+              onChanged: (scope) => setState(() => _scope = scope),
+            ),
+            if (appState.isDeliveryNotesLoading) ...[
+              const SizedBox(height: 10),
+              const LinearProgressIndicator(),
+            ],
+            if (appState.deliveryNotesError != null) ...[
+              const SizedBox(height: 10),
+              LogisticsInfoPanel(
+                message: _friendlyError(appState.deliveryNotesError!),
+                icon: Icons.error_outline_rounded,
+                color: AppColors.danger,
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          LogisticsSearchField(
-            controller: _search,
-            onChanged: _searchChanged,
-            hintText: 'Cari Delivery Note atau customer',
-          ),
-          const SizedBox(height: 10),
-          _DeliveryScopeSelector(
-            selected: _scope,
-            onChanged: (scope) => setState(() => _scope = scope),
-          ),
-          if (appState.isDeliveryNotesLoading) ...[
-            const SizedBox(height: 10),
-            const LinearProgressIndicator(),
-          ],
-          if (appState.deliveryNotesError != null) ...[
-            const SizedBox(height: 10),
-            LogisticsInfoPanel(
-              message: _friendlyError(appState.deliveryNotesError!),
-              icon: Icons.error_outline_rounded,
-              color: AppColors.danger,
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              LogisticsInfoPanel(
+                message: _error!,
+                icon: Icons.error_outline_rounded,
+                color: AppColors.danger,
+              ),
+            ],
+            logisticsSectionGap,
+            LogisticsSectionHeader(
+              title: 'Delivery Notes Mobile',
+              subtitle: '${rows.length} dokumen ditampilkan',
+              icon: Icons.description_outlined,
             ),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            LogisticsInfoPanel(
-              message: _error!,
-              icon: Icons.error_outline_rounded,
-              color: AppColors.danger,
-            ),
-          ],
-          logisticsSectionGap,
-          LogisticsSectionHeader(
-            title: 'Delivery Notes Mobile',
-            subtitle: '${rows.length} dokumen ditampilkan',
-            icon: Icons.description_outlined,
-          ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty && !appState.isDeliveryNotesLoading)
-            const ErpEmptyState(
-              title: 'Delivery Note tidak ditemukan',
-              message: 'Ubah filter/pencarian atau tarik untuk refresh.',
-            )
-          else
-            ...rows.map(_deliveryCard),
-          if (appState.hasMoreDeliveryNotes ||
-              appState.isMoreDeliveryNotesLoading) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: appState.isMoreDeliveryNotesLoading
-                    ? null
-                    : () => context
-                          .read<LogisticsDeliveryState>()
-                          .loadMoreDeliveryNotes(),
-                icon: appState.isMoreDeliveryNotesLoading
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.expand_more_rounded),
-                label: Text(
-                  appState.isMoreDeliveryNotesLoading
-                      ? 'Loading delivery...'
-                      : 'Load more delivery notes',
+            const SizedBox(height: 12),
+            if (rows.isEmpty && !appState.isDeliveryNotesLoading)
+              const ErpEmptyState(
+                title: 'Delivery Note tidak ditemukan',
+                message: 'Ubah filter/pencarian atau tarik untuk refresh.',
+              )
+            else
+              ...rows.map(_deliveryCard),
+            if (appState.hasMoreDeliveryNotes ||
+                appState.isMoreDeliveryNotesLoading) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: appState.isMoreDeliveryNotesLoading
+                      ? null
+                      : () => context
+                            .read<LogisticsDeliveryState>()
+                            .loadMoreDeliveryNotes(),
+                  icon: appState.isMoreDeliveryNotesLoading
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.expand_more_rounded),
+                  label: Text(
+                    appState.isMoreDeliveryNotesLoading
+                        ? 'Loading delivery...'
+                        : 'Load more delivery notes',
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
