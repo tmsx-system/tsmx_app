@@ -31,13 +31,11 @@ class WarehouseDeadStockState extends ChangeNotifier {
     int lookbackDays = 365,
     bool forceRefresh = false,
   }) async {
-    if (_stockState.inventory.isEmpty || forceRefresh) {
-      await _stockState.refreshInventory();
-    }
+    final inventory = await _stockState.fetchInventorySnapshot();
     final latestMovement = await _latestMovementDates(lookbackDays);
     final today = DateTime.now();
     return [
-      for (final item in _stockState.inventory)
+      for (final item in inventory)
         if (item.quantity > 0)
           DeadStockItem(
             itemCode: item.sku,
@@ -62,9 +60,7 @@ class WarehouseDeadStockState extends ChangeNotifier {
     int periodDays = 30,
     bool forceRefresh = false,
   }) async {
-    if (_stockState.inventory.isEmpty || forceRefresh) {
-      await _stockState.refreshInventory();
-    }
+    final inventory = await _stockState.fetchInventorySnapshot();
     await _stockState.appState.frappeService.ensureLoggedIn();
 
     final today = DateTime.now();
@@ -105,7 +101,7 @@ class WarehouseDeadStockState extends ChangeNotifier {
     }
 
     return [
-      for (final item in _stockState.inventory)
+      for (final item in inventory)
         if (item.quantity > 0)
           StockMovementVelocityItem(
             itemCode: item.sku,

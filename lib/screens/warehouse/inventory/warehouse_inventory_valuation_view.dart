@@ -20,16 +20,21 @@ class WarehouseInventoryValuationView extends StatefulWidget {
 
 class _WarehouseInventoryValuationViewState
     extends State<WarehouseInventoryValuationView> {
+  static const int _visiblePageSize = 50;
+
   final _search = TextEditingController();
   String? _warehouse;
   _ValuationSort _sort = _ValuationSort.highestValue;
+  int _visibleLimit = _visiblePageSize;
   bool _loading = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _search.addListener(() => setState(() {}));
+    _search.addListener(() {
+      setState(() => _visibleLimit = _visiblePageSize);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
@@ -57,55 +62,75 @@ class _WarehouseInventoryValuationViewState
   Widget build(BuildContext context) {
     final state = context.watch<WarehouseValuationState>();
     final rows = _filteredRows(state.inventory);
+    final visibleRows = rows.take(_visibleLimit).toList();
     final warehouses =
         state.warehouses
             .where((row) => !row.isGroup && row.isDisabled != true)
             .toList()
           ..sort((a, b) => a.name.compareTo(b.name));
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: warehousePagePaddingOf(context),
-        children: [
-          WarehouseSearchField(
-            controller: _search,
-            hintText: 'Cari item atau kode',
-          ),
-          const SizedBox(height: 10),
-          _buildFilterBar(warehouses.map((row) => row.name).toList()),
-          if (_loading) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: const TextStyle(
-                color: AppColors.danger,
-                fontWeight: FontWeight.w800,
-              ),
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter <= 280 &&
+            _visibleLimit < rows.length) {
+          setState(() {
+            _visibleLimit = (_visibleLimit + _visiblePageSize).clamp(
+              0,
+              rows.length,
+            );
+          });
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: warehousePagePaddingOf(context),
+          children: [
+            WarehouseSearchField(
+              controller: _search,
+              hintText: 'Cari item atau kode',
             ),
+            const SizedBox(height: 10),
+            _buildFilterBar(warehouses.map((row) => row.name).toList()),
+            if (_loading) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+            warehouseSectionGap,
+            WarehouseSectionHeader(
+              title: 'Nilai per Item',
+              subtitle: _rowsSubtitle(visibleRows.length, rows.length),
+              icon: Icons.list_alt_rounded,
+            ),
+            const SizedBox(height: 12),
+            if (rows.isEmpty && !_loading)
+              const ErpEmptyState(
+                title: 'Data valuasi tidak ditemukan',
+                message: 'Ubah filter atau tarik ke bawah untuk refresh.',
+              )
+            else
+              ...visibleRows.map(_valuationCard),
           ],
-          warehouseSectionGap,
-          WarehouseSectionHeader(
-            title: 'Nilai per Item',
-            subtitle: '${rows.length} baris stok ditampilkan',
-            icon: Icons.list_alt_rounded,
-          ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty && !_loading)
-            const ErpEmptyState(
-              title: 'Data valuasi tidak ditemukan',
-              message: 'Ubah filter atau tarik ke bawah untuk refresh.',
-            )
-          else
-            ...rows.map(_valuationCard),
-        ],
+        ),
       ),
     );
+  }
+
+  String _rowsSubtitle(int visible, int total) {
+    if (visible >= total) return '$total baris stok ditampilkan';
+    return '$visible dari $total baris stok ditampilkan';
   }
 
   List<InventoryItem> _filteredRows(List<InventoryItem> inventory) {
@@ -219,6 +244,7 @@ class _WarehouseInventoryValuationViewState
     setState(() {
       _warehouse = result.warehouse;
       _sort = result.sort;
+      _visibleLimit = _visiblePageSize;
     });
   }
 

@@ -19,17 +19,22 @@ class WarehouseStockAgingView extends StatefulWidget {
 }
 
 class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
+  static const int _visiblePageSize = 50;
+
   final _search = TextEditingController();
   List<StockAgingItem> _rows = const [];
   _AgingBucket _bucket = _AgingBucket.all;
   String? _warehouse;
+  int _visibleLimit = _visiblePageSize;
   bool _loading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _search.addListener(() => setState(() {}));
+    _search.addListener(() {
+      setState(() => _visibleLimit = _visiblePageSize);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -58,90 +63,110 @@ class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
   @override
   Widget build(BuildContext context) {
     final rows = _filteredRows();
+    final visibleRows = rows.take(_visibleLimit).toList();
     final oldCount = _rows.where((row) => row.ageDays > 90).length;
     final oldValue = _rows
         .where((row) => row.ageDays > 90)
         .fold<double>(0, (sum, row) => sum + row.stockValue);
     final warehouses = _rows.map((row) => row.warehouse).toSet().toList()
       ..sort();
-    return RefreshIndicator(
-      onRefresh: () => _load(forceRefresh: true),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: warehousePagePaddingOf(context),
-        children: [
-          Row(
-            children: [
-              Expanded(child: _metric('Stok >90 hari', '$oldCount')),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _metric(
-                  'Nilai >90 hari',
-                  'Rp ${formatErpCurrency(oldValue)}',
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter <= 280 &&
+            _visibleLimit < rows.length) {
+          setState(() {
+            _visibleLimit = (_visibleLimit + _visiblePageSize).clamp(
+              0,
+              rows.length,
+            );
+          });
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: () => _load(forceRefresh: true),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: warehousePagePaddingOf(context),
+          children: [
+            Row(
+              children: [
+                Expanded(child: _metric('Stok >90 hari', '$oldCount')),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _metric(
+                    'Nilai >90 hari',
+                    'Rp ${formatErpCurrency(oldValue)}',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const WarehouseInfoPanel(
+              icon: Icons.info_outline_rounded,
+              message:
+                  'Umur dihitung dari penerimaan terakhir dalam 365 hari. Item tanpa penerimaan pada periode tersebut ditandai >365 hari.',
+            ),
+            warehouseSectionGap,
+            WarehouseSearchField(
+              controller: _search,
+              hintText: 'Cari item atau kode',
+            ),
+            const SizedBox(height: 10),
+            _AgingFilterBar(
+              warehouse: _warehouse,
+              onTap: () => _openWarehouseFilter(warehouses),
+            ),
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _chip('Semua', _AgingBucket.all),
+                  _chip('0-30 hari', _AgingBucket.fresh),
+                  _chip('31-60 hari', _AgingBucket.medium),
+                  _chip('61-90 hari', _AgingBucket.old),
+                  _chip('>90 hari', _AgingBucket.veryOld),
+                ],
+              ),
+            ),
+            if (_loading) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          const WarehouseInfoPanel(
-            icon: Icons.info_outline_rounded,
-            message:
-                'Umur dihitung dari penerimaan terakhir dalam 365 hari. Item tanpa penerimaan pada periode tersebut ditandai >365 hari.',
-          ),
-          warehouseSectionGap,
-          WarehouseSearchField(
-            controller: _search,
-            hintText: 'Cari item atau kode',
-          ),
-          const SizedBox(height: 10),
-          _AgingFilterBar(
-            warehouse: _warehouse,
-            onTap: () => _openWarehouseFilter(warehouses),
-          ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _chip('Semua', _AgingBucket.all),
-                _chip('0-30 hari', _AgingBucket.fresh),
-                _chip('31-60 hari', _AgingBucket.medium),
-                _chip('61-90 hari', _AgingBucket.old),
-                _chip('>90 hari', _AgingBucket.veryOld),
-              ],
+            warehouseSectionGap,
+            WarehouseSectionHeader(
+              title: 'Daftar Umur Stok',
+              subtitle: _rowsSubtitle(visibleRows.length, rows.length),
+              icon: Icons.list_alt_rounded,
             ),
-          ),
-          if (_loading) ...[
             const SizedBox(height: 12),
-            const LinearProgressIndicator(),
+            if (rows.isEmpty && !_loading)
+              const ErpEmptyState(
+                title: 'Data stock aging tidak ditemukan',
+                message: 'Ubah filter atau tarik ke bawah untuk refresh.',
+              )
+            else
+              ...visibleRows.map(_agingCard),
           ],
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: const TextStyle(
-                color: AppColors.danger,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-          warehouseSectionGap,
-          WarehouseSectionHeader(
-            title: 'Daftar Umur Stok',
-            subtitle: '${rows.length} baris stok ditampilkan',
-            icon: Icons.list_alt_rounded,
-          ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty && !_loading)
-            const ErpEmptyState(
-              title: 'Data stock aging tidak ditemukan',
-              message: 'Ubah filter atau tarik ke bawah untuk refresh.',
-            )
-          else
-            ...rows.map(_agingCard),
-        ],
+        ),
       ),
     );
+  }
+
+  String _rowsSubtitle(int visible, int total) {
+    if (visible >= total) return '$total baris stok ditampilkan';
+    return '$visible dari $total baris stok ditampilkan';
   }
 
   Widget _chip(String label, _AgingBucket value) => Padding(
@@ -149,7 +174,10 @@ class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
     child: ChoiceChip(
       label: Text(label),
       selected: _bucket == value,
-      onSelected: (_) => setState(() => _bucket = value),
+      onSelected: (_) => setState(() {
+        _bucket = value;
+        _visibleLimit = _visiblePageSize;
+      }),
     ),
   );
 
@@ -164,7 +192,10 @@ class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
       ),
     );
     if (!mounted || result == _warehouse) return;
-    setState(() => _warehouse = result?.isEmpty == true ? null : result);
+    setState(() {
+      _warehouse = result?.isEmpty == true ? null : result;
+      _visibleLimit = _visiblePageSize;
+    });
   }
 
   List<StockAgingItem> _filteredRows() {

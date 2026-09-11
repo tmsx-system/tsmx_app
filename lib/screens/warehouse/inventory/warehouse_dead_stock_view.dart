@@ -16,17 +16,22 @@ class WarehouseDeadStockView extends StatefulWidget {
 }
 
 class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
+  static const int _visiblePageSize = 50;
+
   final _search = TextEditingController();
   List<DeadStockItem> _rows = const [];
   int _threshold = 90;
   String? _warehouse;
+  int _visibleLimit = _visiblePageSize;
   bool _loading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _search.addListener(() => setState(() {}));
+    _search.addListener(() {
+      setState(() => _visibleLimit = _visiblePageSize);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -55,72 +60,92 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
   @override
   Widget build(BuildContext context) {
     final rows = _filteredRows();
+    final visibleRows = rows.take(_visibleLimit).toList();
     final totalValue = rows.fold<double>(0, (sum, row) => sum + row.stockValue);
     final totalQty = rows.fold<int>(0, (sum, row) => sum + row.quantity);
     final warehouses = _rows.map((row) => row.warehouse).toSet().toList()
       ..sort();
-    return RefreshIndicator(
-      onRefresh: () => _load(forceRefresh: true),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: warehousePagePaddingOf(context),
-        children: [
-          Row(
-            children: [
-              Expanded(child: _metric('Item dead stock', '${rows.length}')),
-              const SizedBox(width: 10),
-              Expanded(child: _metric('Total qty', '$totalQty')),
-            ],
-          ),
-          const SizedBox(height: 10),
-          WarehouseInfoPanel(
-            icon: Icons.account_balance_wallet_outlined,
-            color: AppColors.warning,
-            message:
-                'Nilai modal tertahan: Rp ${formatErpCurrency(totalValue)}. Pergerakan diperiksa maksimal 365 hari terakhir.',
-          ),
-          warehouseSectionGap,
-          WarehouseSearchField(
-            controller: _search,
-            hintText: 'Cari item atau kode',
-          ),
-          const SizedBox(height: 10),
-          _DeadStockFilterBar(
-            warehouse: _warehouse,
-            threshold: _threshold,
-            onTap: () => _openFilterSheet(warehouses),
-          ),
-          if (_loading) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: const TextStyle(
-                color: AppColors.danger,
-                fontWeight: FontWeight.w800,
-              ),
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter <= 280 &&
+            _visibleLimit < rows.length) {
+          setState(() {
+            _visibleLimit = (_visibleLimit + _visiblePageSize).clamp(
+              0,
+              rows.length,
+            );
+          });
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: () => _load(forceRefresh: true),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: warehousePagePaddingOf(context),
+          children: [
+            Row(
+              children: [
+                Expanded(child: _metric('Item dead stock', '${rows.length}')),
+                const SizedBox(width: 10),
+                Expanded(child: _metric('Total qty', '$totalQty')),
+              ],
             ),
+            const SizedBox(height: 10),
+            WarehouseInfoPanel(
+              icon: Icons.account_balance_wallet_outlined,
+              color: AppColors.warning,
+              message:
+                  'Nilai modal tertahan: Rp ${formatErpCurrency(totalValue)}. Pergerakan diperiksa maksimal 365 hari terakhir.',
+            ),
+            warehouseSectionGap,
+            WarehouseSearchField(
+              controller: _search,
+              hintText: 'Cari item atau kode',
+            ),
+            const SizedBox(height: 10),
+            _DeadStockFilterBar(
+              warehouse: _warehouse,
+              threshold: _threshold,
+              onTap: () => _openFilterSheet(warehouses),
+            ),
+            if (_loading) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+            warehouseSectionGap,
+            WarehouseSectionHeader(
+              title: 'Daftar Dead Stock',
+              subtitle: _rowsSubtitle(visibleRows.length, rows.length),
+              icon: Icons.list_alt_rounded,
+            ),
+            const SizedBox(height: 12),
+            if (rows.isEmpty && !_loading)
+              const ErpEmptyState(
+                title: 'Dead stock tidak ditemukan',
+                message: 'Ubah batas hari, filter gudang, atau pencarian.',
+              )
+            else
+              ...visibleRows.map(_deadStockCard),
           ],
-          warehouseSectionGap,
-          WarehouseSectionHeader(
-            title: 'Daftar Dead Stock',
-            subtitle: '${rows.length} baris stok ditampilkan',
-            icon: Icons.list_alt_rounded,
-          ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty && !_loading)
-            const ErpEmptyState(
-              title: 'Dead stock tidak ditemukan',
-              message: 'Ubah batas hari, filter gudang, atau pencarian.',
-            )
-          else
-            ...rows.map(_deadStockCard),
-        ],
+        ),
       ),
     );
+  }
+
+  String _rowsSubtitle(int visible, int total) {
+    if (visible >= total) return '$total baris stok ditampilkan';
+    return '$visible dari $total baris stok ditampilkan';
   }
 
   List<DeadStockItem> _filteredRows() {
@@ -155,6 +180,7 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
     setState(() {
       _warehouse = result.warehouse;
       _threshold = result.threshold;
+      _visibleLimit = _visiblePageSize;
     });
   }
 

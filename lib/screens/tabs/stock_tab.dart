@@ -28,6 +28,7 @@ class _StockTabState extends State<StockTab> {
   String? _selectedItemGroup;
   bool _selectionInitialized = false;
   bool _stockEntriesRequested = false;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _StockTabState extends State<StockTab> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _stockSearchController.dispose();
     super.dispose();
   }
@@ -51,9 +53,7 @@ class _StockTabState extends State<StockTab> {
 
     _applyDefaultSelection(appState);
 
-    if (appState.inventory.isEmpty && _selectedCompany != null) {
-      await appState.refreshInventoryForCompany(_selectedCompany!);
-    }
+    await _refreshInventoryQuery();
 
     _requestStockEntries(appState);
   }
@@ -78,9 +78,7 @@ class _StockTabState extends State<StockTab> {
     await appState.refreshItemGroups();
     if (!mounted) return;
     _applyDefaultSelection(appState);
-    if (_selectedCompany != null) {
-      await appState.refreshInventoryForCompany(_selectedCompany!);
-    }
+    await _refreshInventoryQuery();
     _stockEntriesRequested = false;
     _requestStockEntries(appState);
   }
@@ -95,6 +93,44 @@ class _StockTabState extends State<StockTab> {
     unawaited(appState.refreshStockEntries());
   }
 
+  Future<void> _refreshInventoryQuery() {
+    return context.read<WarehouseStockState>().setInventoryQuery(
+      company: _selectedCompany,
+      warehouse: _selectedWarehouse,
+      itemGroup: _selectedItemGroup,
+      search: _stockSearchController.text,
+      status: _statusQuery(_stockStatusFilter),
+      sort: _sortQuery(_stockSortOption),
+    );
+  }
+
+  void _scheduleInventorySearch(String value) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      unawaited(_refreshInventoryQuery());
+    });
+  }
+
+  String _statusQuery(_StockStatusFilter filter) {
+    return switch (filter) {
+      _StockStatusFilter.all => 'all',
+      _StockStatusFilter.urgent => 'urgent',
+      _StockStatusFilter.lowStock => 'low_stock',
+      _StockStatusFilter.inStock => 'in_stock',
+    };
+  }
+
+  String _sortQuery(_StockSortOption option) {
+    return switch (option) {
+      _StockSortOption.urgentFirst => 'urgent_first',
+      _StockSortOption.quantityLow => 'quantity_low',
+      _StockSortOption.quantityHigh => 'quantity_high',
+      _StockSortOption.name => 'name',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<WarehouseStockState>(context);
@@ -102,7 +138,9 @@ class _StockTabState extends State<StockTab> {
 
     if (!_selectionInitialized && companies.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _applyDefaultSelection(appState);
+        if (!mounted) return;
+        _applyDefaultSelection(appState);
+        unawaited(_refreshInventoryQuery());
       });
     }
 
@@ -118,22 +156,11 @@ class _StockTabState extends State<StockTab> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         setState(() => _selectedWarehouse = null);
+        unawaited(_refreshInventoryQuery());
       });
     }
 
-    final selectedWarehouse = _selectedWarehouse;
-    final selectedAreas = selectedWarehouse == null
-        ? areas
-        : areas.where((area) => area.areaId == selectedWarehouse).toList();
-    final selectedAreaIds = selectedAreas.map((area) => area.areaId).toSet();
-
-    final areaInventory = selectedAreaIds.isEmpty
-        ? <InventoryItem>[]
-        : appState.inventory
-              .where((item) => selectedAreaIds.contains(item.warehouseId))
-              .toList();
-
-    final filteredInventory = _filterAndSortInventory(areaInventory);
+    final inventory = appState.inventory;
 
     const double extraBottomSpace = 140;
 
@@ -144,82 +171,111 @@ class _StockTabState extends State<StockTab> {
         child: RefreshIndicator(
           color: AppColors.primary,
           onRefresh: _onPullRefresh,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, extraBottomSpace),
-            children: [
-              _buildStockFilterBar(
-                companies,
-                currentItems: areaInventory,
-                itemGroupOptions: appState.itemGroups,
-              ),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification.metrics.extentAfter > 320) return false;
+              context.read<WarehouseStockState>().loadMoreInventory();
+              return false;
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, extraBottomSpace),
+              children: [
+                _buildStockFilterBar(
+                  companies,
+                  currentItems: inventory,
+                  itemGroupOptions: appState.itemGroups,
+                ),
 
-              if (areas.isEmpty && !appState.isInventoryLoading) ...[
+                if (areas.isEmpty && !appState.isInventoryLoading) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'No warehouses loaded from ERP. Pull down to refresh.',
+                    style: TextStyle(fontSize: 12, color: AppColors.slate),
+                  ),
+                ],
+
+                const SizedBox(height: 14),
+
+                if (appState.isInventoryLoading) ...[
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                ],
+                if (appState.inventoryError != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.red.withValues(alpha: 0.15),
+                      ),
+                    ),
+                    child: Text(
+                      'Unable to load stock data: ${appState.inventoryError}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.red,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
                 const SizedBox(height: 8),
-                const Text(
-                  'No warehouses loaded from ERP. Pull down to refresh.',
-                  style: TextStyle(fontSize: 12, color: AppColors.slate),
+                _buildSectionHeader(
+                  'Stock Inventory',
+                  _inventoryCountLabel(
+                    inventory.length,
+                    appState.hasMoreInventory,
+                  ),
                 ),
-              ],
+                const SizedBox(height: 8),
+                _buildInventoryControls(
+                  resultCount: inventory.length,
+                  hasMore: appState.hasMoreInventory,
+                ),
+                const SizedBox(height: 10),
 
-              const SizedBox(height: 14),
-
-              if (appState.isInventoryLoading) ...[
-                const LinearProgressIndicator(),
-                const SizedBox(height: 12),
-              ],
-              if (appState.inventoryError != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.red.withValues(alpha: 0.15),
+                if (inventory.isEmpty && !appState.isInventoryLoading)
+                  _StockEmptyState(hasActiveFilters: _hasActiveStockFilters)
+                else
+                  ...inventory.map(
+                    (item) => _buildInventoryCard(
+                      item,
+                      companyLabel: _companyTitle(companies, selectedCompany),
+                      areaLabel: _selectedAreaTitle(),
                     ),
                   ),
-                  child: Text(
-                    'Unable to load stock data: ${appState.inventoryError}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.red,
-                      fontWeight: FontWeight.w700,
+                if (appState.hasMoreInventory ||
+                    appState.isMoreInventoryLoading) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: appState.isMoreInventoryLoading
+                        ? null
+                        : () => context
+                              .read<WarehouseStockState>()
+                              .loadMoreInventory(),
+                    icon: appState.isMoreInventoryLoading
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.expand_more_rounded),
+                    label: Text(
+                      appState.isMoreInventoryLoading
+                          ? 'Loading stock...'
+                          : 'Load more stock',
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                ],
+
+                const SizedBox(height: 22),
+                _buildStockEntriesSection(appState),
               ],
-
-              const SizedBox(height: 8),
-              _buildSectionHeader(
-                'Stock Inventory',
-                _inventoryCountLabel(
-                  filteredInventory.length,
-                  areaInventory.length,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildInventoryControls(
-                resultCount: filteredInventory.length,
-                totalCount: areaInventory.length,
-              ),
-              const SizedBox(height: 10),
-
-              if (filteredInventory.isEmpty && !appState.isInventoryLoading)
-                _StockEmptyState(hasActiveFilters: _hasActiveStockFilters)
-              else
-                ...filteredInventory.map(
-                  (item) => _buildInventoryCard(
-                    item,
-                    companyLabel: _companyTitle(companies, selectedCompany),
-                    areaLabel: _selectedAreaTitle(),
-                  ),
-                ),
-
-              const SizedBox(height: 22),
-              _buildStockEntriesSection(appState),
-            ],
+            ),
           ),
         ),
       ),
@@ -258,63 +314,14 @@ class _StockTabState extends State<StockTab> {
         _selectedItemGroup != null;
   }
 
-  List<InventoryItem> _filterAndSortInventory(List<InventoryItem> items) {
-    final query = _stockSearchController.text.trim().toLowerCase();
-
-    final filtered = items.where((item) {
-      final matchesSearch =
-          query.isEmpty ||
-          item.sku.toLowerCase().contains(query) ||
-          item.name.toLowerCase().contains(query) ||
-          (item.category?.toLowerCase().contains(query) ?? false);
-
-      final matchesStatus = switch (_stockStatusFilter) {
-        _StockStatusFilter.all => true,
-        _StockStatusFilter.urgent => item.status == StockStatus.urgent,
-        _StockStatusFilter.lowStock => item.status == StockStatus.lowStock,
-        _StockStatusFilter.inStock => item.status == StockStatus.inStock,
-      };
-
-      final matchesItemGroup =
-          _selectedItemGroup == null || item.category == _selectedItemGroup;
-
-      return matchesSearch && matchesStatus && matchesItemGroup;
-    }).toList();
-
-    filtered.sort((a, b) {
-      return switch (_stockSortOption) {
-        _StockSortOption.urgentFirst => _statusRank(
-          a.status,
-        ).compareTo(_statusRank(b.status)),
-        _StockSortOption.quantityLow => a.quantity.compareTo(b.quantity),
-        _StockSortOption.quantityHigh => b.quantity.compareTo(a.quantity),
-        _StockSortOption.name => a.name.toLowerCase().compareTo(
-          b.name.toLowerCase(),
-        ),
-      };
-    });
-
-    return filtered;
-  }
-
-  int _statusRank(StockStatus status) {
-    return switch (status) {
-      StockStatus.urgent => 0,
-      StockStatus.lowStock => 1,
-      StockStatus.inStock => 2,
-    };
-  }
-
-  String _inventoryCountLabel(int filteredCount, int totalCount) {
-    if (_hasActiveStockFilters) {
-      return '$filteredCount of $totalCount items';
-    }
-    return '$totalCount items';
+  String _inventoryCountLabel(int loadedCount, bool hasMore) {
+    if (hasMore) return '$loadedCount+ items';
+    return '$loadedCount items';
   }
 
   Widget _buildInventoryControls({
     required int resultCount,
-    required int totalCount,
+    required bool hasMore,
   }) {
     return Container(
       width: double.infinity,
@@ -328,7 +335,7 @@ class _StockTabState extends State<StockTab> {
         children: [
           TextField(
             controller: _stockSearchController,
-            onChanged: (_) => setState(() {}),
+            onChanged: _scheduleInventorySearch,
             textInputAction: TextInputAction.search,
             style: const TextStyle(
               fontFamily: 'HankenGrotesk',
@@ -357,7 +364,7 @@ class _StockTabState extends State<StockTab> {
                       color: AppColors.slate,
                       onPressed: () {
                         _stockSearchController.clear();
-                        setState(() {});
+                        _scheduleInventorySearch('');
                       },
                     ),
               filled: true,
@@ -399,7 +406,9 @@ class _StockTabState extends State<StockTab> {
               children: [
                 Expanded(
                   child: Text(
-                    '$resultCount result${resultCount == 1 ? '' : 's'} from $totalCount items',
+                    hasMore
+                        ? '$resultCount result${resultCount == 1 ? '' : 's'} loaded'
+                        : '$resultCount result${resultCount == 1 ? '' : 's'}',
                     style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -415,6 +424,7 @@ class _StockTabState extends State<StockTab> {
                       _stockSortOption = _StockSortOption.urgentFirst;
                       _selectedItemGroup = null;
                     });
+                    unawaited(_refreshInventoryQuery());
                   },
                   style: TextButton.styleFrom(
                     minimumSize: const Size(0, 30),
@@ -441,7 +451,10 @@ class _StockTabState extends State<StockTab> {
     return ChoiceChip(
       label: Text(_statusFilterLabel(filter)),
       selected: isSelected,
-      onSelected: (_) => setState(() => _stockStatusFilter = filter),
+      onSelected: (_) {
+        setState(() => _stockStatusFilter = filter);
+        unawaited(_refreshInventoryQuery());
+      },
       showCheckmark: false,
       visualDensity: VisualDensity.compact,
       labelStyle: TextStyle(
@@ -492,6 +505,7 @@ class _StockTabState extends State<StockTab> {
           onChanged: (option) {
             if (option == null) return;
             setState(() => _stockSortOption = option);
+            unawaited(_refreshInventoryQuery());
           },
         ),
       ),
@@ -773,19 +787,12 @@ class _StockTabState extends State<StockTab> {
       ),
     );
     if (result == null) return;
-    if (result.company != _selectedCompany) {
-      setState(() {
-        _selectedCompany = result.company;
-        _selectedWarehouse = result.warehouse;
-        _selectedItemGroup = result.itemGroup;
-      });
-      appState.refreshInventoryForCompany(result.company);
-      return;
-    }
     setState(() {
+      _selectedCompany = result.company;
       _selectedWarehouse = result.warehouse;
       _selectedItemGroup = result.itemGroup;
     });
+    unawaited(_refreshInventoryQuery());
   }
 
   String? _companyTitle(

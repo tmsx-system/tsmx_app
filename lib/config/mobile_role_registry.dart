@@ -138,7 +138,7 @@ class MobileRoleRegistry {
       defaultLabel: 'Beranda',
       defaultSubtitle: 'Ringkasan operasional',
       icon: Icons.dashboard_rounded,
-      menuOrder: 10,
+      menuOrder: 1,
     ),
     MobileModule.sales: MobileModuleMeta(
       key: MobileModule.sales,
@@ -146,7 +146,7 @@ class MobileRoleRegistry {
       defaultLabel: 'Penjualan',
       defaultSubtitle: 'Order, customer, stock, visit',
       icon: Icons.point_of_sale_rounded,
-      menuOrder: 20,
+      menuOrder: 2,
     ),
     MobileModule.collection: MobileModuleMeta(
       key: MobileModule.collection,
@@ -154,7 +154,7 @@ class MobileRoleRegistry {
       defaultLabel: 'Collection',
       defaultSubtitle: 'AR aging, invoice, dan janji bayar',
       icon: Icons.account_balance_wallet_rounded,
-      menuOrder: 23,
+      menuOrder: 5,
     ),
     MobileModule.spg: MobileModuleMeta(
       key: MobileModule.spg,
@@ -162,7 +162,7 @@ class MobileRoleRegistry {
       defaultLabel: 'SPG',
       defaultSubtitle: 'Check-in, report foto, dan selling',
       icon: Icons.storefront_rounded,
-      menuOrder: 25,
+      menuOrder: 4,
     ),
     MobileModule.purchase: MobileModuleMeta(
       key: MobileModule.purchase,
@@ -170,7 +170,7 @@ class MobileRoleRegistry {
       defaultLabel: 'Pembelian',
       defaultSubtitle: 'PO, receipt, invoice, material request',
       icon: Icons.shopping_bag_rounded,
-      menuOrder: 30,
+      menuOrder: 3,
     ),
     MobileModule.stock: MobileModuleMeta(
       key: MobileModule.stock,
@@ -178,7 +178,7 @@ class MobileRoleRegistry {
       defaultLabel: 'Stok',
       defaultSubtitle: 'Cek stok, alert, dan detail item',
       icon: Icons.inventory_2_rounded,
-      menuOrder: 40,
+      menuOrder: 7,
     ),
     MobileModule.warehouse: MobileModuleMeta(
       key: MobileModule.warehouse,
@@ -186,7 +186,7 @@ class MobileRoleRegistry {
       defaultLabel: 'Gudang',
       defaultSubtitle: 'Operasi, transfer, QC gudang',
       icon: Icons.warehouse_rounded,
-      menuOrder: 45,
+      menuOrder: 6,
     ),
     MobileModule.qualityControl: MobileModuleMeta(
       key: MobileModule.qualityControl,

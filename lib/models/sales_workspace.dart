@@ -23,6 +23,13 @@ class SalesCustomerOption {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'name': id,
+    'customer_name': name,
+    'primary_address': address,
+    'sales_team': salesTeam,
+  };
+
   SalesCustomerOption copyWithSalesTeam(List<Map<String, dynamic>> rows) {
     return SalesCustomerOption(
       id: id,

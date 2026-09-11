@@ -30,9 +30,7 @@ class WarehouseAgingState extends ChangeNotifier {
     int lookbackDays = 365,
     bool forceRefresh = false,
   }) async {
-    if (_stockState.inventory.isEmpty || forceRefresh) {
-      await _stockState.refreshInventory();
-    }
+    final inventory = await _stockState.fetchInventorySnapshot();
     await _stockState.appState.frappeService.ensureLoggedIn();
 
     final today = DateTime.now();
@@ -71,7 +69,7 @@ class WarehouseAgingState extends ChangeNotifier {
     }
 
     return [
-      for (final item in _stockState.inventory)
+      for (final item in inventory)
         if (item.quantity > 0)
           StockAgingItem(
             itemCode: item.sku,

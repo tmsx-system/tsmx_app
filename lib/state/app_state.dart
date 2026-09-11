@@ -490,6 +490,8 @@ class AppState with ChangeNotifier {
   static const Duration _qualityInspectionCacheTtl = Duration(minutes: 2);
   static const String _qualityInspectionDbCachePrefix =
       'quality_inspection_cache';
+  static const Duration _masterDataCacheTtl = Duration(hours: 12);
+  static const String _masterDataCachePrefix = 'master_data_cache';
   final Map<String, _CachedDocument> _documentCache = {};
   final Map<String, bool> _doctypeSubmitPermissionCache = {};
 
@@ -1179,6 +1181,7 @@ class AppState with ChangeNotifier {
       await LocalAppDatabase.instance.deleteByPrefix(
         _approvalTodoDbCachePrefix,
       );
+      await LocalAppDatabase.instance.deleteByPrefix(_masterDataCachePrefix);
     } catch (_) {}
   }
 
@@ -1209,6 +1212,7 @@ class AppState with ChangeNotifier {
     }
     await LocalAppDatabase.instance.deleteByPrefix(_sellingTrendCachePrefix);
     await LocalAppDatabase.instance.deleteByPrefix(_documentDbCachePrefix);
+    await LocalAppDatabase.instance.deleteByPrefix(_masterDataCachePrefix);
 
     if (keepSiteSelection && cfg != null) {
       await sp.setString(_prefsFrappeConfigKey, jsonEncode(cfg));
@@ -1893,11 +1897,73 @@ class AppState with ChangeNotifier {
         _salesIdentityError ?? 'Sales Person user login belum tersedia.',
       );
     }
+
+    final cacheKey = _salesCustomersCacheKey(
+      salesPerson: _shouldScopeSalesData ? _currentSalesPerson : null,
+    );
+    final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
+    if (cachedCustomers != null) return cachedCustomers;
+
     final customers = await _customerService.fetchSalesCustomers(
       salesPerson: _shouldScopeSalesData ? _currentSalesPerson : null,
     );
-    if (!_shouldScopeSalesData || customers.isNotEmpty) return customers;
-    return _fetchSalesCustomersFromSalesDocuments(_currentSalesPerson!.trim());
+    if (!_shouldScopeSalesData || customers.isNotEmpty) {
+      await _writeSalesCustomersToDb(cacheKey, customers);
+      return customers;
+    }
+    final fallbackCustomers = await _fetchSalesCustomersFromSalesDocuments(
+      _currentSalesPerson!.trim(),
+    );
+    await _writeSalesCustomersToDb(cacheKey, fallbackCustomers);
+    return fallbackCustomers;
+  }
+
+  Future<List<SalesCustomerOption>?> _readSalesCustomersFromDb(
+    String key,
+  ) async {
+    final json = await LocalAppDatabase.instance.readJson(key);
+    if (json == null) return null;
+    try {
+      final rows = json['rows'];
+      if (rows is! List) return null;
+      return rows
+          .whereType<Map>()
+          .map(
+            (row) =>
+                SalesCustomerOption.fromJson(
+                  Map<String, dynamic>.from(row),
+                ).copyWithSalesTeam(
+                  (row['sales_team'] as List? ?? const [])
+                      .whereType<Map>()
+                      .map((team) => Map<String, dynamic>.from(team))
+                      .toList(),
+                ),
+          )
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeSalesCustomersToDb(
+    String key,
+    List<SalesCustomerOption> customers,
+  ) {
+    return LocalAppDatabase.instance.writeJson(key, {
+      'rows': customers.map((customer) => customer.toJson()).toList(),
+    }, ttl: _masterDataCacheTtl);
+  }
+
+  String _salesCustomersCacheKey({String? salesPerson}) {
+    final site = _frappeService.baseUrl.trim();
+    final user = _currentUser?.trim() ?? _frappeService.username?.trim() ?? '';
+    return [
+      _masterDataCachePrefix,
+      'sales_customers',
+      site,
+      user,
+      salesPerson?.trim() ?? '',
+    ].join('|');
   }
 
   Future<List<SalesCustomerOption>> _fetchSalesCustomersFromSalesDocuments(
@@ -6450,12 +6516,17 @@ class AppState with ChangeNotifier {
     if (!_isAuthenticated) return;
     try {
       await _frappeService.ensureLoggedIn();
-      final companyRows = await _fetchAllResourcePages(
-        doctype: 'Company',
-        fields: const ['name'],
-        orderBy: 'name asc',
-        maxRows: 500,
-      );
+      final companyCacheKey = _masterRowsCacheKey('selling_companies');
+      var companyRows = await _readMasterRowsFromDb(companyCacheKey);
+      if (companyRows == null) {
+        companyRows = await _fetchAllResourcePages(
+          doctype: 'Company',
+          fields: const ['name'],
+          orderBy: 'name asc',
+          maxRows: 500,
+        );
+        await _writeMasterRowsToDb(companyCacheKey, companyRows);
+      }
       final companies =
           companyRows
               .map((row) => row['name']?.toString() ?? '')
@@ -6469,15 +6540,20 @@ class AppState with ChangeNotifier {
     }
 
     try {
-      final rows = await _fetchAllResourcePages(
-        doctype: 'Sales Person',
-        fields: const ['name', 'parent_sales_person', 'is_group', 'lft'],
-        filters: const [
-          ['is_group', '=', 1],
-        ],
-        orderBy: 'lft asc, name asc',
-        maxRows: null,
-      );
+      final salesGroupCacheKey = _masterRowsCacheKey('selling_sales_groups');
+      var rows = await _readMasterRowsFromDb(salesGroupCacheKey);
+      if (rows == null) {
+        rows = await _fetchAllResourcePages(
+          doctype: 'Sales Person',
+          fields: const ['name', 'parent_sales_person', 'is_group', 'lft'],
+          filters: const [
+            ['is_group', '=', 1],
+          ],
+          orderBy: 'lft asc, name asc',
+          maxRows: null,
+        );
+        await _writeMasterRowsToDb(salesGroupCacheKey, rows);
+      }
       final roots = rows
           .where(
             (row) =>
@@ -6800,12 +6876,17 @@ class AppState with ChangeNotifier {
     if (!_isAuthenticated) return;
     try {
       await _frappeService.ensureLoggedIn();
-      final rows = await _fetchAllResourcePages(
-        doctype: 'Company',
-        fields: const ['name'],
-        orderBy: 'name asc',
-        maxRows: 500,
-      );
+      final companyCacheKey = _masterRowsCacheKey('buying_companies');
+      var rows = await _readMasterRowsFromDb(companyCacheKey);
+      if (rows == null) {
+        rows = await _fetchAllResourcePages(
+          doctype: 'Company',
+          fields: const ['name'],
+          orderBy: 'name asc',
+          maxRows: 500,
+        );
+        await _writeMasterRowsToDb(companyCacheKey, rows);
+      }
       _buyingCompanies =
           rows
               .map((row) => row['name']?.toString() ?? '')
@@ -10843,6 +10924,14 @@ class AppState with ChangeNotifier {
         : (limit < FrappeService.maxPageLength
               ? FrappeService.maxPageLength
               : limit);
+    final cacheKey = normalized.isEmpty
+        ? _itemOptionsCacheKey(flagField: flagField, limit: limit)
+        : null;
+    if (cacheKey != null) {
+      final cachedRows = await _readMasterRowsFromDb(cacheKey);
+      if (cachedRows != null) return cachedRows.take(limit).toList();
+    }
+
     final rows = await _fetchResourceWithFieldFallback(
       doctype: 'Item',
       fields: const [
@@ -10867,7 +10956,13 @@ class AppState with ChangeNotifier {
       orderBy: 'item_name asc, name asc',
       limit: fetchLimit,
     );
-    if (normalized.isEmpty) return rows.take(limit).toList();
+    if (normalized.isEmpty) {
+      final result = rows.take(limit).toList();
+      if (cacheKey != null) {
+        await _writeMasterRowsToDb(cacheKey, result);
+      }
+      return result;
+    }
 
     final needle = normalized.toLowerCase();
     return rows
@@ -10881,6 +10976,40 @@ class AppState with ChangeNotifier {
         })
         .take(limit)
         .toList();
+  }
+
+  Future<List<Map<String, dynamic>>?> _readMasterRowsFromDb(String key) async {
+    final json = await LocalAppDatabase.instance.readJson(key);
+    if (json == null) return null;
+    try {
+      final rows = json['rows'];
+      if (rows is! List) return null;
+      return rows
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeMasterRowsToDb(
+    String key,
+    List<Map<String, dynamic>> rows,
+  ) {
+    return LocalAppDatabase.instance.writeJson(key, {
+      'rows': rows,
+    }, ttl: _masterDataCacheTtl);
+  }
+
+  String _itemOptionsCacheKey({required String flagField, required int limit}) {
+    return _masterRowsCacheKey('items|$flagField|$limit');
+  }
+
+  String _masterRowsCacheKey(String name) {
+    final site = _frappeService.baseUrl.trim();
+    final user = _currentUser?.trim() ?? _frappeService.username?.trim() ?? '';
+    return [_masterDataCachePrefix, site, user, name.trim()].join('|');
   }
 
   Future<void> refreshInventoryForCompany(String company) async {

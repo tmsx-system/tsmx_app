@@ -21,6 +21,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
 
   static const int _pageSize = 500;
   static const int _listLimit = 500;
+  static const int _inventoryPageSize = 50;
+  static const int _inventorySnapshotLimit = 500;
   static const Duration _masterCacheTtl = Duration(hours: 12);
   static const String _warehouseCachePrefix = 'warehouse_master_cache';
   static const String _itemGroupCachePrefix = 'item_group_master_cache';
@@ -31,9 +33,19 @@ class WarehouseStockState extends AppStateProxyNotifier {
   List<StockEntry> _stockEntries = const [];
   List<StockReconciliationSummary> _stockReconciliations = const [];
   bool _isInventoryLoading = false;
+  bool _isMoreInventoryLoading = false;
+  bool _hasMoreInventory = true;
   bool _isStockEntriesLoading = false;
   String? _inventoryError;
   String? _stockEntriesError;
+  int _inventoryQueryVersion = 0;
+  int _inventoryNextStart = 0;
+  String? _inventoryCompanyFilter;
+  String? _inventoryWarehouseFilter;
+  String? _inventoryItemGroupFilter;
+  String _inventorySearch = '';
+  String _inventoryStatusFilter = 'all';
+  String _inventorySort = 'urgent_first';
   Future<void>? _warehousesFetchInFlight;
   Future<void>? _inventoryFetchInFlight;
   Future<List<WarehouseBatchRecord>>? _warehouseBatchInFlight;
@@ -64,6 +76,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
   List<StockReconciliationSummary> get stockReconciliations =>
       _stockReconciliations;
   bool get isInventoryLoading => _isInventoryLoading;
+  bool get isMoreInventoryLoading => _isMoreInventoryLoading;
+  bool get hasMoreInventory => _hasMoreInventory;
   String? get inventoryError => _inventoryError;
   bool get isStockEntriesLoading => _isStockEntriesLoading;
   String? get stockEntriesError => _stockEntriesError;
@@ -268,29 +282,74 @@ class WarehouseStockState extends AppStateProxyNotifier {
   }
 
   Future<void> refreshInventory() {
-    return _refreshInventory(filters: _inventoryScopeFiltersForCurrentRole());
+    return setInventoryQuery();
   }
 
   Future<void> refreshInventoryForCompany(String company) async {
-    if (_warehouses.isEmpty) await refreshWarehouses();
-    final names = erpWarehouseNamesForCompany(company);
-    if (names.isEmpty) {
-      _inventory = const [];
-      notifyListeners();
-      return;
-    }
-    await _refreshInventory(
-      filters: [
-        ['warehouse', 'in', names],
-      ],
-    );
+    return setInventoryQuery(company: company);
   }
 
-  Future<void> _refreshInventory({List<List<dynamic>>? filters}) {
-    final canReuseInFlight = filters == null;
+  Future<List<InventoryItem>> fetchInventorySnapshot({
+    int maxRows = _inventorySnapshotLimit,
+    List<List<dynamic>>? filters,
+    String? orderBy,
+  }) async {
+    if (appState.isSampleMode) return appState.inventory;
+
+    await appState.frappeService.ensureLoggedIn();
+    if (_warehouses.isEmpty) {
+      await refreshWarehouses();
+    }
+
+    final rows = await _fetchInventoryRows(
+      filters: filters ?? _inventoryScopeFiltersForCurrentRole(),
+      limit: maxRows,
+      limitStart: 0,
+      orderBy: orderBy ?? 'modified desc',
+    );
+    return _inventoryItemsFromRows(rows);
+  }
+
+  Future<void> setInventoryQuery({
+    String? company,
+    String? warehouse,
+    String? itemGroup,
+    String? search,
+    String? status,
+    String? sort,
+  }) async {
+    _inventoryCompanyFilter = company?.trim().isEmpty == true
+        ? null
+        : company?.trim();
+    _inventoryWarehouseFilter = warehouse?.trim().isEmpty == true
+        ? null
+        : warehouse?.trim();
+    _inventoryItemGroupFilter = itemGroup?.trim().isEmpty == true
+        ? null
+        : itemGroup?.trim();
+    _inventorySearch = search?.trim() ?? '';
+    _inventoryStatusFilter = status?.trim().isEmpty == true
+        ? 'all'
+        : status?.trim() ?? 'all';
+    _inventorySort = sort?.trim().isEmpty == true
+        ? 'urgent_first'
+        : sort?.trim() ?? 'urgent_first';
+    _inventoryFetchInFlight = null;
+    await _refreshInventoryPage(reset: true);
+  }
+
+  Future<void> loadMoreInventory() async {
+    if (_isInventoryLoading || _isMoreInventoryLoading || !_hasMoreInventory) {
+      return;
+    }
+    await _refreshInventoryPage(reset: false);
+  }
+
+  Future<void> _refreshInventoryPage({required bool reset}) {
+    final canReuseInFlight = reset;
     final inFlight = _inventoryFetchInFlight;
     if (canReuseInFlight && inFlight != null) return inFlight;
-    final request = _fetchInventory(filters: filters);
+    final request = _fetchInventoryPage(reset: reset);
     if (canReuseInFlight) _inventoryFetchInFlight = request;
     return request.whenComplete(() {
       if (identical(_inventoryFetchInFlight, request)) {
@@ -299,7 +358,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     });
   }
 
-  Future<void> _fetchInventory({List<List<dynamic>>? filters}) async {
+  Future<void> _fetchInventoryPage({required bool reset}) async {
     if (appState.isSampleMode) {
       _inventory = appState.inventory;
       _inventoryError = null;
@@ -307,62 +366,236 @@ class WarehouseStockState extends AppStateProxyNotifier {
       return;
     }
 
-    _isInventoryLoading = true;
-    _inventoryError = null;
+    final version = reset ? ++_inventoryQueryVersion : _inventoryQueryVersion;
+    if (reset) {
+      _isInventoryLoading = true;
+      _inventoryError = null;
+      _hasMoreInventory = true;
+      _isMoreInventoryLoading = false;
+      _inventoryNextStart = 0;
+    } else {
+      _isMoreInventoryLoading = true;
+    }
     notifyListeners();
 
     try {
       await appState.frappeService.ensureLoggedIn();
       if (_warehouses.isEmpty) await refreshWarehouses();
 
-      final maxRows = filters == null ? _listLimit : null;
-      List<Map<String, dynamic>> rows;
-      try {
-        rows = await _fetchAllResourcePages(
-          doctype: 'Bin',
-          fields: const [
-            'item_code',
-            'warehouse',
-            'actual_qty',
-            'reserved_qty',
-            'projected_qty',
-            'valuation_rate',
-            'stock_value',
-          ],
-          filters: filters,
-          maxRows: maxRows,
-        );
-      } catch (_) {
-        rows = await _fetchAllResourcePages(
-          doctype: 'Bin',
-          fields: const ['item_code', 'warehouse', 'actual_qty'],
-          filters: filters,
-          maxRows: maxRows,
-        );
-      }
-
-      final items = <InventoryItem>[];
-      for (final row in rows) {
-        final warehouse = row['warehouse']?.toString() ?? '';
-        if (warehouse.isEmpty) continue;
-        items.add(InventoryItem.fromJson(row).copyWith(warehouseId: warehouse));
-      }
-
-      final itemMeta = await _fetchItemMeta(
-        items.map((item) => item.sku).where((sku) => sku.isNotEmpty).toSet(),
+      final result = await _fetchInventoryResultPage(
+        limitStart: reset ? 0 : _inventoryNextStart,
       );
-      _inventory = [
-        for (final item in items)
-          (itemMeta[item.sku]?.applyTo(item) ?? item).withRecalculatedStatus(),
-      ];
+      if (version != _inventoryQueryVersion) return;
+
+      final nextItems = _applyInventoryClientFilters(result.items);
+      if (reset) {
+        _inventory = nextItems;
+      } else {
+        final keys = _inventory
+            .map((item) => '${item.sku}|${item.warehouseId}')
+            .toSet();
+        _inventory = [
+          ..._inventory,
+          ...nextItems.where(
+            (item) => keys.add('${item.sku}|${item.warehouseId}'),
+          ),
+        ];
+      }
+      _inventoryNextStart += result.rawCount;
+      _hasMoreInventory = result.rawCount >= _inventoryPageSize;
       _inventoryError = null;
       if (_itemGroups.isEmpty) _itemGroups = _groupsFromInventory();
     } catch (error) {
+      if (version != _inventoryQueryVersion) return;
       _inventoryError = error.toString();
+      if (!reset) _hasMoreInventory = false;
     } finally {
-      _isInventoryLoading = false;
-      notifyListeners();
+      if (version == _inventoryQueryVersion) {
+        _isInventoryLoading = false;
+        _isMoreInventoryLoading = false;
+        notifyListeners();
+      }
     }
+  }
+
+  Future<({List<InventoryItem> items, int rawCount})>
+  _fetchInventoryResultPage({required int limitStart}) async {
+    if (_warehouses.isEmpty) await refreshWarehouses();
+    final filters = <List<dynamic>>[...?_inventoryServerFilters()];
+    final itemCodes = await _inventoryItemCodeFilters();
+    if (itemCodes != null) {
+      if (itemCodes.isEmpty) {
+        return (items: <InventoryItem>[], rawCount: 0);
+      }
+      filters.add(['item_code', 'in', itemCodes]);
+    }
+
+    final rows = await _fetchInventoryRows(
+      filters: filters.isEmpty ? null : filters,
+      limit: _inventoryPageSize,
+      limitStart: limitStart,
+      orderBy: _inventoryOrderBy(),
+    );
+    final items = await _inventoryItemsFromRows(rows);
+    return (items: items, rawCount: rows.length);
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchInventoryRows({
+    required int limit,
+    int limitStart = 0,
+    String? orderBy,
+    List<List<dynamic>>? filters,
+  }) async {
+    try {
+      return await _fetchResourceWithFieldFallback(
+        doctype: 'Bin',
+        fields: const [
+          'item_code',
+          'warehouse',
+          'actual_qty',
+          'reserved_qty',
+          'projected_qty',
+          'valuation_rate',
+          'stock_value',
+        ],
+        filters: filters,
+        limit: limit,
+        limitStart: limitStart,
+        orderBy: orderBy,
+      );
+    } catch (_) {
+      return _fetchResourceWithFieldFallback(
+        doctype: 'Bin',
+        fields: const ['item_code', 'warehouse', 'actual_qty'],
+        filters: filters,
+        limit: limit,
+        limitStart: limitStart,
+        orderBy: orderBy,
+      );
+    }
+  }
+
+  Future<List<InventoryItem>> _inventoryItemsFromRows(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final items = <InventoryItem>[];
+    for (final row in rows) {
+      final warehouse = row['warehouse']?.toString() ?? '';
+      if (warehouse.isEmpty) continue;
+      items.add(InventoryItem.fromJson(row).copyWith(warehouseId: warehouse));
+    }
+
+    final itemMeta = await _fetchItemMeta(
+      items.map((item) => item.sku).where((sku) => sku.isNotEmpty).toSet(),
+    );
+    return [
+      for (final item in items)
+        (itemMeta[item.sku]?.applyTo(item) ?? item).withRecalculatedStatus(),
+    ];
+  }
+
+  List<List<dynamic>>? _inventoryServerFilters() {
+    final warehouse = _inventoryWarehouseFilter;
+    if (warehouse != null && warehouse.isNotEmpty) {
+      return [
+        ['warehouse', '=', warehouse],
+      ];
+    }
+
+    final company = _inventoryCompanyFilter;
+    if (company != null && company.isNotEmpty) {
+      final names = erpWarehouseNamesForCompany(company);
+      if (names.isEmpty) {
+        return [
+          ['warehouse', '=', '__no_matching_warehouse__'],
+        ];
+      }
+      if (names.length == 1) {
+        return [
+          ['warehouse', '=', names.first],
+        ];
+      }
+      return [
+        ['warehouse', 'in', names],
+      ];
+    }
+
+    return _inventoryScopeFiltersForCurrentRole();
+  }
+
+  Future<List<String>?> _inventoryItemCodeFilters() async {
+    final query = _inventorySearch.trim();
+    final group = _inventoryItemGroupFilter?.trim() ?? '';
+    if (query.isEmpty && group.isEmpty) return null;
+
+    final filters = <List<dynamic>>[];
+    if (group.isNotEmpty) filters.add(['item_group', '=', group]);
+
+    final rows = await _fetchResourceWithFieldFallback(
+      doctype: 'Item',
+      fields: const ['name', 'item_code', 'item_name', 'item_group'],
+      filters: filters.isEmpty ? null : filters,
+      limit: _listLimit,
+      orderBy: 'name asc',
+      orFilters: query.isEmpty
+          ? null
+          : [
+              ['name', 'like', '%$query%'],
+              ['item_code', 'like', '%$query%'],
+              ['item_name', 'like', '%$query%'],
+            ],
+    );
+    return rows
+        .map((row) {
+          final itemCode = row['item_code']?.toString().trim() ?? '';
+          if (itemCode.isNotEmpty) return itemCode;
+          return row['name']?.toString().trim() ?? '';
+        })
+        .where((code) => code.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  List<InventoryItem> _applyInventoryClientFilters(List<InventoryItem> items) {
+    final status = _inventoryStatusFilter;
+    final filtered = status == 'all'
+        ? List<InventoryItem>.from(items)
+        : items.where((item) {
+            return switch (status) {
+              'urgent' => item.status == StockStatus.urgent,
+              'low_stock' => item.status == StockStatus.lowStock,
+              'in_stock' => item.status == StockStatus.inStock,
+              _ => true,
+            };
+          }).toList();
+    filtered.sort((a, b) {
+      return switch (_inventorySort) {
+        'quantity_low' => a.quantity.compareTo(b.quantity),
+        'quantity_high' => b.quantity.compareTo(a.quantity),
+        'name' => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        _ => _inventoryStatusRank(
+          a.status,
+        ).compareTo(_inventoryStatusRank(b.status)),
+      };
+    });
+    return filtered;
+  }
+
+  int _inventoryStatusRank(StockStatus status) {
+    return switch (status) {
+      StockStatus.urgent => 0,
+      StockStatus.lowStock => 1,
+      StockStatus.inStock => 2,
+    };
+  }
+
+  String? _inventoryOrderBy() {
+    return switch (_inventorySort) {
+      'quantity_low' => 'actual_qty asc, item_code asc',
+      'quantity_high' => 'actual_qty desc, item_code asc',
+      'name' => 'item_code asc',
+      _ => 'actual_qty asc, item_code asc',
+    };
   }
 
   Future<void> refreshStockEntries() async {
@@ -926,6 +1159,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     int limitStart = 0,
     String? orderBy,
     List<List<dynamic>>? filters,
+    List<List<dynamic>>? orFilters,
   }) async {
     var remainingFields = List<String>.from(fields);
     var currentOrderBy = orderBy;
@@ -939,6 +1173,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
           limitStart: limitStart,
           orderBy: currentOrderBy,
           filters: filters,
+          orFilters: orFilters,
         );
       } catch (error) {
         final text = error.toString();
@@ -985,12 +1220,29 @@ class WarehouseStockState extends AppStateProxyNotifier {
             'reorder_level',
           ],
           filters: [
-            ['name', 'in', batch],
+            ['item_code', 'in', batch],
           ],
           limit: batch.length,
         );
       } catch (_) {
-        rows = const [];
+        try {
+          rows = await _fetchResourceWithFieldFallback(
+            doctype: 'Item',
+            fields: const [
+              'name',
+              'item_code',
+              'item_name',
+              'item_group',
+              'reorder_level',
+            ],
+            filters: [
+              ['name', 'in', batch],
+            ],
+            limit: batch.length,
+          );
+        } catch (_) {
+          rows = const [];
+        }
       }
       for (final row in rows) {
         final code = row['item_code']?.toString().trim().isNotEmpty == true

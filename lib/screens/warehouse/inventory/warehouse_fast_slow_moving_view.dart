@@ -19,18 +19,23 @@ class WarehouseFastSlowMovingView extends StatefulWidget {
 
 class _WarehouseFastSlowMovingViewState
     extends State<WarehouseFastSlowMovingView> {
+  static const int _visiblePageSize = 50;
+
   final _search = TextEditingController();
   List<StockMovementVelocityItem> _rows = const [];
   _MovementFilter _filter = _MovementFilter.all;
   String? _warehouse;
   int _periodDays = 30;
+  int _visibleLimit = _visiblePageSize;
   bool _loading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _search.addListener(() => setState(() {}));
+    _search.addListener(() {
+      setState(() => _visibleLimit = _visiblePageSize);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -62,90 +67,110 @@ class _WarehouseFastSlowMovingViewState
   @override
   Widget build(BuildContext context) {
     final rows = _filteredRows();
+    final visibleRows = rows.take(_visibleLimit).toList();
     final movingRows = _rows.where((row) => row.outgoingQuantity > 0).length;
     final idleRows = _rows.length - movingRows;
     final warehouses = _rows.map((row) => row.warehouse).toSet().toList()
       ..sort();
-    return RefreshIndicator(
-      onRefresh: () => _load(forceRefresh: true),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: warehousePagePaddingOf(context),
-        children: [
-          const WarehouseSectionHeader(
-            title: 'Fast & Slow Moving',
-            subtitle: 'Analisis pergerakan barang keluar per gudang',
-            icon: Icons.speed_rounded,
-          ),
-          warehouseSectionGap,
-          Row(
-            children: [
-              Expanded(child: _metric('Stok bergerak', '$movingRows')),
-              const SizedBox(width: 10),
-              Expanded(child: _metric('Belum bergerak', '$idleRows')),
-            ],
-          ),
-          const SizedBox(height: 10),
-          const WarehouseInfoPanel(
-            icon: Icons.info_outline_rounded,
-            message:
-                'Fast moving memiliki qty keluar minimal sebesar rata-rata. Slow moving berada di bawah rata-rata, termasuk yang belum bergerak.',
-          ),
-          warehouseSectionGap,
-          WarehouseSearchField(
-            controller: _search,
-            hintText: 'Cari item atau kode',
-          ),
-          const SizedBox(height: 10),
-          _FastSlowFilterBar(
-            warehouse: _warehouse,
-            periodDays: _periodDays,
-            onTap: () => _openFilterSheet(warehouses),
-          ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.extentAfter <= 280 &&
+            _visibleLimit < rows.length) {
+          setState(() {
+            _visibleLimit = (_visibleLimit + _visiblePageSize).clamp(
+              0,
+              rows.length,
+            );
+          });
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: () => _load(forceRefresh: true),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: warehousePagePaddingOf(context),
+          children: [
+            const WarehouseSectionHeader(
+              title: 'Fast & Slow Moving',
+              subtitle: 'Analisis pergerakan barang keluar per gudang',
+              icon: Icons.speed_rounded,
+            ),
+            warehouseSectionGap,
+            Row(
               children: [
-                _chip('Semua', _MovementFilter.all),
-                _chip('Fast moving', _MovementFilter.fast),
-                _chip('Slow moving', _MovementFilter.slow),
+                Expanded(child: _metric('Stok bergerak', '$movingRows')),
+                const SizedBox(width: 10),
+                Expanded(child: _metric('Belum bergerak', '$idleRows')),
               ],
             ),
-          ),
-          if (_loading) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: const TextStyle(
-                color: AppColors.danger,
-                fontWeight: FontWeight.w800,
+            const SizedBox(height: 10),
+            const WarehouseInfoPanel(
+              icon: Icons.info_outline_rounded,
+              message:
+                  'Fast moving memiliki qty keluar minimal sebesar rata-rata. Slow moving berada di bawah rata-rata, termasuk yang belum bergerak.',
+            ),
+            warehouseSectionGap,
+            WarehouseSearchField(
+              controller: _search,
+              hintText: 'Cari item atau kode',
+            ),
+            const SizedBox(height: 10),
+            _FastSlowFilterBar(
+              warehouse: _warehouse,
+              periodDays: _periodDays,
+              onTap: () => _openFilterSheet(warehouses),
+            ),
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _chip('Semua', _MovementFilter.all),
+                  _chip('Fast moving', _MovementFilter.fast),
+                  _chip('Slow moving', _MovementFilter.slow),
+                ],
               ),
             ),
-          ],
-          warehouseSectionGap,
-          WarehouseSectionHeader(
-            title: 'Peringkat Pergerakan',
-            subtitle: '${rows.length} baris stok ditampilkan',
-            icon: Icons.format_list_numbered_rounded,
-          ),
-          const SizedBox(height: 12),
-          if (rows.isEmpty && !_loading)
-            const ErpEmptyState(
-              title: 'Data pergerakan tidak ditemukan',
-              message: 'Ubah filter atau tarik ke bawah untuk refresh.',
-            )
-          else
-            ...rows.asMap().entries.map(
-              (entry) => _movementCard(entry.key + 1, entry.value),
+            if (_loading) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+            warehouseSectionGap,
+            WarehouseSectionHeader(
+              title: 'Peringkat Pergerakan',
+              subtitle: _rowsSubtitle(visibleRows.length, rows.length),
+              icon: Icons.format_list_numbered_rounded,
             ),
-        ],
+            const SizedBox(height: 12),
+            if (rows.isEmpty && !_loading)
+              const ErpEmptyState(
+                title: 'Data pergerakan tidak ditemukan',
+                message: 'Ubah filter atau tarik ke bawah untuk refresh.',
+              )
+            else
+              ...visibleRows.asMap().entries.map(
+                (entry) => _movementCard(entry.key + 1, entry.value),
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  String _rowsSubtitle(int visible, int total) {
+    if (visible >= total) return '$total baris stok ditampilkan';
+    return '$visible dari $total baris stok ditampilkan';
   }
 
   Widget _chip(String label, _MovementFilter value) => Padding(
@@ -153,7 +178,10 @@ class _WarehouseFastSlowMovingViewState
     child: ChoiceChip(
       label: Text(label),
       selected: _filter == value,
-      onSelected: (_) => setState(() => _filter = value),
+      onSelected: (_) => setState(() {
+        _filter = value;
+        _visibleLimit = _visiblePageSize;
+      }),
     ),
   );
 
@@ -173,6 +201,7 @@ class _WarehouseFastSlowMovingViewState
     setState(() {
       _warehouse = result.warehouse;
       _periodDays = result.periodDays;
+      _visibleLimit = _visiblePageSize;
     });
     if (shouldReload) _load();
   }
