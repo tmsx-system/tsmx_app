@@ -441,8 +441,6 @@ class AppState with ChangeNotifier {
       _stockReconciliations;
   List<InventoryItem> get inventory => _inventory;
   List<String> get itemGroups => List.unmodifiable(_itemGroups);
-  List<SalesOrder> get dashboardSalesOrders => _salesOrders;
-  List<PurchaseOrder> get dashboardPurchaseOrders => _purchaseOrders;
 
   List<WarehouseInfo> _warehouses = [];
   List<WarehouseInfo> get warehouses => _warehouses;

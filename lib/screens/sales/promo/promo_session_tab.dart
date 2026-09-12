@@ -34,38 +34,10 @@ class _PromoSessionTabState extends State<PromoSessionTab> {
       children: [
         RefreshIndicator(
           onRefresh: _loadRequests,
-          child: ListView(
+          child: ListView.builder(
             padding: SalesUi.compactScreenPaddingOf(context),
-            children: [
-              SalesHeroCard(
-                title: 'Pengajuan Promo Session',
-                subtitle:
-                    'Pantau promo sebelum diproses menjadi Promotional Scheme.',
-                icon: Icons.local_offer_rounded,
-                accent: _promoOrange,
-                trailing: IconButton.filledTonal(
-                  tooltip: 'Refresh',
-                  onPressed: _isLoading ? null : _loadRequests,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh_rounded),
-                ),
-              ),
-              SalesUi.gap(),
-              if (_error != null)
-                _errorCard(_error!)
-              else if (_isLoading)
-                _loadingCard()
-              else if (_requests.isEmpty)
-                _emptyCard()
-              else
-                ..._requests.map(_requestCard),
-              const SizedBox(height: 84),
-            ],
+            itemCount: 3 + _requestBodyCount,
+            itemBuilder: (context, index) => _buildListItem(index),
           ),
         ),
         Positioned(
@@ -86,6 +58,43 @@ class _PromoSessionTabState extends State<PromoSessionTab> {
         ),
       ],
     );
+  }
+
+  int get _requestBodyCount {
+    if (_error != null || _isLoading || _requests.isEmpty) return 1;
+    return _requests.length;
+  }
+
+  Widget _buildListItem(int index) {
+    switch (index) {
+      case 0:
+        return SalesHeroCard(
+          title: 'Pengajuan Promo Session',
+          subtitle: 'Pantau promo sebelum diproses menjadi Promotional Scheme.',
+          icon: Icons.local_offer_rounded,
+          accent: _promoOrange,
+          trailing: IconButton.filledTonal(
+            tooltip: 'Refresh',
+            onPressed: _isLoading ? null : _loadRequests,
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
+        );
+      case 1:
+        return SalesUi.gap();
+    }
+
+    final bodyIndex = index - 2;
+    if (bodyIndex >= _requestBodyCount) return const SizedBox(height: 84);
+    if (_error != null) return _errorCard(_error!);
+    if (_isLoading) return _loadingCard();
+    if (_requests.isEmpty) return _emptyCard();
+    return _requestCard(_requests[bodyIndex]);
   }
 
   Future<void> _openCreate() async {

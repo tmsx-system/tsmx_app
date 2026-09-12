@@ -102,70 +102,89 @@ class _CustomerPaymentScheduleTabState extends State<CustomerPaymentScheduleTab>
     );
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: SalesUi.screenPaddingOf(context),
-        children: [
-          const CollectionSectionHeader(
-            title: 'Janji Bayar Customer',
-            subtitle: 'Jadwal bayar mengikuti due date SI dan term TT',
-            icon: Icons.event_available_rounded,
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: CollectionMetricCard(
-                  label: 'Total Janji',
-                  value: '${sorted.length}',
-                  icon: Icons.event_note_rounded,
+        slivers: [
+          SliverPadding(
+            padding: SalesUi.screenPaddingOf(context),
+            sliver: SliverList.list(
+              children: [
+                const CollectionSectionHeader(
+                  title: 'Janji Bayar Customer',
+                  subtitle: 'Jadwal bayar mengikuti due date SI dan term TT',
+                  icon: Icons.event_available_rounded,
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: CollectionMetricCard(
-                  label: 'Jatuh Tempo',
-                  value: '$due',
-                  icon: Icons.notification_important_outlined,
-                  color: AppColors.warning,
+                Row(
+                  children: [
+                    Expanded(
+                      child: CollectionMetricCard(
+                        label: 'Total Janji',
+                        value: '${sorted.length}',
+                        icon: Icons.event_note_rounded,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: CollectionMetricCard(
+                        label: 'Jatuh Tempo',
+                        value: '$due',
+                        icon: Icons.notification_important_outlined,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          CollectionMetricCard(
-            label: 'Total Nominal Janji Bayar',
-            value: 'Rp ${formatErpCurrency(total)}',
-            icon: Icons.payments_outlined,
-            color: AppColors.success,
-          ),
-          if (loading) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
-          ],
-          if (error != null) ...[
-            const SizedBox(height: 12),
-            ErpErrorBox(message: error!),
-            OutlinedButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Muat ulang'),
+                const SizedBox(height: 10),
+                CollectionMetricCard(
+                  label: 'Total Nominal Janji Bayar',
+                  value: 'Rp ${formatErpCurrency(total)}',
+                  icon: Icons.payments_outlined,
+                  color: AppColors.success,
+                ),
+                if (loading) ...[
+                  const SizedBox(height: 12),
+                  const LinearProgressIndicator(),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  ErpErrorBox(message: error!),
+                  OutlinedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Muat ulang'),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                const CollectionSectionHeader(
+                  title: 'Daftar Janji Bayar',
+                  subtitle: 'Urut dari tanggal jatuh tempo terdekat',
+                  icon: Icons.list_alt_rounded,
+                ),
+              ],
             ),
-          ],
-          const SizedBox(height: 24),
-          const CollectionSectionHeader(
-            title: 'Daftar Janji Bayar',
-            subtitle: 'Urut dari tanggal jatuh tempo terdekat',
-            icon: Icons.list_alt_rounded,
           ),
           if (!loading && error == null && sorted.isEmpty)
-            const ErpEmptyState(title: 'Belum ada janji bayar')
+            SliverPadding(
+              padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+              sliver: const SliverToBoxAdapter(
+                child: ErpEmptyState(title: 'Belum ada janji bayar'),
+              ),
+            )
           else
-            ...sorted.map(
-              (row) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _PaymentScheduleCard(row: row, due: _isDue(row)),
+            SliverPadding(
+              padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+              sliver: SliverList.builder(
+                itemCount: sorted.length,
+                itemBuilder: (context, index) {
+                  final row = sorted[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _PaymentScheduleCard(row: row, due: _isDue(row)),
+                  );
+                },
               ),
             ),
+          const SliverToBoxAdapter(child: SizedBox(height: 84)),
         ],
       ),
     );

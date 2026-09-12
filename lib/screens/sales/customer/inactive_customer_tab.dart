@@ -63,61 +63,93 @@ class _InactiveCustomerTabState extends State<InactiveCustomerTab> {
           doctypes: _selectedDocumentTypes,
           forceRemote: true,
         ),
-        child: ListView(
-          padding: SalesUi.compactScreenPaddingOf(context),
-          children: [
-            _InactiveCustomerFilter(
-              days: _days,
-              selectedDocumentTypes: _documentTypes,
-              controller: _searchController,
-              loading: state.isInactiveCustomersLoading,
-              onFilterChanged: (value) {
-                setState(() {
-                  _days = value.days;
-                  _daysController.text = value.days.toString();
-                  _documentTypes
-                    ..clear()
-                    ..addAll(value.documentTypes);
-                });
-                context.read<CustomerState>().refreshInactiveCustomers(
-                  daysSinceLastOrder: _days,
-                  doctypes: _selectedDocumentTypes,
-                  forceRemote: true,
-                );
-              },
-              onSearchChanged: (value) => setState(() => _query = value),
-            ),
-            SalesUi.gap(),
-            if (state.inactiveCustomersError != null) ...[
-              ErpErrorBox(
-                message: state.inactiveCustomersError!,
-                onRetry: () =>
-                    context.read<CustomerState>().refreshInactiveCustomers(
-                      daysSinceLastOrder: _days,
-                      doctypes: _selectedDocumentTypes,
-                      forceRemote: true,
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: SalesUi.compactScreenPaddingOf(context),
+              sliver: SliverList.list(
+                children: [
+                  _InactiveCustomerFilter(
+                    days: _days,
+                    selectedDocumentTypes: _documentTypes,
+                    controller: _searchController,
+                    loading: state.isInactiveCustomersLoading,
+                    onFilterChanged: (value) {
+                      setState(() {
+                        _days = value.days;
+                        _daysController.text = value.days.toString();
+                        _documentTypes
+                          ..clear()
+                          ..addAll(value.documentTypes);
+                      });
+                      context.read<CustomerState>().refreshInactiveCustomers(
+                        daysSinceLastOrder: _days,
+                        doctypes: _selectedDocumentTypes,
+                        forceRemote: true,
+                      );
+                    },
+                    onSearchChanged: (value) => setState(() => _query = value),
+                  ),
+                  SalesUi.gap(),
+                  if (state.inactiveCustomersError != null) ...[
+                    ErpErrorBox(
+                      message: state.inactiveCustomersError!,
+                      onRetry: () => context
+                          .read<CustomerState>()
+                          .refreshInactiveCustomers(
+                            daysSinceLastOrder: _days,
+                            doctypes: _selectedDocumentTypes,
+                            forceRemote: true,
+                          ),
                     ),
+                    SalesUi.gap(),
+                  ],
+                  _InactiveCustomerSummary(
+                    total: state.inactiveCustomers.length,
+                    visible: customers.length,
+                    days: _days,
+                    documentTypes: _documentTypes,
+                  ),
+                  SalesUi.gap(),
+                ],
               ),
-              SalesUi.gap(),
-            ],
-            _InactiveCustomerSummary(
-              total: state.inactiveCustomers.length,
-              visible: customers.length,
-              days: _days,
-              documentTypes: _documentTypes,
             ),
-            SalesUi.gap(),
             if (state.isInactiveCustomersLoading &&
                 state.inactiveCustomers.isEmpty)
-              const _InactiveCustomerLoading()
+              SliverPadding(
+                padding: SalesUi.compactScreenPaddingOf(
+                  context,
+                ).copyWith(top: 0),
+                sliver: const SliverToBoxAdapter(
+                  child: _InactiveCustomerLoading(),
+                ),
+              )
             else if (customers.isEmpty)
-              const ErpEmptyState(
-                title: 'Belum ada inactive customer',
-                message: 'Coba ubah range hari atau refresh report ERPNext.',
-                icon: Icons.person_search_rounded,
+              SliverPadding(
+                padding: SalesUi.compactScreenPaddingOf(
+                  context,
+                ).copyWith(top: 0),
+                sliver: const SliverToBoxAdapter(
+                  child: ErpEmptyState(
+                    title: 'Belum ada inactive customer',
+                    message:
+                        'Coba ubah range hari atau refresh report ERPNext.',
+                    icon: Icons.person_search_rounded,
+                  ),
+                ),
               )
             else
-              ...customers.map(_InactiveCustomerCard.new),
+              SliverPadding(
+                padding: SalesUi.compactScreenPaddingOf(
+                  context,
+                ).copyWith(top: 0),
+                sliver: SliverList.builder(
+                  itemCount: customers.length,
+                  itemBuilder: (context, index) =>
+                      _InactiveCustomerCard(customers[index]),
+                ),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 84)),
           ],
         ),
       ),

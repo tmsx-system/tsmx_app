@@ -43,40 +43,11 @@ class _NooRequestTabState extends State<NooRequestTab> {
       children: [
         RefreshIndicator(
           onRefresh: _loadRequests,
-          child: ListView(
+          child: ListView.builder(
             padding: SalesUi.compactScreenPaddingOf(context),
-            children: [
-              SalesHeroCard(
-                title: 'Daftar NOO',
-                subtitle:
-                    'Pantau pengajuan outlet baru sebelum menjadi Customer.',
-                icon: Icons.person_add_alt_1_rounded,
-                accent: _nooGreen,
-                trailing: IconButton.filledTonal(
-                  tooltip: 'Refresh',
-                  onPressed: _isLoading ? null : _loadRequests,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh_rounded),
-                ),
-              ),
-              SalesUi.gap(),
-              _statusFilterBar(),
-              SalesUi.gap(),
-              if (_error != null)
-                _errorCard(_error!)
-              else if (_isLoading)
-                _loadingCard()
-              else if (visibleRequests.isEmpty)
-                _emptyCard()
-              else
-                ...visibleRequests.map(_requestCard),
-              const SizedBox(height: 84),
-            ],
+            itemCount: 5 + _requestBodyCount(visibleRequests),
+            itemBuilder: (context, index) =>
+                _buildListItem(index, visibleRequests),
           ),
         ),
         Positioned(
@@ -97,6 +68,47 @@ class _NooRequestTabState extends State<NooRequestTab> {
         ),
       ],
     );
+  }
+
+  int _requestBodyCount(List<Map<String, dynamic>> visibleRequests) {
+    if (_error != null || _isLoading || visibleRequests.isEmpty) return 1;
+    return visibleRequests.length;
+  }
+
+  Widget _buildListItem(int index, List<Map<String, dynamic>> visibleRequests) {
+    switch (index) {
+      case 0:
+        return SalesHeroCard(
+          title: 'Daftar NOO',
+          subtitle: 'Pantau pengajuan outlet baru sebelum menjadi Customer.',
+          icon: Icons.person_add_alt_1_rounded,
+          accent: _nooGreen,
+          trailing: IconButton.filledTonal(
+            tooltip: 'Refresh',
+            onPressed: _isLoading ? null : _loadRequests,
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+          ),
+        );
+      case 1:
+      case 3:
+        return SalesUi.gap();
+      case 2:
+        return _statusFilterBar();
+    }
+
+    final bodyCount = _requestBodyCount(visibleRequests);
+    final bodyIndex = index - 4;
+    if (bodyIndex >= bodyCount) return const SizedBox(height: 84);
+    if (_error != null) return _errorCard(_error!);
+    if (_isLoading) return _loadingCard();
+    if (visibleRequests.isEmpty) return _emptyCard();
+    return _requestCard(visibleRequests[bodyIndex]);
   }
 
   Future<void> _openCreate() async {
@@ -132,6 +144,7 @@ class _NooRequestTabState extends State<NooRequestTab> {
     });
     try {
       final state = context.read<NooState>();
+      final status = _statusFilter?.trim();
       final rows = await state.fetchNooRequestRows(
         fields: const [
           'name',
@@ -146,7 +159,11 @@ class _NooRequestTabState extends State<NooRequestTab> {
           'status',
           'modified',
         ],
-        filters: null,
+        filters: status == null || status.isEmpty
+            ? null
+            : [
+                ['status', '=', status],
+              ],
         orderBy: 'modified desc',
       );
       if (!mounted) return;
@@ -290,7 +307,10 @@ class _NooRequestTabState extends State<NooRequestTab> {
         label: Text(label),
         selected: selected,
         showCheckmark: false,
-        onSelected: (_) => setState(() => _statusFilter = value),
+        onSelected: (_) {
+          setState(() => _statusFilter = value);
+          _loadRequests();
+        },
         visualDensity: VisualDensity.compact,
         labelStyle: TextStyle(
           color: selected ? AppColors.white : AppColors.primary,

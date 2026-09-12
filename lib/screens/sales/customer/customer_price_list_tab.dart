@@ -146,121 +146,156 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
         await _loadCustomers();
         if (_selectedCustomer != null) await _loadPrices();
       },
-      child: ListView(
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: SalesUi.compactScreenPaddingOf(context),
-        children: [
-          SalesInfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        slivers: [
+          SliverPadding(
+            padding: SalesUi.compactScreenPaddingOf(context),
+            sliver: SliverList.list(
               children: [
-                const SalesSectionTitle(
-                  title: 'Pilih Customer',
-                  subtitle: 'Harga mengikuti default price list customer.',
-                ),
-                SalesUi.gap(),
-                InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: _loadingCustomers ? null : _selectCustomer,
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Customer',
-                      prefixIcon: const Icon(Icons.storefront_rounded),
-                      suffixIcon: _loadingCustomers
-                          ? const Padding(
-                              padding: EdgeInsets.all(14),
-                              child: SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            )
-                          : const Icon(Icons.search_rounded),
-                    ),
-                    child: Text(
-                      selected == null
-                          ? 'Pilih atau cari customer'
-                          : selected.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: selected == null
-                            ? AppColors.slate
-                            : AppColors.navy,
-                        fontWeight: FontWeight.w800,
+                SalesInfoCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SalesSectionTitle(
+                        title: 'Pilih Customer',
+                        subtitle:
+                            'Harga mengikuti default price list customer.',
                       ),
-                    ),
+                      SalesUi.gap(),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: _loadingCustomers ? null : _selectCustomer,
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Customer',
+                            prefixIcon: const Icon(Icons.storefront_rounded),
+                            suffixIcon: _loadingCustomers
+                                ? const Padding(
+                                    padding: EdgeInsets.all(14),
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(Icons.search_rounded),
+                          ),
+                          child: Text(
+                            selected == null
+                                ? 'Pilih atau cari customer'
+                                : selected.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: selected == null
+                                  ? AppColors.slate
+                                  : AppColors.navy,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (selected != null && selected.id != selected.name) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          selected.id,
+                          style: const TextStyle(
+                            color: AppColors.slate,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      SalesUi.gap(),
+                      TextField(
+                        controller: _searchController,
+                        enabled: selected != null && !_loadingPrices,
+                        onChanged: (_) => _scheduleSearch(),
+                        decoration: const InputDecoration(
+                          labelText: 'Cari item',
+                          hintText: 'Nama atau kode item',
+                          prefixIcon: Icon(Icons.search_rounded),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (selected != null && selected.id != selected.name) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    selected.id,
-                    style: const TextStyle(
-                      color: AppColors.slate,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
+                if (_customerError != null) ...[
+                  SalesUi.gap(14),
+                  ErpErrorBox(
+                    message: _customerError!,
+                    onRetry: _loadCustomers,
                   ),
                 ],
-                SalesUi.gap(),
-                TextField(
-                  controller: _searchController,
-                  enabled: selected != null && !_loadingPrices,
-                  onChanged: (_) => _scheduleSearch(),
-                  decoration: const InputDecoration(
-                    labelText: 'Cari item',
-                    hintText: 'Nama atau kode item',
-                    prefixIcon: Icon(Icons.search_rounded),
+                if (insight != null) ...[
+                  SalesUi.gap(14),
+                  _PriceListSummary(
+                    priceList: insight.priceList,
+                    customerGroup: insight.customerGroup,
+                    currency: insight.priceListCurrency.isNotEmpty
+                        ? insight.priceListCurrency
+                        : insight.currency,
+                    itemCount: _prices.length,
                   ),
-                ),
+                ],
+                SalesUi.gap(14),
               ],
             ),
           ),
-          if (_customerError != null) ...[
-            SalesUi.gap(14),
-            ErpErrorBox(message: _customerError!, onRetry: _loadCustomers),
-          ],
-          if (insight != null) ...[
-            SalesUi.gap(14),
-            _PriceListSummary(
-              priceList: insight.priceList,
-              customerGroup: insight.customerGroup,
-              currency: insight.priceListCurrency.isNotEmpty
-                  ? insight.priceListCurrency
-                  : insight.currency,
-              itemCount: _prices.length,
-            ),
-          ],
-          SalesUi.gap(14),
           if (selected == null)
-            const ErpEmptyState(
-              icon: Icons.storefront_rounded,
-              title: 'Pilih customer dulu',
-              message:
-                  'Setelah customer dipilih, daftar harga item akan tampil.',
+            SliverPadding(
+              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              sliver: const SliverToBoxAdapter(
+                child: ErpEmptyState(
+                  icon: Icons.storefront_rounded,
+                  title: 'Pilih customer dulu',
+                  message:
+                      'Setelah customer dipilih, daftar harga item akan tampil.',
+                ),
+              ),
             )
           else if (_loadingPrices)
-            const _PriceListLoading()
+            SliverPadding(
+              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              sliver: const SliverToBoxAdapter(child: _PriceListLoading()),
+            )
           else if (_priceError != null)
-            ErpErrorBox(message: _priceError!, onRetry: _loadPrices)
+            SliverPadding(
+              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              sliver: SliverToBoxAdapter(
+                child: ErpErrorBox(message: _priceError!, onRetry: _loadPrices),
+              ),
+            )
           else if (_prices.isEmpty)
-            const ErpEmptyState(
-              icon: Icons.price_change_outlined,
-              title: 'Harga item belum tersedia',
-              message:
-                  'Pastikan Item Price selling tersedia untuk price list customer.',
+            SliverPadding(
+              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              sliver: const SliverToBoxAdapter(
+                child: ErpEmptyState(
+                  icon: Icons.price_change_outlined,
+                  title: 'Harga item belum tersedia',
+                  message:
+                      'Pastikan Item Price selling tersedia untuk price list customer.',
+                ),
+              ),
             )
           else
-            ..._prices.map(
-              (price) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _CustomerItemPriceCard(
-                  price: price,
-                  priceLabel: _formatMoney(price.rate, price.currency),
-                ),
+            SliverPadding(
+              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              sliver: SliverList.builder(
+                itemCount: _prices.length,
+                itemBuilder: (context, index) {
+                  final price = _prices[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _CustomerItemPriceCard(
+                      price: price,
+                      priceLabel: _formatMoney(price.rate, price.currency),
+                    ),
+                  );
+                },
               ),
             ),
         ],

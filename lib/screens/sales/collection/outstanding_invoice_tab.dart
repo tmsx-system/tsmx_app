@@ -104,70 +104,103 @@ class _OutstandingInvoiceTabState extends State<OutstandingInvoiceTab>
     final total = rows.fold<double>(0, (sum, row) => sum + row.total);
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: SalesUi.screenPaddingOf(context),
-        children: [
-          const CollectionSectionHeader(
-            title: 'Piutang Customer',
-            subtitle: 'Lihat customer yang perlu segera ditagih',
-            icon: Icons.receipt_long_rounded,
-          ),
-          CollectionMetricCard(
-            label: 'Total Piutang',
-            value: 'Rp ${formatErpCurrency(total)}',
-            icon: Icons.account_balance_wallet_rounded,
-          ),
-          const SizedBox(height: 10),
-          CollectionMetricCard(
-            label: 'Customer Overdue',
-            value: '${overdue.length}',
-            icon: Icons.warning_amber_rounded,
-            color: AppColors.warning,
-          ),
-          if (loading) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
-          ],
-          if (error != null) ...[
-            const SizedBox(height: 12),
-            ErpErrorBox(message: error!),
-            OutlinedButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Coba lagi'),
+        slivers: [
+          SliverPadding(
+            padding: SalesUi.screenPaddingOf(context),
+            sliver: SliverList.list(
+              children: [
+                const CollectionSectionHeader(
+                  title: 'Piutang Customer',
+                  subtitle: 'Lihat customer yang perlu segera ditagih',
+                  icon: Icons.receipt_long_rounded,
+                ),
+                CollectionMetricCard(
+                  label: 'Total Piutang',
+                  value: 'Rp ${formatErpCurrency(total)}',
+                  icon: Icons.account_balance_wallet_rounded,
+                ),
+                const SizedBox(height: 10),
+                CollectionMetricCard(
+                  label: 'Customer Overdue',
+                  value: '${overdue.length}',
+                  icon: Icons.warning_amber_rounded,
+                  color: AppColors.warning,
+                ),
+                if (loading) ...[
+                  const SizedBox(height: 12),
+                  const LinearProgressIndicator(),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  ErpErrorBox(message: error!),
+                  OutlinedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Coba lagi'),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                const CollectionSectionHeader(
+                  title: 'Prioritas Penagihan',
+                  subtitle: 'Urut dari nilai overdue terbesar',
+                  icon: Icons.priority_high_rounded,
+                ),
+              ],
             ),
-          ],
-          const SizedBox(height: 24),
-          const CollectionSectionHeader(
-            title: 'Prioritas Penagihan',
-            subtitle: 'Urut dari nilai overdue terbesar',
-            icon: Icons.priority_high_rounded,
           ),
           if (!loading && error == null && overdue.isEmpty)
-            const ErpEmptyState(title: 'Tidak ada customer overdue')
+            SliverPadding(
+              padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+              sliver: const SliverToBoxAdapter(
+                child: ErpEmptyState(title: 'Tidak ada customer overdue'),
+              ),
+            )
           else
-            ...overdue.map(
-              (row) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _PriorityCollectionCard(row: row),
+            SliverPadding(
+              padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+              sliver: SliverList.builder(
+                itemCount: overdue.length,
+                itemBuilder: (context, index) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _PriorityCollectionCard(row: overdue[index]),
+                ),
               ),
             ),
-          const SizedBox(height: 20),
-          const CollectionSectionHeader(
-            title: 'Semua Piutang',
-            subtitle: 'Tekan customer untuk melihat rincian invoice',
-            icon: Icons.people_alt_rounded,
+          SliverPadding(
+            padding: SalesUi.screenPaddingOf(
+              context,
+            ).copyWith(top: 12, bottom: 0),
+            sliver: SliverList.list(
+              children: const [
+                CollectionSectionHeader(
+                  title: 'Semua Piutang',
+                  subtitle: 'Tekan customer untuk melihat rincian invoice',
+                  icon: Icons.people_alt_rounded,
+                ),
+              ],
+            ),
           ),
           if (!loading && error == null && rows.isEmpty)
-            const ErpEmptyState(title: 'Tidak ada outstanding piutang')
+            SliverPadding(
+              padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+              sliver: const SliverToBoxAdapter(
+                child: ErpEmptyState(title: 'Tidak ada outstanding piutang'),
+              ),
+            )
           else
-            ...rows.map(
-              (row) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _CustomerOutstandingCard(row: row),
+            SliverPadding(
+              padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+              sliver: SliverList.builder(
+                itemCount: rows.length,
+                itemBuilder: (context, index) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _CustomerOutstandingCard(row: rows[index]),
+                ),
               ),
             ),
+          const SliverToBoxAdapter(child: SizedBox(height: 84)),
         ],
       ),
     );

@@ -704,65 +704,97 @@ class _CollectionFullListScreenState extends State<_CollectionFullListScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: isInvoiceMode ? () async {} : _reloadPayments,
-        child: ListView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: SalesUi.screenPaddingOf(context).copyWith(bottom: 28),
-          children: [
-            _CollectionFullListFilterPanel(
-              searchController: _searchController,
-              range: _range,
-              dateBasis: _dateBasis,
-              showDateBasis: isInvoiceMode,
-              applyDateFilter: _applyDateFilter,
-              onApplyDateFilterChanged: (value) =>
-                  setState(() => _applyDateFilter = value),
-              onDateBasisChanged: (value) => setState(() {
-                _dateBasis = value;
-                _applyDateFilter = true;
-              }),
-              onPickRange: _pickRange,
+          slivers: [
+            SliverPadding(
+              padding: SalesUi.screenPaddingOf(context).copyWith(bottom: 0),
+              sliver: SliverList.list(
+                children: [
+                  _CollectionFullListFilterPanel(
+                    searchController: _searchController,
+                    range: _range,
+                    dateBasis: _dateBasis,
+                    showDateBasis: isInvoiceMode,
+                    applyDateFilter: _applyDateFilter,
+                    onApplyDateFilterChanged: (value) =>
+                        setState(() => _applyDateFilter = value),
+                    onDateBasisChanged: (value) => setState(() {
+                      _dateBasis = value;
+                      _applyDateFilter = true;
+                    }),
+                    onPickRange: _pickRange,
+                  ),
+                  const SizedBox(height: 14),
+                  CollectionSectionHeader(
+                    title: isInvoiceMode
+                        ? 'Invoice Belum Dibayar'
+                        : 'Histori Pembayaran',
+                    subtitle: isInvoiceMode
+                        ? '${invoices.length} invoice sesuai filter'
+                        : '${payments.length} pembayaran sesuai filter',
+                    icon: isInvoiceMode
+                        ? Icons.receipt_long_rounded
+                        : Icons.history_rounded,
+                  ),
+                  if (_loadingPayments) ...[
+                    const SizedBox(height: 10),
+                    const LinearProgressIndicator(),
+                  ],
+                  if (_paymentError != null) ...[
+                    const SizedBox(height: 10),
+                    ErpErrorBox(message: _paymentError!),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 14),
-            CollectionSectionHeader(
-              title: isInvoiceMode
-                  ? 'Invoice Belum Dibayar'
-                  : 'Histori Pembayaran',
-              subtitle: isInvoiceMode
-                  ? '${invoices.length} invoice sesuai filter'
-                  : '${payments.length} pembayaran sesuai filter',
-              icon: isInvoiceMode
-                  ? Icons.receipt_long_rounded
-                  : Icons.history_rounded,
-            ),
-            if (_loadingPayments) ...[
-              const SizedBox(height: 10),
-              const LinearProgressIndicator(),
-            ],
-            if (_paymentError != null) ...[
-              const SizedBox(height: 10),
-              ErpErrorBox(message: _paymentError!),
-            ],
             if (isInvoiceMode && invoices.isEmpty)
-              const ErpEmptyState(title: 'Tidak ada invoice sesuai filter')
-            else if (!isInvoiceMode && !_loadingPayments && payments.isEmpty)
-              const ErpEmptyState(title: 'Tidak ada pembayaran sesuai filter')
-            else if (isInvoiceMode)
-              ...invoices.map(
-                (invoice) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _CollectionInvoiceCard(
-                    invoice: invoice,
-                    allocations: widget.allocations[invoice.id] ?? const [],
+              SliverPadding(
+                padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+                sliver: const SliverToBoxAdapter(
+                  child: ErpEmptyState(
+                    title: 'Tidak ada invoice sesuai filter',
                   ),
                 ),
               )
+            else if (!isInvoiceMode && !_loadingPayments && payments.isEmpty)
+              SliverPadding(
+                padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+                sliver: const SliverToBoxAdapter(
+                  child: ErpEmptyState(
+                    title: 'Tidak ada pembayaran sesuai filter',
+                  ),
+                ),
+              )
+            else if (isInvoiceMode)
+              SliverPadding(
+                padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+                sliver: SliverList.builder(
+                  itemCount: invoices.length,
+                  itemBuilder: (context, index) {
+                    final invoice = invoices[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _CollectionInvoiceCard(
+                        invoice: invoice,
+                        allocations: widget.allocations[invoice.id] ?? const [],
+                      ),
+                    );
+                  },
+                ),
+              )
             else
-              ...payments.map(
-                (payment) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _CollectionPaymentCard(payment: payment),
+              SliverPadding(
+                padding: SalesUi.screenPaddingOf(context).copyWith(top: 0),
+                sliver: SliverList.builder(
+                  itemCount: payments.length,
+                  itemBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _CollectionPaymentCard(payment: payments[index]),
+                  ),
                 ),
               ),
+            const SliverToBoxAdapter(child: SizedBox(height: 28)),
           ],
         ),
       ),
