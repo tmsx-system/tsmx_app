@@ -27,7 +27,6 @@ class _StockTabState extends State<StockTab> {
   _StockSortOption _stockSortOption = _StockSortOption.urgentFirst;
   String? _selectedItemGroup;
   bool _selectionInitialized = false;
-  bool _stockEntriesRequested = false;
   Timer? _searchDebounce;
 
   @override
@@ -54,8 +53,6 @@ class _StockTabState extends State<StockTab> {
     _applyDefaultSelection(appState);
 
     await _refreshInventoryQuery();
-
-    _requestStockEntries(appState);
   }
 
   void _applyDefaultSelection(WarehouseStockState appState) {
@@ -79,18 +76,6 @@ class _StockTabState extends State<StockTab> {
     if (!mounted) return;
     _applyDefaultSelection(appState);
     await _refreshInventoryQuery();
-    _stockEntriesRequested = false;
-    _requestStockEntries(appState);
-  }
-
-  void _requestStockEntries(WarehouseStockState appState) {
-    if (_stockEntriesRequested ||
-        appState.stockEntries.isNotEmpty ||
-        appState.isStockEntriesLoading) {
-      return;
-    }
-    _stockEntriesRequested = true;
-    unawaited(appState.refreshStockEntries());
   }
 
   Future<void> _refreshInventoryQuery() {
@@ -273,7 +258,6 @@ class _StockTabState extends State<StockTab> {
                 ],
 
                 const SizedBox(height: 22),
-                _buildStockEntriesSection(appState),
               ],
             ),
           ),
@@ -537,127 +521,6 @@ class _StockTabState extends State<StockTab> {
       _StockStatusFilter.lowStock => Colors.orange,
       _StockStatusFilter.inStock => Colors.green,
     };
-  }
-
-  Widget _buildStockEntriesSection(WarehouseStockState appState) {
-    _requestStockEntries(appState);
-    final entries = appState.stockEntries.take(8).toList();
-
-    if (appState.isStockEntriesLoading) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionHeader('Recent Stock Entries', 'Loading'),
-          const SizedBox(height: 8),
-          const LinearProgressIndicator(),
-        ],
-      );
-    }
-
-    if (appState.stockEntriesError != null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionHeader('Recent Stock Entries', 'Error'),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.red.withValues(alpha: 0.15)),
-            ),
-            child: Text(
-              appState.stockEntriesError!,
-              style: const TextStyle(fontSize: 12, color: Colors.red),
-            ),
-          ),
-        ],
-      );
-    }
-
-    if (entries.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionHeader('Recent Stock Entries', '0 entries'),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.06),
-              ),
-            ),
-            child: const Text(
-              'No stock entries loaded.',
-              style: TextStyle(fontSize: 12, color: AppColors.slate),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader('Recent Stock Entries', '${entries.length} latest'),
-        const SizedBox(height: 8),
-        ...entries.map((e) {
-          return Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.08),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        e.id,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.navy,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${e.stockEntryType} - ${e.date}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.slate,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  e.statusText,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }),
-      ],
-    );
   }
 
   Widget _buildStockFilterBar(

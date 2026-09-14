@@ -46,6 +46,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
   String _inventorySearch = '';
   String _inventoryStatusFilter = 'all';
   String _inventorySort = 'urgent_first';
+  Map<String, _WarehouseItemMeta> _inventorySearchItemMeta = const {};
   Future<void>? _warehousesFetchInFlight;
   Future<void>? _inventoryFetchInFlight;
   Future<List<WarehouseBatchRecord>>? _warehouseBatchInFlight;
@@ -485,9 +486,10 @@ class WarehouseStockState extends AppStateProxyNotifier {
       items.add(InventoryItem.fromJson(row).copyWith(warehouseId: warehouse));
     }
 
-    final itemMeta = await _fetchItemMeta(
+    final fetchedItemMeta = await _fetchItemMeta(
       items.map((item) => item.sku).where((sku) => sku.isNotEmpty).toSet(),
     );
+    final itemMeta = {...fetchedItemMeta, ..._inventorySearchItemMeta};
     return [
       for (final item in items)
         (itemMeta[item.sku]?.applyTo(item) ?? item).withRecalculatedStatus(),
@@ -526,7 +528,10 @@ class WarehouseStockState extends AppStateProxyNotifier {
   Future<List<String>?> _inventoryItemCodeFilters() async {
     final query = _inventorySearch.trim();
     final group = _inventoryItemGroupFilter?.trim() ?? '';
-    if (query.isEmpty && group.isEmpty) return null;
+    if (query.isEmpty && group.isEmpty) {
+      _inventorySearchItemMeta = const {};
+      return null;
+    }
 
     final filters = <List<dynamic>>[];
     if (group.isNotEmpty) filters.add(['item_group', '=', group]);
@@ -545,15 +550,29 @@ class WarehouseStockState extends AppStateProxyNotifier {
               ['item_name', 'like', '%$query%'],
             ],
     );
+    _inventorySearchItemMeta = {
+      for (final row in rows)
+        if (_itemCodeFromMetaRow(row).isNotEmpty)
+          _itemCodeFromMetaRow(row): _WarehouseItemMeta(
+            itemName: row['item_name']?.toString(),
+            itemGroup: row['item_group']?.toString(),
+            reorderLevel: NumParse.asInt(row['reorder_level']),
+          ),
+    };
+
     return rows
         .map((row) {
-          final itemCode = row['item_code']?.toString().trim() ?? '';
-          if (itemCode.isNotEmpty) return itemCode;
-          return row['name']?.toString().trim() ?? '';
+          return _itemCodeFromMetaRow(row);
         })
         .where((code) => code.isNotEmpty)
         .toSet()
         .toList();
+  }
+
+  String _itemCodeFromMetaRow(Map<String, dynamic> row) {
+    final itemCode = row['item_code']?.toString().trim() ?? '';
+    if (itemCode.isNotEmpty) return itemCode;
+    return row['name']?.toString().trim() ?? '';
   }
 
   List<InventoryItem> _applyInventoryClientFilters(List<InventoryItem> items) {
@@ -1208,42 +1227,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     for (var start = 0; start < codes.length; start += batchSize) {
       final end = (start + batchSize).clamp(0, codes.length);
       final batch = codes.sublist(start, end);
-      List<Map<String, dynamic>> rows;
-      try {
-        rows = await _fetchResourceWithFieldFallback(
-          doctype: 'Item',
-          fields: const [
-            'name',
-            'item_code',
-            'item_name',
-            'item_group',
-            'reorder_level',
-          ],
-          filters: [
-            ['item_code', 'in', batch],
-          ],
-          limit: batch.length,
-        );
-      } catch (_) {
-        try {
-          rows = await _fetchResourceWithFieldFallback(
-            doctype: 'Item',
-            fields: const [
-              'name',
-              'item_code',
-              'item_name',
-              'item_group',
-              'reorder_level',
-            ],
-            filters: [
-              ['name', 'in', batch],
-            ],
-            limit: batch.length,
-          );
-        } catch (_) {
-          rows = const [];
-        }
-      }
+      final rows = await _fetchItemMetaRows(batch);
       for (final row in rows) {
         final code = row['item_code']?.toString().trim().isNotEmpty == true
             ? row['item_code']!.toString().trim()
@@ -1257,6 +1241,31 @@ class WarehouseStockState extends AppStateProxyNotifier {
       }
     }
     return result;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchItemMetaRows(
+    List<String> batch,
+  ) async {
+    const baseFields = ['name', 'item_code', 'item_name', 'item_group'];
+    const extendedFields = [...baseFields, 'reorder_level'];
+
+    for (final fieldSet in const [extendedFields, baseFields]) {
+      for (final keyField in const ['item_code', 'name']) {
+        try {
+          return await _fetchResourceWithFieldFallback(
+            doctype: 'Item',
+            fields: fieldSet,
+            filters: [
+              [keyField, 'in', batch],
+            ],
+            limit: batch.length,
+          );
+        } catch (_) {
+          continue;
+        }
+      }
+    }
+    return const [];
   }
 
   int _compareWarehouseNames(String a, String b) {
