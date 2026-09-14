@@ -66,7 +66,9 @@ class _InactiveCustomerTabState extends State<InactiveCustomerTab> {
         child: CustomScrollView(
           slivers: [
             SliverPadding(
-              padding: SalesUi.compactScreenPaddingOf(context),
+              padding: SalesUi.compactScreenPaddingOf(
+                context,
+              ).copyWith(bottom: 0),
               sliver: SliverList.list(
                 children: [
                   _InactiveCustomerFilter(
