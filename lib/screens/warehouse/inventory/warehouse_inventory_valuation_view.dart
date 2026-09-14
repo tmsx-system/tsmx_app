@@ -84,44 +84,63 @@ class _WarehouseInventoryValuationViewState
       },
       child: RefreshIndicator(
         onRefresh: _refresh,
-        child: ListView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: warehousePagePaddingOf(context),
-          children: [
-            WarehouseSearchField(
-              controller: _search,
-              hintText: 'Cari item atau kode',
-            ),
-            const SizedBox(height: 10),
-            _buildFilterBar(warehouses.map((row) => row.name).toList()),
-            if (_loading) ...[
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.w800,
-                ),
+          slivers: [
+            SliverPadding(
+              padding: warehousePagePaddingOf(context).copyWith(bottom: 0),
+              sliver: SliverList.list(
+                children: [
+                  WarehouseSearchField(
+                    controller: _search,
+                    hintText: 'Cari item atau kode',
+                  ),
+                  const SizedBox(height: 10),
+                  _buildFilterBar(warehouses.map((row) => row.name).toList()),
+                  if (_loading) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                  warehouseSectionGap,
+                  WarehouseSectionHeader(
+                    title: 'Nilai per Item',
+                    subtitle: _rowsSubtitle(visibleRows.length, rows.length),
+                    icon: Icons.list_alt_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
-            ],
-            warehouseSectionGap,
-            WarehouseSectionHeader(
-              title: 'Nilai per Item',
-              subtitle: _rowsSubtitle(visibleRows.length, rows.length),
-              icon: Icons.list_alt_rounded,
             ),
-            const SizedBox(height: 12),
             if (rows.isEmpty && !_loading)
-              const ErpEmptyState(
-                title: 'Data valuasi tidak ditemukan',
-                message: 'Ubah filter atau tarik ke bawah untuk refresh.',
+              SliverPadding(
+                padding: warehousePagePaddingOf(context).copyWith(top: 0),
+                sliver: const SliverToBoxAdapter(
+                  child: ErpEmptyState(
+                    title: 'Data valuasi tidak ditemukan',
+                    message: 'Ubah filter atau tarik ke bawah untuk refresh.',
+                  ),
+                ),
               )
             else
-              ...visibleRows.map(_valuationCard),
+              SliverPadding(
+                padding: warehousePagePaddingOf(context).copyWith(top: 0),
+                sliver: SliverList.builder(
+                  itemCount: visibleRows.length,
+                  itemBuilder: (context, index) =>
+                      _valuationCard(visibleRows[index]),
+                ),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 84)),
           ],
         ),
       ),

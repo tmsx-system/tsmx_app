@@ -80,63 +80,84 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
       },
       child: RefreshIndicator(
         onRefresh: () => _load(forceRefresh: true),
-        child: ListView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: warehousePagePaddingOf(context),
-          children: [
-            Row(
-              children: [
-                Expanded(child: _metric('Item dead stock', '${rows.length}')),
-                const SizedBox(width: 10),
-                Expanded(child: _metric('Total qty', '$totalQty')),
-              ],
-            ),
-            const SizedBox(height: 10),
-            WarehouseInfoPanel(
-              icon: Icons.account_balance_wallet_outlined,
-              color: AppColors.warning,
-              message:
-                  'Nilai modal tertahan: Rp ${formatErpCurrency(totalValue)}. Pergerakan diperiksa maksimal 365 hari terakhir.',
-            ),
-            warehouseSectionGap,
-            WarehouseSearchField(
-              controller: _search,
-              hintText: 'Cari item atau kode',
-            ),
-            const SizedBox(height: 10),
-            _DeadStockFilterBar(
-              warehouse: _warehouse,
-              threshold: _threshold,
-              onTap: () => _openFilterSheet(warehouses),
-            ),
-            if (_loading) ...[
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.w800,
-                ),
+          slivers: [
+            SliverPadding(
+              padding: warehousePagePaddingOf(context).copyWith(bottom: 0),
+              sliver: SliverList.list(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _metric('Item dead stock', '${rows.length}'),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: _metric('Total qty', '$totalQty')),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  WarehouseInfoPanel(
+                    icon: Icons.account_balance_wallet_outlined,
+                    color: AppColors.warning,
+                    message:
+                        'Nilai modal tertahan: Rp ${formatErpCurrency(totalValue)}. Pergerakan diperiksa maksimal 365 hari terakhir.',
+                  ),
+                  warehouseSectionGap,
+                  WarehouseSearchField(
+                    controller: _search,
+                    hintText: 'Cari item atau kode',
+                  ),
+                  const SizedBox(height: 10),
+                  _DeadStockFilterBar(
+                    warehouse: _warehouse,
+                    threshold: _threshold,
+                    onTap: () => _openFilterSheet(warehouses),
+                  ),
+                  if (_loading) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                  warehouseSectionGap,
+                  WarehouseSectionHeader(
+                    title: 'Daftar Dead Stock',
+                    subtitle: _rowsSubtitle(visibleRows.length, rows.length),
+                    icon: Icons.list_alt_rounded,
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
-            ],
-            warehouseSectionGap,
-            WarehouseSectionHeader(
-              title: 'Daftar Dead Stock',
-              subtitle: _rowsSubtitle(visibleRows.length, rows.length),
-              icon: Icons.list_alt_rounded,
             ),
-            const SizedBox(height: 12),
             if (rows.isEmpty && !_loading)
-              const ErpEmptyState(
-                title: 'Dead stock tidak ditemukan',
-                message: 'Ubah batas hari, filter gudang, atau pencarian.',
+              SliverPadding(
+                padding: warehousePagePaddingOf(context).copyWith(top: 0),
+                sliver: const SliverToBoxAdapter(
+                  child: ErpEmptyState(
+                    title: 'Dead stock tidak ditemukan',
+                    message: 'Ubah batas hari, filter gudang, atau pencarian.',
+                  ),
+                ),
               )
             else
-              ...visibleRows.map(_deadStockCard),
+              SliverPadding(
+                padding: warehousePagePaddingOf(context).copyWith(top: 0),
+                sliver: SliverList.builder(
+                  itemCount: visibleRows.length,
+                  itemBuilder: (context, index) =>
+                      _deadStockCard(visibleRows[index]),
+                ),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 84)),
           ],
         ),
       ),

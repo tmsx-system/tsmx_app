@@ -85,79 +85,98 @@ class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
       },
       child: RefreshIndicator(
         onRefresh: () => _load(forceRefresh: true),
-        child: ListView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: warehousePagePaddingOf(context),
-          children: [
-            Row(
-              children: [
-                Expanded(child: _metric('Stok >90 hari', '$oldCount')),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _metric(
-                    'Nilai >90 hari',
-                    'Rp ${formatErpCurrency(oldValue)}',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            const WarehouseInfoPanel(
-              icon: Icons.info_outline_rounded,
-              message:
-                  'Umur dihitung dari penerimaan terakhir dalam 365 hari. Item tanpa penerimaan pada periode tersebut ditandai >365 hari.',
-            ),
-            warehouseSectionGap,
-            WarehouseSearchField(
-              controller: _search,
-              hintText: 'Cari item atau kode',
-            ),
-            const SizedBox(height: 10),
-            _AgingFilterBar(
-              warehouse: _warehouse,
-              onTap: () => _openWarehouseFilter(warehouses),
-            ),
-            const SizedBox(height: 10),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
+          slivers: [
+            SliverPadding(
+              padding: warehousePagePaddingOf(context).copyWith(bottom: 0),
+              sliver: SliverList.list(
                 children: [
-                  _chip('Semua', _AgingBucket.all),
-                  _chip('0-30 hari', _AgingBucket.fresh),
-                  _chip('31-60 hari', _AgingBucket.medium),
-                  _chip('61-90 hari', _AgingBucket.old),
-                  _chip('>90 hari', _AgingBucket.veryOld),
+                  Row(
+                    children: [
+                      Expanded(child: _metric('Stok >90 hari', '$oldCount')),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _metric(
+                          'Nilai >90 hari',
+                          'Rp ${formatErpCurrency(oldValue)}',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const WarehouseInfoPanel(
+                    icon: Icons.info_outline_rounded,
+                    message:
+                        'Umur dihitung dari penerimaan terakhir dalam 365 hari. Item tanpa penerimaan pada periode tersebut ditandai >365 hari.',
+                  ),
+                  warehouseSectionGap,
+                  WarehouseSearchField(
+                    controller: _search,
+                    hintText: 'Cari item atau kode',
+                  ),
+                  const SizedBox(height: 10),
+                  _AgingFilterBar(
+                    warehouse: _warehouse,
+                    onTap: () => _openWarehouseFilter(warehouses),
+                  ),
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _chip('Semua', _AgingBucket.all),
+                        _chip('0-30 hari', _AgingBucket.fresh),
+                        _chip('31-60 hari', _AgingBucket.medium),
+                        _chip('61-90 hari', _AgingBucket.old),
+                        _chip('>90 hari', _AgingBucket.veryOld),
+                      ],
+                    ),
+                  ),
+                  if (_loading) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                  warehouseSectionGap,
+                  WarehouseSectionHeader(
+                    title: 'Daftar Umur Stok',
+                    subtitle: _rowsSubtitle(visibleRows.length, rows.length),
+                    icon: Icons.list_alt_rounded,
+                  ),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
-            if (_loading) ...[
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: const TextStyle(
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-            warehouseSectionGap,
-            WarehouseSectionHeader(
-              title: 'Daftar Umur Stok',
-              subtitle: _rowsSubtitle(visibleRows.length, rows.length),
-              icon: Icons.list_alt_rounded,
-            ),
-            const SizedBox(height: 12),
             if (rows.isEmpty && !_loading)
-              const ErpEmptyState(
-                title: 'Data stock aging tidak ditemukan',
-                message: 'Ubah filter atau tarik ke bawah untuk refresh.',
+              SliverPadding(
+                padding: warehousePagePaddingOf(context).copyWith(top: 0),
+                sliver: const SliverToBoxAdapter(
+                  child: ErpEmptyState(
+                    title: 'Data stock aging tidak ditemukan',
+                    message: 'Ubah filter atau tarik ke bawah untuk refresh.',
+                  ),
+                ),
               )
             else
-              ...visibleRows.map(_agingCard),
+              SliverPadding(
+                padding: warehousePagePaddingOf(context).copyWith(top: 0),
+                sliver: SliverList.builder(
+                  itemCount: visibleRows.length,
+                  itemBuilder: (context, index) =>
+                      _agingCard(visibleRows[index]),
+                ),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 84)),
           ],
         ),
       ),

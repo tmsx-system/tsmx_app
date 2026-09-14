@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -50,6 +52,12 @@ class MobileSiteRegistryService {
     final shouldCloseClient = client == null;
     try {
       return await _resolveViaPublicMethod(activeClient, key);
+    } on TimeoutException catch (error) {
+      throw Exception(_friendlyNetworkError(error));
+    } on SocketException catch (error) {
+      throw Exception(_friendlyNetworkError(error));
+    } on HandshakeException catch (error) {
+      throw Exception(_friendlyNetworkError(error));
     } finally {
       if (shouldCloseClient) activeClient.close();
     }
@@ -108,6 +116,12 @@ class MobileSiteRegistryService {
         return mapped;
       }
       return const {};
+    } on TimeoutException catch (error) {
+      throw Exception(_friendlyNetworkError(error));
+    } on SocketException catch (error) {
+      throw Exception(_friendlyNetworkError(error));
+    } on HandshakeException catch (error) {
+      throw Exception(_friendlyNetworkError(error));
     } finally {
       if (shouldCloseClient) activeClient.close();
     }
@@ -176,6 +190,24 @@ class MobileSiteRegistryService {
       if (direct != null && direct.trim().isNotEmpty) return direct;
     }
     return 'Gagal register site. HTTP $statusCode';
+  }
+
+  String _friendlyNetworkError(Object error) {
+    final host = Uri.tryParse(AppConfig.mobileSiteRegistryBaseUrl)?.host;
+    final label = host == null || host.isEmpty ? 'registry TMSX Hub' : host;
+    final message = error.toString().toLowerCase();
+    if (error is TimeoutException) {
+      return 'Registry TMSX Hub tidak merespons. Periksa internet atau coba lagi.';
+    }
+    if (message.contains('failed host lookup') ||
+        message.contains('no address associated') ||
+        message.contains('nodename nor servname')) {
+      return 'Registry TMSX Hub tidak bisa dihubungi. Periksa internet, DNS, atau jaringan perangkat.';
+    }
+    if (error is HandshakeException) {
+      return 'Koneksi SSL ke $label gagal. Periksa sertifikat HTTPS registry.';
+    }
+    return 'Registry TMSX Hub tidak bisa dihubungi. Periksa koneksi internet perangkat.';
   }
 
   String _serverMessage(dynamic raw) {

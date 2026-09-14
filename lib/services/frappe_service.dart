@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
@@ -7,6 +8,7 @@ import '../config/app_config.dart';
 
 class FrappeService {
   static const int maxPageLength = 10000;
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   String baseUrl;
   String? username;
@@ -600,6 +602,7 @@ class FrappeService {
     Object? body,
   }) async {
     final httpClient = HttpClient();
+    httpClient.connectionTimeout = _requestTimeout;
     try {
       final request = await httpClient.putUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -620,8 +623,11 @@ class FrappeService {
         request.write(body.toString());
       }
 
-      final response = await request.close();
-      final responseBody = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(_requestTimeout);
+      final responseBody = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(_requestTimeout);
       _updateCookiesFromHeaders(response.headers);
       final responseHeaders = <String, String>{};
       response.headers.forEach((name, values) {
@@ -633,6 +639,12 @@ class FrappeService {
         headers: responseHeaders,
         reasonPhrase: response.reasonPhrase,
       );
+    } on TimeoutException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on SocketException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on HandshakeException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
     } finally {
       httpClient.close(force: true);
     }
@@ -644,6 +656,7 @@ class FrappeService {
     Object? body,
   }) async {
     final httpClient = HttpClient();
+    httpClient.connectionTimeout = _requestTimeout;
     try {
       final request = await httpClient.postUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -677,8 +690,11 @@ class FrappeService {
         sentRequestHeaders[name] = values.join(',');
       });
 
-      final response = await request.close();
-      final responseBody = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(_requestTimeout);
+      final responseBody = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(_requestTimeout);
       _updateCookiesFromHeaders(response.headers);
       final responseHeaders = <String, String>{};
       response.headers.forEach((name, values) {
@@ -700,6 +716,12 @@ class FrappeService {
         headers: responseHeaders,
         reasonPhrase: response.reasonPhrase,
       );
+    } on TimeoutException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on SocketException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on HandshakeException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
     } finally {
       httpClient.close(force: true);
     }
@@ -707,6 +729,7 @@ class FrappeService {
 
   Future<http.Response> _get(Uri uri, {Map<String, String>? headers}) async {
     final httpClient = HttpClient();
+    httpClient.connectionTimeout = _requestTimeout;
     try {
       final request = await httpClient.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -728,8 +751,11 @@ class FrappeService {
         sentRequestHeaders[name] = values.join(',');
       });
 
-      final response = await request.close();
-      final responseBody = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(_requestTimeout);
+      final responseBody = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(_requestTimeout);
       _updateCookiesFromHeaders(response.headers);
       final responseHeaders = <String, String>{};
       response.headers.forEach((name, values) {
@@ -751,6 +777,12 @@ class FrappeService {
         headers: responseHeaders,
         reasonPhrase: response.reasonPhrase,
       );
+    } on TimeoutException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on SocketException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on HandshakeException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
     } finally {
       httpClient.close(force: true);
     }
@@ -761,6 +793,7 @@ class FrappeService {
     Map<String, String>? headers,
   }) async {
     final httpClient = HttpClient();
+    httpClient.connectionTimeout = _requestTimeout;
     try {
       final request = await httpClient.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/pdf');
@@ -782,8 +815,10 @@ class FrappeService {
         sentRequestHeaders[name] = values.join(',');
       });
 
-      final response = await request.close();
-      final responseBytes = await consolidateHttpClientResponseBytes(response);
+      final response = await request.close().timeout(_requestTimeout);
+      final responseBytes = await consolidateHttpClientResponseBytes(
+        response,
+      ).timeout(_requestTimeout);
       _updateCookiesFromHeaders(response.headers);
       final responseHeaders = <String, String>{};
       response.headers.forEach((name, values) {
@@ -805,6 +840,12 @@ class FrappeService {
         headers: responseHeaders,
         reasonPhrase: response.reasonPhrase,
       );
+    } on TimeoutException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on SocketException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on HandshakeException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
     } finally {
       httpClient.close(force: true);
     }
@@ -812,6 +853,7 @@ class FrappeService {
 
   Future<http.Response> _delete(Uri uri, {Map<String, String>? headers}) async {
     final httpClient = HttpClient();
+    httpClient.connectionTimeout = _requestTimeout;
     try {
       final request = await httpClient.deleteUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -828,8 +870,11 @@ class FrappeService {
       }
       request.headers.removeAll(HttpHeaders.expectHeader);
 
-      final response = await request.close();
-      final responseBody = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(_requestTimeout);
+      final responseBody = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(_requestTimeout);
       _updateCookiesFromHeaders(response.headers);
       final responseHeaders = <String, String>{};
       response.headers.forEach((name, values) {
@@ -841,9 +886,32 @@ class FrappeService {
         headers: responseHeaders,
         reasonPhrase: response.reasonPhrase,
       );
+    } on TimeoutException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on SocketException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
+    } on HandshakeException catch (error) {
+      throw Exception(_friendlyNetworkError(error, uri));
     } finally {
       httpClient.close(force: true);
     }
+  }
+
+  String _friendlyNetworkError(Object error, Uri uri) {
+    final host = uri.host.isEmpty ? 'ERPNext' : uri.host;
+    final message = error.toString().toLowerCase();
+    if (error is TimeoutException) {
+      return 'Koneksi ke $host timeout. Periksa internet atau coba lagi.';
+    }
+    if (message.contains('failed host lookup') ||
+        message.contains('no address associated') ||
+        message.contains('nodename nor servname')) {
+      return 'Site $host tidak bisa ditemukan. Periksa koneksi internet, DNS, atau kode perusahaan.';
+    }
+    if (error is HandshakeException) {
+      return 'Koneksi SSL ke $host gagal. Periksa sertifikat HTTPS site ERPNext.';
+    }
+    return 'Tidak bisa terhubung ke $host. Periksa koneksi internet atau jaringan perangkat.';
   }
 
   void _updateCookiesFromHeaders(HttpHeaders headers) {
