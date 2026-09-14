@@ -34,6 +34,8 @@ class PurchaseReceiptState extends AppStateProxyNotifier {
     appState.isAuthenticated,
     appState.isSampleMode,
     appState.warehouses,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   FrappeService get frappeService => appState.frappeService;
@@ -49,6 +51,31 @@ class PurchaseReceiptState extends AppStateProxyNotifier {
 
   void updateFilterState(PurchasingFilterState value) {
     filterState = value;
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 3,
+      userIndex: 4,
+    )) {
+      _resetLocalDocuments();
+    }
+  }
+
+  void _resetLocalDocuments() {
+    _purchaseReceipts = const [];
+    _isPurchaseReceiptsLoading = false;
+    _isMorePurchaseReceiptsLoading = false;
+    _hasMorePurchaseReceipts = true;
+    _purchaseReceiptsError = null;
+    _purchaseReceiptQueryVersion++;
+    _purchaseReceiptsFetchInFlight = null;
+    _buyingSupplierTypeIdsCacheKey = null;
+    _buyingSupplierTypeIdsCache = null;
   }
 
   Future<void> refreshPurchaseReceipts() {

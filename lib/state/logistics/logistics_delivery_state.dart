@@ -34,6 +34,8 @@ class LogisticsDeliveryState extends AppStateProxyNotifier
     appState.latestDeliveryTrackingNote,
     appState.latestDeliveryDriverLocation,
     appState.isDeliveryDriverTrackingActive,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   List<DeliveryNote> get deliveryNotes => _deliveryNotes;
@@ -48,6 +50,29 @@ class LogisticsDeliveryState extends AppStateProxyNotifier
   bool get isDeliveryDriverTrackingActive =>
       appState.isDeliveryDriverTrackingActive;
   FrappeService get frappeService => appState.frappeService;
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 12,
+      userIndex: 13,
+    )) {
+      _resetLocalDeliveryNotes();
+    }
+  }
+
+  void _resetLocalDeliveryNotes() {
+    _deliveryNotes = const [];
+    _isDeliveryNotesLoading = false;
+    _isMoreDeliveryNotesLoading = false;
+    _hasMoreDeliveryNotes = true;
+    _deliveryNotesError = null;
+    _deliveryNoteQueryVersion++;
+    _deliveryNotesFetchInFlight = null;
+  }
 
   Future<void> refreshDeliveryNotes() {
     final inFlight = _deliveryNotesFetchInFlight;

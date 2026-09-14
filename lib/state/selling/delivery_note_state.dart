@@ -31,6 +31,8 @@ class DeliveryNoteState extends AppStateProxyNotifier
     appState.mobileAccess,
     appState.mobileBoot,
     appState.currentSalesPerson,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   int get sellingPeriodYear => filterState.sellingPeriodYear;
@@ -44,6 +46,29 @@ class DeliveryNoteState extends AppStateProxyNotifier
 
   void updateFilterState(SellingFilterState value) {
     filterState = value;
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 5,
+      userIndex: 6,
+    )) {
+      _resetLocalDocuments();
+    }
+  }
+
+  void _resetLocalDocuments() {
+    _deliveryNotes = const [];
+    _isDeliveryNotesLoading = false;
+    _isMoreDeliveryNotesLoading = false;
+    _hasMoreDeliveryNotes = true;
+    _deliveryNotesError = null;
+    _deliveryNoteQueryVersion++;
+    _deliveryNotesFetchInFlight = null;
   }
 
   Future<void> refreshDeliveryNotes() {

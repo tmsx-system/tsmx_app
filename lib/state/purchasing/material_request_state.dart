@@ -33,6 +33,8 @@ class MaterialRequestState extends AppStateProxyNotifier {
     appState.inventory,
     appState.warehouses,
     appState.buyingCompanies,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   int get buyingPeriodYear => filterState.buyingPeriodYear;
@@ -50,6 +52,29 @@ class MaterialRequestState extends AppStateProxyNotifier {
 
   void updateFilterState(PurchasingFilterState value) {
     filterState = value;
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 5,
+      userIndex: 6,
+    )) {
+      _resetLocalDocuments();
+    }
+  }
+
+  void _resetLocalDocuments() {
+    _materialRequests = const [];
+    _isMaterialRequestsLoading = false;
+    _isMoreMaterialRequestsLoading = false;
+    _hasMoreMaterialRequests = true;
+    _materialRequestsError = null;
+    _materialRequestQueryVersion++;
+    _materialRequestsFetchInFlight = null;
   }
 
   Future<void> refreshInventory() => appState.refreshInventory();

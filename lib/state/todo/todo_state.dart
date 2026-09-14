@@ -18,6 +18,7 @@ class TodoState extends AppStateProxyNotifier {
     appState.isAuthenticated,
     appState.isSampleMode,
     appState.mobileAccess,
+    appState.selectedSiteBaseUrl,
     appState.currentUser,
   ];
 
@@ -31,6 +32,26 @@ class TodoState extends AppStateProxyNotifier {
       List<ErpApprovalTodo>.unmodifiable(_cachedApprovalTodos);
   int get approvalTodoCount => _approvalTodoCount;
   int get purchaseApprovalTodoCount => _purchaseApprovalTodoCount;
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 3,
+      userIndex: 4,
+    )) {
+      _clearApprovalTodoSnapshot();
+    }
+  }
+
+  void _clearApprovalTodoSnapshot() {
+    _cachedApprovalTodos = const [];
+    _approvalTodoCount = 0;
+    _purchaseApprovalTodoCount = 0;
+    _approvalTodoFetchInFlight = null;
+  }
 
   Future<List<ErpApprovalTodo>> fetchApprovalTodos({
     bool forceRefresh = false,

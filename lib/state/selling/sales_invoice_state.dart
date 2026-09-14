@@ -31,6 +31,8 @@ class SalesInvoiceState extends AppStateProxyNotifier
     appState.mobileAccess,
     appState.mobileBoot,
     appState.currentSalesPerson,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   int get sellingPeriodYear => filterState.sellingPeriodYear;
@@ -44,6 +46,29 @@ class SalesInvoiceState extends AppStateProxyNotifier
 
   void updateFilterState(SellingFilterState value) {
     filterState = value;
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 5,
+      userIndex: 6,
+    )) {
+      _resetLocalDocuments();
+    }
+  }
+
+  void _resetLocalDocuments() {
+    _salesInvoices = const [];
+    _isSalesInvoicesLoading = false;
+    _isMoreSalesInvoicesLoading = false;
+    _hasMoreSalesInvoices = true;
+    _salesInvoicesError = null;
+    _salesInvoiceQueryVersion++;
+    _salesInvoicesFetchInFlight = null;
   }
 
   Future<void> refreshSalesInvoices() {

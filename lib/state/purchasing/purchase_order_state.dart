@@ -37,6 +37,8 @@ class PurchaseOrderState extends AppStateProxyNotifier {
     appState.isSampleMode,
     appState.warehouses,
     appState.buyingCompanies,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   int get buyingPeriodYear => filterState.buyingPeriodYear;
@@ -53,6 +55,31 @@ class PurchaseOrderState extends AppStateProxyNotifier {
 
   void updateFilterState(PurchasingFilterState value) {
     filterState = value;
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 4,
+      userIndex: 5,
+    )) {
+      _resetLocalDocuments();
+    }
+  }
+
+  void _resetLocalDocuments() {
+    _purchaseOrders = const [];
+    _isPurchaseOrdersLoading = false;
+    _isMorePurchaseOrdersLoading = false;
+    _hasMorePurchaseOrders = true;
+    _purchaseOrdersError = null;
+    _purchaseOrderQueryVersion++;
+    _purchaseOrdersFetchInFlight = null;
+    _buyingSupplierTypeIdsCacheKey = null;
+    _buyingSupplierTypeIdsCache = null;
   }
 
   Future<void> refreshPurchaseOrders() {

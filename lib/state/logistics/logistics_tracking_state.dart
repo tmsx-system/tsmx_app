@@ -29,6 +29,8 @@ class LogisticsTrackingState extends AppStateProxyNotifier
     appState.sellingCompanyFilter,
     appState.sellingCustomerTypeFilter,
     appState.currentSalesPerson,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   List<DeliveryNote> get deliveryNotes => _deliveryNotes;
@@ -36,6 +38,29 @@ class LogisticsTrackingState extends AppStateProxyNotifier
   bool get isMoreDeliveryNotesLoading => _isMoreDeliveryNotesLoading;
   bool get hasMoreDeliveryNotes => _hasMoreDeliveryNotes;
   String? get deliveryNotesError => _deliveryNotesError;
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 8,
+      userIndex: 9,
+    )) {
+      _resetLocalDeliveryNotes();
+    }
+  }
+
+  void _resetLocalDeliveryNotes() {
+    _deliveryNotes = const [];
+    _isDeliveryNotesLoading = false;
+    _isMoreDeliveryNotesLoading = false;
+    _hasMoreDeliveryNotes = true;
+    _deliveryNotesError = null;
+    _deliveryNoteQueryVersion++;
+    _deliveryNotesFetchInFlight = null;
+  }
 
   Future<void> refreshDeliveryNotes() {
     final inFlight = _deliveryNotesFetchInFlight;

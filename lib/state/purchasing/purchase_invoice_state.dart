@@ -33,6 +33,8 @@ class PurchaseInvoiceState extends AppStateProxyNotifier {
     appState.isAuthenticated,
     appState.isSampleMode,
     appState.warehouses,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   int get buyingPeriodYear => filterState.buyingPeriodYear;
@@ -48,6 +50,31 @@ class PurchaseInvoiceState extends AppStateProxyNotifier {
 
   void updateFilterState(PurchasingFilterState value) {
     filterState = value;
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 3,
+      userIndex: 4,
+    )) {
+      _resetLocalDocuments();
+    }
+  }
+
+  void _resetLocalDocuments() {
+    _purchaseInvoices = const [];
+    _isPurchaseInvoicesLoading = false;
+    _isMorePurchaseInvoicesLoading = false;
+    _hasMorePurchaseInvoices = true;
+    _purchaseInvoicesError = null;
+    _purchaseInvoiceQueryVersion++;
+    _purchaseInvoicesFetchInFlight = null;
+    _buyingSupplierTypeIdsCacheKey = null;
+    _buyingSupplierTypeIdsCache = null;
   }
 
   Future<void> refreshPurchaseInvoices() {

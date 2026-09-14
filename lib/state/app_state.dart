@@ -1674,6 +1674,7 @@ class AppState with ChangeNotifier {
     _isAuthenticated = false;
     _currentUser = null;
     _userRole = 'Unassigned';
+    await _clearSummaryCache();
     await clearSessionConfig();
     notifyListeners();
   }

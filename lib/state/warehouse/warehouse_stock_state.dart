@@ -68,6 +68,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     appState.mobileAccess,
     appState.mobileBoot,
     appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   List<WarehouseInfo> get warehouses => _warehouses;
@@ -111,6 +112,44 @@ class WarehouseStockState extends AppStateProxyNotifier {
 
   Future<bool> canCreateDoctype(String doctype) {
     return appState.canCreateDoctype(doctype);
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 4,
+      userIndex: 5,
+    )) {
+      _resetLocalStockData();
+    }
+  }
+
+  void _resetLocalStockData() {
+    _warehouses = const [];
+    _inventory = const [];
+    _itemGroups = const [];
+    _stockEntries = const [];
+    _stockReconciliations = const [];
+    _isInventoryLoading = false;
+    _isMoreInventoryLoading = false;
+    _hasMoreInventory = true;
+    _isStockEntriesLoading = false;
+    _inventoryError = null;
+    _stockEntriesError = null;
+    _inventoryQueryVersion++;
+    _inventoryNextStart = 0;
+    _inventorySearchItemMeta = const {};
+    _warehousesFetchInFlight = null;
+    _inventoryFetchInFlight = null;
+    _warehouseBatchInFlight = null;
+    _warehouseSerialInFlight = null;
+    _qualityInspectionInFlight.clear();
+    _warehouseBatchCache = null;
+    _warehouseSerialCache = null;
+    _qualityInspectionCache.clear();
   }
 
   Future<void> refreshWarehouses() {

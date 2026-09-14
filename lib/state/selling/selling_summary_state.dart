@@ -26,6 +26,8 @@ class SellingSummaryState extends AppStateProxyNotifier {
   List<Object?> get watchFields => [
     appState.isAuthenticated,
     appState.isSampleMode,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   bool get isOrderSummaryLoading => _isOrderSummaryLoading;
@@ -52,6 +54,30 @@ class SellingSummaryState extends AppStateProxyNotifier {
 
   void updateFilterState(SellingFilterState value) {
     filterState = value;
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 2,
+      userIndex: 3,
+    )) {
+      _resetLocalSummary();
+    }
+  }
+
+  void _resetLocalSummary() {
+    _isOrderSummaryLoading = false;
+    _orderSummaryError = null;
+    _salesOrderSummary = const DocumentSummary();
+    _deliveryNoteSummary = const DocumentSummary();
+    _salesInvoiceSummary = const DocumentSummary();
+    _salesOrderTrendPoints = const [];
+    _deliveryNoteTrendPoints = const [];
+    _salesInvoiceTrendPoints = const [];
   }
 
   Future<void> refreshSellingSummaries({

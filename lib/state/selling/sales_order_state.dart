@@ -38,6 +38,8 @@ class SalesOrderState extends AppStateProxyNotifier {
     appState.mobileAccess,
     appState.mobileBoot,
     appState.currentSalesPerson,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   int get sellingPeriodYear => filterState.sellingPeriodYear;
@@ -57,6 +59,29 @@ class SalesOrderState extends AppStateProxyNotifier {
 
   void updateFilterState(SellingFilterState value) {
     filterState = value;
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 5,
+      userIndex: 6,
+    )) {
+      _resetLocalDocuments();
+    }
+  }
+
+  void _resetLocalDocuments() {
+    _salesOrders = const [];
+    _isSalesOrdersLoading = false;
+    _isMoreSalesOrdersLoading = false;
+    _hasMoreSalesOrders = true;
+    _salesOrdersError = null;
+    _salesOrderQueryVersion++;
+    _salesOrdersFetchInFlight = null;
   }
 
   Future<void> refreshSalesOrders() {

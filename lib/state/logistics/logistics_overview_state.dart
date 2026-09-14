@@ -24,6 +24,8 @@ class LogisticsOverviewState extends AppStateProxyNotifier
     appState.sellingCompanyFilter,
     appState.sellingCustomerTypeFilter,
     appState.currentSalesPerson,
+    appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   List<DeliveryNote> get deliveryNotes => _deliveryNotes;
@@ -40,6 +42,26 @@ class LogisticsOverviewState extends AppStateProxyNotifier
 
   Future<bool> canCreateDoctype(String doctype) {
     return appState.canCreateDoctype(doctype);
+  }
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 9,
+      userIndex: 10,
+    )) {
+      _resetLocalDeliveryNotes();
+    }
+  }
+
+  void _resetLocalDeliveryNotes() {
+    _deliveryNotes = const [];
+    _isDeliveryNotesLoading = false;
+    _deliveryNotesError = null;
+    _deliveryNotesFetchInFlight = null;
   }
 
   Future<void> refreshDeliveryNotes() {

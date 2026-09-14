@@ -13,6 +13,39 @@ abstract class AppStateProxyNotifier extends ChangeNotifier {
   List<Object?> get watchFields;
 
   @protected
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {}
+
+  @protected
+  bool didAuthScopeChange(
+    List<Object?> previous,
+    List<Object?> next, {
+    required int authIndex,
+    int? siteIndex,
+    int? userIndex,
+  }) {
+    final isAuthenticated = next.length > authIndex && next[authIndex] == true;
+    if (!isAuthenticated) return true;
+    if (previous.isEmpty) return false;
+    if (previous.length <= authIndex ||
+        previous[authIndex] != next[authIndex]) {
+      return true;
+    }
+    if (siteIndex != null &&
+        previous.length > siteIndex &&
+        next.length > siteIndex &&
+        previous[siteIndex] != next[siteIndex]) {
+      return true;
+    }
+    if (userIndex != null &&
+        previous.length > userIndex &&
+        next.length > userIndex &&
+        previous[userIndex] != next[userIndex]) {
+      return true;
+    }
+    return false;
+  }
+
+  @protected
   void startWatchingAppState() {
     if (_isWatching) return;
     _lastWatchedValues = List<Object?>.from(watchFields);
@@ -36,7 +69,9 @@ abstract class AppStateProxyNotifier extends ChangeNotifier {
   void _handleAppStateChanged() {
     final next = watchFields;
     if (_sameWatchedValues(_lastWatchedValues, next)) return;
+    final previous = _lastWatchedValues;
     _lastWatchedValues = List<Object?>.from(next);
+    handleWatchedFieldsChanged(previous, next);
     notifyListeners();
   }
 

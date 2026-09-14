@@ -50,6 +50,7 @@ class FinanceState extends AppStateProxyNotifier {
     appState.mobileAccess,
     appState.mobileBoot,
     appState.selectedSiteBaseUrl,
+    appState.currentUser,
   ];
 
   FrappeService get frappeService => appState.frappeService;
@@ -58,6 +59,20 @@ class FinanceState extends AppStateProxyNotifier {
   String get selectedSiteBaseUrl => appState.selectedSiteBaseUrl;
   bool get canUseFinance => appState.canUseFinance;
   bool get canUseAccounting => appState.canUseAccounting;
+
+  @override
+  void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
+    if (didAuthScopeChange(
+      previous,
+      next,
+      authIndex: 0,
+      siteIndex: 3,
+      userIndex: 4,
+    )) {
+      _dashboardCache.clear();
+      _dashboardInFlight.clear();
+    }
+  }
 
   String? preferredCompany(Iterable<String> options) {
     return appState.preferredCompany(options);
