@@ -79,6 +79,12 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     _ => 'Sales Order',
   };
 
+  String get _dailyReportFilePrefix => switch (_dailyDocType) {
+    _DailySalesDocType.deliveryNote => 'delivery_note_report',
+    _DailySalesDocType.salesInvoice => 'sales_invoice_report',
+    _ => 'sales_order_report',
+  };
+
   static const Duration _salesOverviewCacheTtl = Duration(hours: 12);
   static const String _salesOverviewCachePrefix = 'sales_overview';
 
@@ -773,7 +779,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
       );
       return;
     }
-    final directory = await getTemporaryDirectory();
+    final directory = await _exportDirectory();
     final file = File('${directory.path}/$fileName');
     final csv = rows
         .map((row) => row.map(_csvCell).join(','))
@@ -786,6 +792,28 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
         subject: fileName,
       ),
     );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('File export tersimpan: ${file.path}')),
+    );
+  }
+
+  Future<Directory> _exportDirectory() async {
+    try {
+      final downloads = await getDownloadsDirectory();
+      if (downloads != null) {
+        final directory = Directory('${downloads.path}/TMSX Hub');
+        await directory.create(recursive: true);
+        return directory;
+      }
+    } catch (_) {
+      // Android can restrict public Downloads access; use app documents below.
+    }
+
+    final documents = await getApplicationDocumentsDirectory();
+    final directory = Directory('${documents.path}/exports');
+    await directory.create(recursive: true);
+    return directory;
   }
 
   String get _dateFileLabel => _periodKey;
@@ -819,7 +847,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   }
 
   Future<void> _exportDailyReport() {
-    return _shareCsv('sales_report_$_dateFileLabel.csv', [
+    return _shareCsv('${_dailyReportFilePrefix}_$_dateFileLabel.csv', [
       ['Tipe Dokumen', _dailyDoctype],
       ['Tanggal', _dateFileLabel],
       [
