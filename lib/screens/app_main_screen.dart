@@ -7,8 +7,14 @@ import '../models/sales_order.dart';
 import '../services/native_notification_service.dart';
 import '../state/auth/auth_state.dart';
 import '../state/dashboard/dashboard_state.dart';
+import '../state/purchasing/material_request_state.dart';
+import '../state/purchasing/purchase_invoice_state.dart';
+import '../state/purchasing/purchase_order_state.dart';
+import '../state/purchasing/purchase_receipt_state.dart';
 import '../state/selling/sales_order_state.dart';
+import '../state/selling/selling_summary_state.dart';
 import '../state/todo/todo_state.dart';
+import '../state/warehouse/warehouse_stock_state.dart';
 import '../theme/app_colors.dart';
 import '../utils/erp_doc_utils.dart';
 import '../utils/erp_format.dart';
@@ -347,9 +353,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
           title: 'Sales Order',
           subtitle: 'Order customer baru',
           icon: Icons.point_of_sale_rounded,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CreateSalesOrderScreen()),
-          ),
+          onTap: () => _openSalesOrderCreate(context),
         ),
       if (canCreateSalesVisit)
         _QuickCreateAction(
@@ -424,44 +428,28 @@ class _AppMainScreenState extends State<AppMainScreen> {
           title: 'Purchase Order',
           subtitle: 'PO supplier',
           icon: Icons.add_shopping_cart_rounded,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const CreatePurchaseOrderScreen(),
-            ),
-          ),
+          onTap: () => _openPurchaseCreate(context, 'po'),
         ),
       if (canCreatePurchaseReceipt)
         _QuickCreateAction(
           title: 'Purchase Receipt',
           subtitle: 'Terima barang',
           icon: Icons.move_to_inbox_rounded,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const CreatePurchaseReceiptScreen(),
-            ),
-          ),
+          onTap: () => _openPurchaseCreate(context, 'pr'),
         ),
       if (canCreatePurchaseInvoice)
         _QuickCreateAction(
           title: 'Purchase Invoice',
           subtitle: 'Invoice supplier',
           icon: Icons.receipt_long_rounded,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const CreatePurchaseInvoiceScreen(),
-            ),
-          ),
+          onTap: () => _openPurchaseCreate(context, 'pi'),
         ),
       if (canCreateMaterialRequest)
         _QuickCreateAction(
           title: 'Material Request',
           subtitle: 'Kebutuhan barang',
           icon: Icons.assignment_add,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const CreateMaterialRequestScreen(),
-            ),
-          ),
+          onTap: () => _openPurchaseCreate(context, 'mr'),
         ),
     ];
 
@@ -471,9 +459,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
           title: 'Stock Entry',
           subtitle: 'Transfer, receipt, issue',
           icon: Icons.inventory_2_outlined,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CreateStockEntryScreen()),
-          ),
+          onTap: () => _openStockEntryCreate(context),
         ),
     ];
 
@@ -598,6 +584,62 @@ class _AppMainScreenState extends State<AppMainScreen> {
         );
       },
     );
+  }
+
+  Future<void> _openSalesOrderCreate(BuildContext context) async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const CreateSalesOrderScreen()),
+    );
+    if (created != true || !context.mounted) return;
+    await Future.wait([
+      context.read<SalesOrderState>().refreshSalesOrders(),
+      context.read<SellingSummaryState>().refreshSellingSummaries(
+        documentType: 'Sales Order',
+      ),
+    ]);
+  }
+
+  Future<void> _openPurchaseCreate(BuildContext context, String key) async {
+    final route = switch (key) {
+      'pr' => MaterialPageRoute<bool>(
+        builder: (_) => const CreatePurchaseReceiptScreen(),
+      ),
+      'pi' => MaterialPageRoute<bool>(
+        builder: (_) => const CreatePurchaseInvoiceScreen(),
+      ),
+      'mr' => MaterialPageRoute<bool>(
+        builder: (_) => const CreateMaterialRequestScreen(),
+      ),
+      _ => MaterialPageRoute<bool>(
+        builder: (_) => const CreatePurchaseOrderScreen(),
+      ),
+    };
+
+    final created = await Navigator.of(context).push<bool>(route);
+    if (created != true || !context.mounted) return;
+
+    switch (key) {
+      case 'pr':
+        await context.read<PurchaseReceiptState>().refreshPurchaseReceipts();
+        break;
+      case 'pi':
+        await context.read<PurchaseInvoiceState>().refreshPurchaseInvoices();
+        break;
+      case 'mr':
+        await context.read<MaterialRequestState>().refreshMaterialRequests();
+        break;
+      default:
+        await context.read<PurchaseOrderState>().refreshPurchaseOrders();
+        break;
+    }
+  }
+
+  Future<void> _openStockEntryCreate(BuildContext context) async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const CreateStockEntryScreen()),
+    );
+    if (created != true || !context.mounted) return;
+    await context.read<WarehouseStockState>().refreshInventory();
   }
 
   Future<void> _createDeliveryNoteFromSalesOrder(BuildContext context) async {

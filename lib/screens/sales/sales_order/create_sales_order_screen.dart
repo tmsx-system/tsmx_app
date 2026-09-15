@@ -615,11 +615,24 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   double _parseNumber(String value) {
-    final cleaned = value
-        .trim()
-        .replaceAll(RegExp(r'[^0-9,.-]'), '')
-        .replaceAll('.', '')
-        .replaceAll(',', '.');
+    var cleaned = value.trim().replaceAll(RegExp(r'[^0-9,.-]'), '');
+    if (cleaned.isEmpty) return 0;
+    final hasComma = cleaned.contains(',');
+    final hasDot = cleaned.contains('.');
+    if (hasComma && hasDot) {
+      cleaned = cleaned.replaceAll('.', '').replaceAll(',', '.');
+    } else if (hasComma) {
+      cleaned = cleaned.replaceAll(',', '.');
+    } else if (hasDot) {
+      final parts = cleaned.split('.');
+      final looksLikeThousands =
+          parts.length > 1 &&
+          parts.skip(1).every((part) => part.length == 3) &&
+          parts.first.length <= 3;
+      if (looksLikeThousands) {
+        cleaned = cleaned.replaceAll('.', '');
+      }
+    }
     return double.tryParse(cleaned) ?? 0;
   }
 
@@ -771,7 +784,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     return [
       itemPayload(
         itemCode: firstItemCode,
-        qty: double.parse(_qtyCtrl.text.trim()),
+        qty: _itemQty(_qtyCtrl.text),
         rate: _itemRate(_rateCtrl.text),
         discountAmount: _itemDiscount(_discountCtrl.text),
         warehouse: _selectedWarehouse,
@@ -779,7 +792,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       ..._additionalItems.map(
         (row) => itemPayload(
           itemCode: row.itemCode!,
-          qty: double.parse(row.qtyController.text.trim()),
+          qty: _itemQty(row.qtyController.text),
           rate: _itemRate(row.rateController.text),
           discountAmount: _itemDiscount(row.discountController.text),
           warehouse: row.warehouse ?? _selectedWarehouse,
@@ -844,8 +857,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     final requestContextKey = pricingContextKey();
     setState(() => _loadingItemPrices.add(loadingKey));
     try {
-      final qty =
-          double.tryParse((row?.qtyController ?? _qtyCtrl).text.trim()) ?? 1;
+      final qty = _itemQty((row?.qtyController ?? _qtyCtrl).text);
       final insight = await _withTransientRetry(
         () => context.read<SalesOrderState>().fetchItemSalesInsight(
           itemCode,
@@ -1997,12 +2009,11 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       return;
     }
     final invalidAdditionalItem = _additionalItems.any((row) {
-      final qty = double.tryParse(row.qtyController.text.trim());
+      final qty = _itemQty(row.qtyController.text);
       final rateText = row.rateController.text.trim();
       final rate = rateText.isEmpty ? 0 : _itemRate(rateText);
       return row.itemCode == null ||
           row.itemCode!.isEmpty ||
-          qty == null ||
           qty <= 0 ||
           rate < 0;
     });
@@ -2078,17 +2089,6 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         }
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${widget.isEditMode ? 'Sales Order berhasil diperbarui' : 'Sales Order berhasil dibuat'}'
-            '${failedUploads > 0 ? ', tetapi $failedUploads foto gagal di-upload' : ''}',
-          ),
-          backgroundColor: failedUploads > 0
-              ? Colors.orange
-              : AppColors.primary,
-        ),
-      );
       if (uploadErrors.isNotEmpty && mounted) {
         await showDialog<void>(
           context: context,
@@ -2099,7 +2099,9 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         );
       }
       if (!mounted) return;
-      Navigator.of(context).pop();
+      await _showSaveSuccessPopup(failedUploads: failedUploads);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2118,6 +2120,100 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
           _isSaving = false;
         });
       }
+    }
+  }
+
+  Future<void> _showSaveSuccessPopup({required int failedUploads}) async {
+    final isPartial = failedUploads > 0;
+    unawaited(
+      showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        barrierColor: Colors.black.withValues(alpha: 0.16),
+        transitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 280,
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryDark.withValues(alpha: 0.18),
+                      blurRadius: 26,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: (isPartial ? Colors.orange : AppColors.primary)
+                            .withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        isPartial
+                            ? Icons.warning_amber_rounded
+                            : Icons.check_rounded,
+                        color: isPartial ? Colors.orange : AppColors.primary,
+                        size: 30,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      widget.isEditMode
+                          ? 'Sales Order diperbarui'
+                          : 'Sales Order dibuat',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    if (isPartial) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '$failedUploads foto gagal di-upload',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.slate,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.96, end: 1).animate(animation),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
+    await Future<void>.delayed(Duration(milliseconds: isPartial ? 2200 : 1500));
+    if (!mounted) return;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    if (navigator.canPop()) {
+      navigator.pop();
     }
   }
 
@@ -3332,8 +3428,8 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                           ),
                         ),
                         validator: (v) {
-                          final q = double.tryParse(v?.trim() ?? '');
-                          if (q == null || q <= 0) return 'Qty > 0';
+                          final q = _itemQty(v ?? '');
+                          if (q <= 0) return 'Qty > 0';
                           return null;
                         },
                       ),
@@ -3535,12 +3631,8 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                                   ),
                                 ),
                                 validator: (value) {
-                                  final qty = double.tryParse(
-                                    value?.trim() ?? '',
-                                  );
-                                  return qty == null || qty <= 0
-                                      ? 'Qty > 0'
-                                      : null;
+                                  final qty = _itemQty(value ?? '');
+                                  return qty <= 0 ? 'Qty > 0' : null;
                                 },
                               ),
                               const SizedBox(height: 10),
@@ -3685,7 +3777,12 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       ),
 
       bottomNavigationBar: SafeArea(
-        minimum: EdgeInsets.all(TmsxResponsive.horizontalPadding(context)),
+        minimum: EdgeInsets.fromLTRB(
+          TmsxResponsive.horizontalPadding(context),
+          10,
+          TmsxResponsive.horizontalPadding(context),
+          24,
+        ),
         child: TmsxResponsiveBody(
           child: ElevatedButton(
             onPressed:

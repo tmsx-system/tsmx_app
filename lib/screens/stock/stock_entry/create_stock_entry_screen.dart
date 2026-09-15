@@ -97,7 +97,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
           backgroundColor: AppColors.primary,
         ),
       );
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

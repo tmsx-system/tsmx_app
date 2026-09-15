@@ -271,7 +271,7 @@ class _CreatePurchaseInvoiceScreenState
           backgroundColor: AppColors.primary,
         ),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
