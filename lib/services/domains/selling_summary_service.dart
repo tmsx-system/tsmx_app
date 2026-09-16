@@ -1,9 +1,7 @@
 import '../../models/erp_summary.dart';
 import '../../services/frappe_service.dart';
 import '../../utils/date_range_presets.dart';
-import '../../utils/frappe_page_walker.dart';
 import '../../utils/num_parse.dart';
-import 'summary_trend_helpers.dart';
 
 class SellingSummaryResult {
   const SellingSummaryResult({
@@ -26,8 +24,6 @@ class SellingSummaryResult {
 class SellingSummaryService {
   const SellingSummaryService({required this.frappe});
 
-  static const int _pageSize = 500;
-
   final FrappeService frappe;
 
   Future<SellingSummaryResult> fetch({
@@ -42,48 +38,46 @@ class SellingSummaryService {
     required String? salesIdentityError,
   }) async {
     await frappe.ensureLoggedIn();
-    final salesScopeFilters = await _salesDocumentScopeFilters(
+    final salesPerson = await _resolveSalesAnalyticsSalesPerson(
+      customerType: customerType,
       shouldScopeSalesData: shouldScopeSalesData,
       resolveCurrentSalesIdentity: resolveCurrentSalesIdentity,
       salesIdentityError: salesIdentityError,
     );
-    final sales = await _fetchDocumentSummary(
-      doctype: 'Sales Order',
-      dateField: 'transaction_date',
-      year: year,
-      month: month,
-      from: from,
-      to: to,
-      company: company,
-      customerType: customerType,
-      shouldScopeSalesData: shouldScopeSalesData,
-      scopeFilters: salesScopeFilters,
-    );
-    final delivery = await _fetchDocumentSummary(
-      doctype: 'Delivery Note',
-      dateField: 'posting_date',
-      year: year,
-      month: month,
-      from: from,
-      to: to,
-      company: company,
-      customerType: customerType,
-      shouldScopeSalesData: shouldScopeSalesData,
-      scopeFilters: salesScopeFilters,
-    );
-    final invoice = await _fetchDocumentSummary(
-      doctype: 'Sales Invoice',
-      dateField: 'posting_date',
-      year: year,
-      month: month,
-      from: from,
-      to: to,
-      company: company,
-      customerType: customerType,
-      shouldScopeSalesData: shouldScopeSalesData,
-      scopeFilters: salesScopeFilters,
-    );
 
+    final sections = await Future.wait([
+      _fetchSalesAnalyticsBySalesPerson(
+        basedOn: 'Sales Order',
+        year: year,
+        month: month,
+        from: from,
+        to: to,
+        company: company,
+        salesPerson: salesPerson,
+      ),
+      _fetchSalesAnalyticsBySalesPersonOrEmpty(
+        basedOn: 'Delivery Note',
+        year: year,
+        month: month,
+        from: from,
+        to: to,
+        company: company,
+        salesPerson: salesPerson,
+      ),
+      _fetchSalesAnalyticsBySalesPersonOrEmpty(
+        basedOn: 'Sales Invoice',
+        year: year,
+        month: month,
+        from: from,
+        to: to,
+        company: company,
+        salesPerson: salesPerson,
+      ),
+    ]);
+
+    final sales = sections[0];
+    final delivery = sections[1];
+    final invoice = sections[2];
     return SellingSummaryResult(
       salesOrderSummary: sales.summary,
       deliveryNoteSummary: delivery.summary,
@@ -94,215 +88,438 @@ class SellingSummaryService {
     );
   }
 
-  Future<_SummarySection> _fetchDocumentSummary({
-    required String doctype,
-    required String dateField,
+  Future<_AnalyticsSection> _fetchSalesAnalyticsBySalesPersonOrEmpty({
+    required String basedOn,
     required int year,
     required int month,
     required DateTime from,
     required DateTime to,
     required String company,
-    required String customerType,
-    required bool shouldScopeSalesData,
-    required List<List<dynamic>> scopeFilters,
+    required String salesPerson,
   }) async {
-    final trend = SummaryTrendHelpers.emptyTrendPoints(year, month);
-    var totalValue = 0.0;
-    var documentCount = 0;
-    await _forEachResourcePage(
-      doctype: doctype,
-      fields: [
-        'name',
-        'base_net_total',
-        'net_total',
-        'grand_total',
-        dateField,
-        'customer',
-        'status',
-        'docstatus',
-      ],
-      filters: [
-        ..._sellingDocumentFilters(
-          dateField,
-          from: from,
-          to: to,
-          company: company,
-          customerType: customerType,
-          shouldScopeSalesData: shouldScopeSalesData,
-        ),
-        ...scopeFilters,
-      ],
-      onRow: (row) {
-        if (!_isActiveSellingTrendRow(row)) return;
-        final value = _sellingAnalyticsValue(row);
-        totalValue += value;
-        documentCount += 1;
-        SummaryTrendHelpers.addTrendPoint(
-          trend,
-          year: year,
-          month: month,
-          dateRaw: row[dateField],
-          amount: value,
-        );
-      },
-    );
-    return _SummarySection(
-      summary: DocumentSummary(
-        totalValue: totalValue,
-        documentCount: documentCount,
-      ),
-      trend: trend,
-    );
-  }
-
-  List<List<dynamic>> _sellingDocumentFilters(
-    String dateField, {
-    required DateTime from,
-    required DateTime to,
-    required String company,
-    required String customerType,
-    required bool shouldScopeSalesData,
-  }) {
-    final filters = <List<dynamic>>[
-      [dateField, '>=', DateRangePresets.toFrappeDate(from)],
-      [dateField, '<=', DateRangePresets.toFrappeDate(to)],
-      ..._companyScopeFilters(company),
-    ];
-    final parentSalesPerson = _selectedSellingParentSalesPerson(
-      customerType: customerType,
-      shouldScopeSalesData: shouldScopeSalesData,
-    );
-    if (parentSalesPerson != null) {
-      filters.add(['parent_sales_person', '=', parentSalesPerson]);
+    try {
+      return await _fetchSalesAnalyticsBySalesPerson(
+        basedOn: basedOn,
+        year: year,
+        month: month,
+        from: from,
+        to: to,
+        company: company,
+        salesPerson: salesPerson,
+      );
+    } catch (_) {
+      return _AnalyticsSection(
+        summary: const DocumentSummary(),
+        trend: _emptyAnalyticsTrend(year, month),
+      );
     }
-    return filters;
   }
 
-  Future<List<List<dynamic>>> _salesDocumentScopeFilters({
+  Future<String> _resolveSalesAnalyticsSalesPerson({
+    required String customerType,
     required bool shouldScopeSalesData,
     required Future<String?> Function() resolveCurrentSalesIdentity,
     required String? salesIdentityError,
   }) async {
-    if (!shouldScopeSalesData) return const [];
-    final salesPerson = (await resolveCurrentSalesIdentity())?.trim() ?? '';
-    if (salesPerson.isEmpty) {
-      throw Exception(
-        salesIdentityError ?? 'Sales Person user login belum tersedia.',
+    if (shouldScopeSalesData) {
+      final salesPerson = (await resolveCurrentSalesIdentity())?.trim() ?? '';
+      if (salesPerson.isEmpty) {
+        throw Exception(
+          salesIdentityError ?? 'Sales Person user login belum tersedia.',
+        );
+      }
+      return salesPerson;
+    }
+
+    final selected = customerType.trim();
+    if (selected.isEmpty || selected.toLowerCase() == 'all') return '';
+    return selected;
+  }
+
+  Future<_AnalyticsSection> _fetchSalesAnalyticsBySalesPerson({
+    required String basedOn,
+    required int year,
+    required int month,
+    required DateTime from,
+    required DateTime to,
+    required String company,
+    required String salesPerson,
+  }) async {
+    final response = await frappe.callMethod(
+      'frappe.desk.query_report.run',
+      args: {
+        'report_name': 'Sales Analytics by Sales Person',
+        'filters': {
+          'tree_type': 'Customer',
+          'document_type': basedOn,
+          'doc_type': basedOn,
+          'based_on': basedOn,
+          'value_quantity': 'Value',
+          'range': month == 0 ? 'Monthly' : 'Weekly',
+          'from_date': DateRangePresets.toFrappeDate(from),
+          'to_date': DateRangePresets.toFrappeDate(to),
+          if (company.trim().isNotEmpty) 'company': company.trim(),
+          if (salesPerson.trim().isNotEmpty) 'sales_person': salesPerson.trim(),
+        },
+        'ignore_prepared_report': true,
+        'are_default_filters': false,
+      },
+    );
+    return _analyticsSectionFromQueryReport(response, year, month);
+  }
+
+  _AnalyticsSection _analyticsSectionFromQueryReport(
+    dynamic response,
+    int year,
+    int month,
+  ) {
+    final report = _queryReportPayload(response);
+    if (report == null) {
+      return _AnalyticsSection(
+        summary: const DocumentSummary(),
+        trend: _emptyAnalyticsTrend(year, month),
       );
     }
-    return [
-      ['Sales Team', 'sales_person', '=', salesPerson],
-    ];
-  }
 
-  String? _selectedSellingParentSalesPerson({
-    required String customerType,
-    required bool shouldScopeSalesData,
-  }) {
-    if (shouldScopeSalesData) return null;
-    final group = customerType.trim();
-    if (group.isEmpty || group.toLowerCase() == 'all') return null;
-    return group;
-  }
+    final columns = _queryReportColumns(report['columns']);
+    final rows = _queryReportRows(report['result'] ?? report['data']);
+    var periodColumns = _queryReportPeriodColumns(columns, month);
+    if (periodColumns.isEmpty) {
+      periodColumns = _queryReportPeriodColumnsFromRows(rows, month);
+    }
+    if (periodColumns.isEmpty) {
+      return _AnalyticsSection(
+        summary: const DocumentSummary(),
+        trend: _emptyAnalyticsTrend(year, month),
+      );
+    }
 
-  List<List<dynamic>> _companyScopeFilters(String selectedCompany) {
-    final selected = selectedCompany.trim();
-    if (selected.isEmpty) return const [];
-    return [
-      ['company', '=', selected],
-    ];
-  }
+    final trend = _emptyAnalyticsTrend(
+      year,
+      month,
+      periodColumns: periodColumns,
+    );
+    final totalRowTrend = _emptyAnalyticsTrend(
+      year,
+      month,
+      periodColumns: periodColumns,
+    );
+    var totalValue = 0.0;
+    var totalRowValue = 0.0;
+    var hasTotalRow = false;
+    var rowCount = 0;
 
-  bool _isActiveSellingTrendRow(Map<String, dynamic> row) {
-    final docstatus = NumParse.asInt(row['docstatus']);
-    if (docstatus != 1) return false;
+    for (final row in rows) {
+      final mapped = _queryReportRowMap(row, columns);
+      final isTotalRow = _isQueryReportTotalRow(mapped);
+      var hasValue = false;
+      for (final entry in periodColumns.entries) {
+        final value = NumParse.asDouble(
+          mapped[_queryReportPeriodColumnField(entry.value)],
+        );
+        if (isTotalRow) {
+          hasTotalRow = true;
+          totalRowValue += value;
+          totalRowTrend[entry.key] = DocumentTrendPoint(
+            label: totalRowTrend[entry.key].label,
+            value: value,
+            documentCount: value == 0 ? 0 : 1,
+          );
+          continue;
+        }
+        if (value == 0) continue;
+        totalValue += value;
+        hasValue = true;
+        trend[entry.key] = trend[entry.key].add(value);
+      }
+      if (!isTotalRow && hasValue) rowCount++;
+    }
 
-    final status = row['status']?.toString().trim().toLowerCase() ?? '';
-    if (status == 'draft' || status == 'cancelled') return false;
-    if (status == 'return') return false;
-
-    return true;
-  }
-
-  double _sellingAnalyticsValue(Map<String, dynamic> row) {
-    final baseNetTotal = NumParse.asDouble(row['base_net_total']);
-    if (baseNetTotal != 0) return baseNetTotal;
-    final netTotal = NumParse.asDouble(row['net_total']);
-    if (netTotal != 0) return netTotal;
-    return NumParse.asDouble(row['grand_total']);
-  }
-
-  Future<void> _forEachResourcePage({
-    required String doctype,
-    required List<String> fields,
-    required List<List<dynamic>> filters,
-    required void Function(Map<String, dynamic> row) onRow,
-  }) {
-    return walkFrappePages(
-      pageSize: _pageSize,
-      fetchPage: (start, limit) => _fetchResourceWithFieldFallback(
-        doctype: doctype,
-        fields: fields,
-        limit: limit,
-        limitStart: start,
-        filters: filters,
+    return _AnalyticsSection(
+      summary: DocumentSummary(
+        totalValue: hasTotalRow ? totalRowValue : totalValue,
+        documentCount: rowCount,
       ),
-      onRow: onRow,
+      trend: hasTotalRow ? totalRowTrend : trend,
     );
   }
 
-  Future<List<Map<String, dynamic>>> _fetchResourceWithFieldFallback({
-    required String doctype,
-    required List<String> fields,
-    required int limit,
-    required int limitStart,
-    required List<List<dynamic>> filters,
-  }) async {
-    var remainingFields = List<String>.from(fields);
-    while (remainingFields.isNotEmpty) {
-      try {
-        if (_usesSalesTeamChildFilter(filters)) {
-          return frappe.fetchReportView(
-            doctype,
-            fields: remainingFields,
-            limit: limit,
-            limitStart: limitStart,
-            filters: filters,
-          );
-        }
-        return await frappe.fetchResource(
-          doctype,
-          fields: remainingFields,
-          limit: limit,
-          limitStart: limitStart,
-          filters: filters,
-        );
-      } catch (error) {
-        final badField = RegExp(
-          r'Field not permitted in query:\s*([a-zA-Z0-9_]+)',
-        ).firstMatch(error.toString())?.group(1);
-        if (badField != null && remainingFields.contains(badField)) {
-          remainingFields.remove(badField);
-          continue;
-        }
-        rethrow;
-      }
-    }
-    return const [];
+  Map<String, dynamic>? _queryReportPayload(dynamic response) {
+    if (response is! Map) return null;
+    final map = Map<String, dynamic>.from(response);
+    final message = map['message'];
+    if (message is Map) return Map<String, dynamic>.from(message);
+    return map;
   }
 
-  bool _usesSalesTeamChildFilter(List<List<dynamic>> filters) {
-    return filters.any((filter) {
-      if (filter.length < 4) return false;
-      if (filter.first.toString().trim() != 'Sales Team') return false;
-      final field = filter[1].toString().trim();
-      return field == 'parent_sales_person' || field == 'sales_person';
+  List<Map<String, dynamic>> _queryReportColumns(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw.map((column) {
+      if (column is String) {
+        return {'label': column, 'fieldname': column};
+      }
+      if (column is Map) return Map<String, dynamic>.from(column);
+      return <String, dynamic>{};
+    }).toList();
+  }
+
+  List<dynamic> _queryReportRows(dynamic raw) => raw is List ? raw : const [];
+
+  Map<String, dynamic> _queryReportRowMap(
+    dynamic row,
+    List<Map<String, dynamic>> columns,
+  ) {
+    if (row is Map) return Map<String, dynamic>.from(row);
+    if (row is! List) return const {};
+    final mapped = <String, dynamic>{};
+    for (var i = 0; i < row.length && i < columns.length; i++) {
+      final fieldname =
+          columns[i]['fieldname']?.toString() ??
+          columns[i]['field']?.toString() ??
+          columns[i]['label']?.toString() ??
+          '';
+      if (fieldname.isEmpty) continue;
+      mapped[fieldname] = row[i];
+    }
+    return mapped;
+  }
+
+  Map<int, String> _queryReportPeriodColumns(
+    List<Map<String, dynamic>> columns,
+    int month,
+  ) {
+    final result = <int, String>{};
+    for (final column in columns) {
+      final fieldname =
+          column['fieldname']?.toString() ??
+          column['field']?.toString() ??
+          column['label']?.toString() ??
+          '';
+      if (fieldname.isEmpty) continue;
+      final rawLabel = column['label']?.toString() ?? fieldname;
+      final label = rawLabel.toLowerCase();
+      final index = month > 0 && RegExp(r'(week|minggu)\s*\d+').hasMatch(label)
+          ? result.length
+          : _queryReportPeriodIndex(label, month);
+      if (index == null) continue;
+      result[index] = _queryReportPeriodColumnKey(fieldname, rawLabel);
+    }
+    return result;
+  }
+
+  Map<int, String> _queryReportPeriodColumnsFromRows(
+    List<dynamic> rows,
+    int month,
+  ) {
+    final result = <int, String>{};
+    for (final row in rows) {
+      if (row is! Map) continue;
+      for (final key in row.keys) {
+        final fieldname = key.toString();
+        if (fieldname.trim().isEmpty) continue;
+        final label = fieldname.toLowerCase();
+        final index =
+            month > 0 && RegExp(r'(week|minggu)\s*\d+').hasMatch(label)
+            ? result.length
+            : _queryReportPeriodIndex(label, month);
+        if (index == null) continue;
+        result[index] = _queryReportPeriodColumnKey(fieldname, fieldname);
+      }
+      if (result.isNotEmpty) break;
+    }
+    return result;
+  }
+
+  String _queryReportPeriodColumnKey(String fieldname, String label) {
+    return '$fieldname\u001f$label';
+  }
+
+  String _queryReportPeriodColumnField(String value) {
+    return value.split('\u001f').first;
+  }
+
+  String _queryReportPeriodColumnLabel(String value) {
+    final parts = value.split('\u001f');
+    return parts.length > 1 ? parts.sublist(1).join('\u001f') : value;
+  }
+
+  int? _queryReportPeriodIndex(String label, int month) {
+    if (month == 0) {
+      const aliases = [
+        ['jan'],
+        ['feb'],
+        ['mar'],
+        ['apr'],
+        ['may', 'mei'],
+        ['jun'],
+        ['jul'],
+        ['aug', 'agu'],
+        ['sep'],
+        ['oct', 'okt'],
+        ['nov'],
+        ['dec', 'des'],
+      ];
+      for (var i = 0; i < aliases.length; i++) {
+        if (aliases[i].any(label.contains)) return i;
+      }
+      return null;
+    }
+
+    final match = RegExp(r'(week|minggu)\s*(\d+)').firstMatch(label);
+    if (match != null) {
+      final week = int.tryParse(match.group(2) ?? '');
+      if (week != null) return (week - 1).clamp(0, 3);
+    }
+
+    final date = _queryReportPeriodDate(label);
+    if (date != null && date.month == month) {
+      return ((date.day - 1) ~/ 7).clamp(0, 3);
+    }
+    return null;
+  }
+
+  DateTime? _queryReportPeriodDate(String label) {
+    final normalized = label
+        .toLowerCase()
+        .replaceAll(RegExp(r'[_]+'), '-')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    final iso = RegExp(
+      r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})',
+    ).firstMatch(normalized);
+    if (iso != null) {
+      return DateTime.tryParse(
+        '${iso.group(1)!}-${iso.group(2)!.padLeft(2, '0')}-${iso.group(3)!.padLeft(2, '0')}',
+      );
+    }
+
+    final numeric = RegExp(
+      r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})',
+    ).firstMatch(normalized);
+    if (numeric != null) {
+      return DateTime.tryParse(
+        '${numeric.group(3)!}-${numeric.group(2)!.padLeft(2, '0')}-${numeric.group(1)!.padLeft(2, '0')}',
+      );
+    }
+
+    final named = RegExp(
+      r'(\d{1,2})\s+(jan|feb|mar|apr|may|mei|jun|jul|aug|agu|sep|oct|okt|nov|dec|des)\w*\s+(\d{4})',
+    ).firstMatch(normalized);
+    if (named == null) return null;
+    final month = _monthAliasNumber(named.group(2)!);
+    if (month == null) return null;
+    return DateTime.tryParse(
+      '${named.group(3)!}-${month.toString().padLeft(2, '0')}-${named.group(1)!.padLeft(2, '0')}',
+    );
+  }
+
+  int? _monthAliasNumber(String raw) {
+    final value = raw.toLowerCase();
+    const aliases = {
+      'jan': 1,
+      'feb': 2,
+      'mar': 3,
+      'apr': 4,
+      'may': 5,
+      'mei': 5,
+      'jun': 6,
+      'jul': 7,
+      'aug': 8,
+      'agu': 8,
+      'sep': 9,
+      'oct': 10,
+      'okt': 10,
+      'nov': 11,
+      'dec': 12,
+      'des': 12,
+    };
+    final key = value.length <= 3 ? value : value.substring(0, 3);
+    return aliases[key];
+  }
+
+  List<DocumentTrendPoint> _emptyAnalyticsTrend(
+    int year,
+    int month, {
+    Map<int, String>? periodColumns,
+  }) {
+    if (month > 0 && periodColumns != null && periodColumns.isNotEmpty) {
+      final entries = periodColumns.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      return [
+        for (var i = 0; i < entries.length; i++)
+          DocumentTrendPoint(
+            label: _weeklyReportLabel(
+              _queryReportPeriodColumnLabel(entries[i].value),
+              i,
+            ),
+          ),
+      ];
+    }
+
+    if (month == 0) {
+      const labels = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'Mei',
+        'Jun',
+        'Jul',
+        'Agu',
+        'Sep',
+        'Okt',
+        'Nov',
+        'Des',
+      ];
+      return [for (final label in labels) DocumentTrendPoint(label: label)];
+    }
+
+    return _emptyWeeklyTrendPoints(year, month);
+  }
+
+  List<DocumentTrendPoint> _emptyWeeklyTrendPoints(int year, int month) {
+    if (month <= 0) return const [];
+    final lastDay = DateTime(year, month + 1, 0).day;
+    final weeks = <int>{};
+    for (var day = 1; day <= lastDay; day++) {
+      weeks.add(_isoWeekNumber(DateTime(year, month, day)));
+    }
+    final sortedWeeks = weeks.toList()..sort();
+    return [
+      for (final week in sortedWeeks) DocumentTrendPoint(label: 'Minggu $week'),
+    ];
+  }
+
+  String _weeklyReportLabel(String rawLabel, int fallbackIndex) {
+    final normalized = rawLabel
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    final match = RegExp(r'(week|minggu)\s*(\d+)').firstMatch(normalized);
+    if (match != null) return 'Minggu ${match.group(2)}';
+    final date = _queryReportPeriodDate(rawLabel);
+    if (date != null) return 'Minggu ${_isoWeekNumber(date)}';
+    return rawLabel.trim().isEmpty ? 'Minggu ${fallbackIndex + 1}' : rawLabel;
+  }
+
+  int _isoWeekNumber(DateTime date) {
+    final thursday = date.add(Duration(days: 3 - ((date.weekday + 6) % 7)));
+    final firstThursday = DateTime(thursday.year, 1, 4);
+    return 1 + ((thursday.difference(firstThursday).inDays) ~/ 7);
+  }
+
+  bool _isQueryReportTotalRow(Map<String, dynamic> row) {
+    if (row.isEmpty) return false;
+    return row.values.any((value) {
+      final text = value?.toString().trim().toLowerCase() ?? '';
+      return text == 'total' || text == 'total (all)';
     });
   }
 }
 
-class _SummarySection {
-  const _SummarySection({required this.summary, required this.trend});
+class _AnalyticsSection {
+  const _AnalyticsSection({required this.summary, required this.trend});
 
   final DocumentSummary summary;
   final List<DocumentTrendPoint> trend;

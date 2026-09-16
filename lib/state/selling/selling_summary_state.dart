@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/erp_summary.dart';
 import '../../services/domains/selling_summary_service.dart';
 import '../app_state.dart';
@@ -21,6 +23,7 @@ class SellingSummaryState extends AppStateProxyNotifier {
   List<DocumentTrendPoint> _salesOrderTrendPoints = const [];
   List<DocumentTrendPoint> _deliveryNoteTrendPoints = const [];
   List<DocumentTrendPoint> _salesInvoiceTrendPoints = const [];
+  int _requestToken = 0;
 
   @override
   List<Object?> get watchFields => [
@@ -28,6 +31,9 @@ class SellingSummaryState extends AppStateProxyNotifier {
     appState.isSampleMode,
     appState.selectedSiteBaseUrl,
     appState.currentUser,
+    appState.mobileAccess.shouldScopeSalesData,
+    appState.currentSalesPerson,
+    appState.salesIdentityError,
   ];
 
   bool get isOrderSummaryLoading => _isOrderSummaryLoading;
@@ -66,6 +72,17 @@ class SellingSummaryState extends AppStateProxyNotifier {
       userIndex: 3,
     )) {
       _resetLocalSummary();
+      return;
+    }
+
+    final salesScopeChanged =
+        previous.length > 5 &&
+        next.length > 5 &&
+        (previous[4] != next[4] ||
+            previous[5] != next[5] ||
+            previous[6] != next[6]);
+    if (next[0] == true && salesScopeChanged) {
+      unawaited(refreshSellingSummaries(forceRemote: true));
     }
   }
 
@@ -78,6 +95,7 @@ class SellingSummaryState extends AppStateProxyNotifier {
     _salesOrderTrendPoints = const [];
     _deliveryNoteTrendPoints = const [];
     _salesInvoiceTrendPoints = const [];
+    _requestToken++;
   }
 
   Future<void> refreshSellingSummaries({
@@ -90,6 +108,12 @@ class SellingSummaryState extends AppStateProxyNotifier {
       return;
     }
 
+    final token = ++_requestToken;
+    final selectedCompany = filterState.sellingCompanyFilter.trim();
+    final effectiveCompany = selectedCompany.isNotEmpty
+        ? selectedCompany
+        : (appState.preferredCompany(filterState.sellingCompanies) ?? '');
+
     _isOrderSummaryLoading = true;
     _orderSummaryError = null;
     notifyListeners();
@@ -99,18 +123,22 @@ class SellingSummaryState extends AppStateProxyNotifier {
         month: filterState.sellingPeriodMonth,
         from: filterState.sellingPeriodFrom,
         to: filterState.sellingPeriodTo,
-        company: filterState.sellingCompanyFilter,
+        company: effectiveCompany,
         customerType: filterState.sellingCustomerTypeFilter,
         shouldScopeSalesData: appState.mobileAccess.shouldScopeSalesData,
         resolveCurrentSalesIdentity: appState.resolveCurrentSalesIdentity,
         salesIdentityError: appState.salesIdentityError,
       );
+      if (token != _requestToken) return;
       _applyResult(result);
     } catch (error) {
+      if (token != _requestToken) return;
       _orderSummaryError = error.toString();
     } finally {
-      _isOrderSummaryLoading = false;
-      notifyListeners();
+      if (token == _requestToken) {
+        _isOrderSummaryLoading = false;
+        notifyListeners();
+      }
     }
   }
 
