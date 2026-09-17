@@ -775,17 +775,23 @@ class WarehouseStockState extends AppStateProxyNotifier {
   Future<StockEntry> createStockEntry({
     required String stockEntryType,
     required List<Map<String, dynamic>> items,
+    String? company,
     DateTime? postingDate,
   }) async {
     await appState.frappeService.ensureLoggedIn();
 
-    final created = await appState.frappeService.createDocument('Stock Entry', {
+    final payload = <String, dynamic>{
       'stock_entry_type': stockEntryType,
+      if (company?.trim().isNotEmpty == true) 'company': company!.trim(),
       'posting_date': DateRangePresets.toFrappeDate(
         postingDate ?? DateTime.now(),
       ),
       'items': items,
-    });
+    };
+    final created = await appState.frappeService.createDocument(
+      'Stock Entry',
+      payload,
+    );
     final entry = StockEntry.fromJson(created);
     _stockEntries = [entry, ..._stockEntries];
     notifyListeners();

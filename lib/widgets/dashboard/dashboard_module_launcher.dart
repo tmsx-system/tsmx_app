@@ -389,6 +389,8 @@ class _ModuleEntryTile extends StatelessWidget {
       return (background: const Color(0xFF059669), foreground: Colors.white);
     case MobileModule.collection:
       return (background: const Color(0xFF0F766E), foreground: Colors.white);
+    case MobileModule.pos:
+      return (background: const Color(0xFF2563EB), foreground: Colors.white);
     case MobileModule.purchase:
       return (background: const Color(0xFF22C55E), foreground: Colors.white);
     case MobileModule.stock:

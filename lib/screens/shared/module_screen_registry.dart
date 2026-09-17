@@ -5,6 +5,7 @@ import '../driver/driver_main_screen.dart';
 import '../finance/finance_main_screen.dart';
 import '../logistics/logistics_main_screen.dart';
 import '../plantation/plantation_main_screen.dart';
+import '../pos/pos_main_screen.dart';
 import '../purchase/purchase_main_screen.dart';
 import '../collection/collection_main_screen.dart';
 import '../sales/sales_main_screen.dart';
@@ -36,6 +37,7 @@ class ModuleScreenRegistry {
     add(MobileModule.sales);
     add(MobileModule.spg);
     add(MobileModule.collection);
+    add(MobileModule.pos);
     add(MobileModule.purchase);
     add(MobileModule.stock);
     add(MobileModule.warehouse);
@@ -67,6 +69,8 @@ class ModuleScreenRegistry {
         return const SpgMainScreen();
       case MobileModule.collection:
         return const CollectionMainScreen();
+      case MobileModule.pos:
+        return const PosMainScreen();
       case MobileModule.purchase:
         return const PurchaseMainScreen();
       case MobileModule.stock:

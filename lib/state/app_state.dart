@@ -102,6 +102,9 @@ class AppState with ChangeNotifier {
   String? get mobileCompatibilityWarning => _mobileCompatibilityWarning;
   MobileBoot? _mobileBoot;
   MobileBoot? get mobileBoot => _mobileBoot;
+
+  Set<String>? _permissionEnabledModules;
+
   String get appDisplayName => _mobileBoot?.appName.trim().isNotEmpty == true
       ? _mobileBoot!.appName.trim()
       : MobileRoleRegistry.defaultAppName;
@@ -114,8 +117,11 @@ class AppState with ChangeNotifier {
 
   String _userRole = 'Unassigned';
   String get userRole => _userRole;
-  MobileAccess get mobileAccess =>
-      MobileAccess(role: _userRole, boot: _mobileBoot);
+  MobileAccess get mobileAccess => MobileAccess(
+    role: _userRole,
+    boot: _mobileBoot,
+    permissionModules: _permissionEnabledModules,
+  );
   bool get isSalesUserRole => mobileAccess.isSalesUser;
   bool get isSpgRole => mobileAccess.isSpg;
   bool get isSalesManagerRole => mobileAccess.isSalesManager;
@@ -132,6 +138,7 @@ class AppState with ChangeNotifier {
   bool get canUseSales => mobileAccess.canUse(MobileModule.sales);
   bool get canUseSpg => mobileAccess.canUse(MobileModule.spg);
   bool get canUsePurchase => mobileAccess.canUse(MobileModule.purchase);
+  bool get canUsePos => mobileAccess.canUse(MobileModule.pos);
   bool get canUseStock => mobileAccess.canUse(MobileModule.stock);
   bool get canUseWarehouse => mobileAccess.canUse(MobileModule.warehouse);
   bool get canUseLogistics => mobileAccess.canUse(MobileModule.logistics);
@@ -170,12 +177,24 @@ class AppState with ChangeNotifier {
     try {
       final result = await _frappeService.callMethod(
         'frappe.client.has_permission',
-        args: {'doctype': normalizedDoctype, 'perm_type': normalizedPermType},
+        args: {
+          'doctype': normalizedDoctype,
+          'docname': '',
+          'perm_type': normalizedPermType,
+        },
       );
       final allowed = _permissionResultToBool(result);
       _doctypeSubmitPermissionCache[cacheKey] = allowed;
       return allowed;
-    } catch (_) {
+    } catch (error, stack) {
+      if (!kReleaseMode) {
+        developer.log(
+          'has_permission failed for $normalizedDoctype/$normalizedPermType',
+          error: error,
+          stackTrace: stack,
+          name: 'MobileAccess',
+        );
+      }
       _doctypeSubmitPermissionCache[cacheKey] = false;
       return false;
     }
@@ -234,16 +253,61 @@ class AppState with ChangeNotifier {
     final bootRole = _roleProfileFromMobileBoot(boot);
     if (bootRole.isNotEmpty && bootRole != MobileRole.unassigned) {
       await _applyCurrentRole(bootRole);
-      return;
+    } else {
+      final access = await _authService.fetchCurrentUserAccess(currentUser);
+      await _applyCurrentRole(access.roleProfile);
     }
-    final access = await _authService.fetchCurrentUserAccess(currentUser);
-    await _applyCurrentRole(access.roleProfile);
+    await refreshModuleAccessFromPermissions();
   }
 
   Future<void> _applyCurrentRole(String roleProfile) async {
     _userRole = _normalizeRoleProfile(roleProfile);
     final sp = await SharedPreferences.getInstance();
     await sp.setString(_prefsUserRoleKey, _userRole);
+    notifyListeners();
+  }
+
+  /// Builds [MobileAccess.enabledModules] from ERPNext doctype permissions.
+  Future<void> refreshModuleAccessFromPermissions() async {
+    if (!_isAuthenticated) {
+      _permissionEnabledModules = {MobileModule.dashboard};
+      notifyListeners();
+      return;
+    }
+
+    if (_isSampleMode || MobileRoleRegistry.isFullAccessRole(_userRole)) {
+      _permissionEnabledModules = MobileRoleRegistry.fullAccessModules();
+      notifyListeners();
+      return;
+    }
+
+    // Always re-check gate doctypes when rebuilding the module menu.
+    _doctypeSubmitPermissionCache.clear();
+
+    final generation = _runtimeGeneration;
+    final user = _currentUser;
+    final baseUrl = _frappeService.baseUrl;
+    final gateDoctypes = MobileRoleRegistry.gateDoctypes().toList();
+    final readable = <String>{};
+
+    await Future.wait(
+      gateDoctypes.map((doctype) async {
+        final allowed = await canReadDoctype(doctype);
+        if (allowed) readable.add(doctype);
+      }),
+    );
+
+    if (!_isSameRuntime(generation, user: user, baseUrl: baseUrl)) return;
+
+    _permissionEnabledModules = MobileRoleRegistry.modulesForReadableDoctypes(
+      readable,
+    );
+    if (!kReleaseMode) {
+      developer.log(
+        'enabledModules=$_permissionEnabledModules readable=$readable',
+        name: 'MobileAccess',
+      );
+    }
     notifyListeners();
   }
 
@@ -1020,7 +1084,6 @@ class AppState with ChangeNotifier {
     }();
   }
 
-  /// Called from splash — restores session and prefetches core data.
   Future<bool> initApp() async {
     _isInitializing = true;
     notifyListeners();
@@ -1345,6 +1408,7 @@ class AppState with ChangeNotifier {
     _summarySyncStatus = SummarySyncStatus.idle;
     _summaryProcessedRows = 0;
     _doctypeSubmitPermissionCache.clear();
+    _permissionEnabledModules = null;
     _documentCache.clear();
     _approvalTodoSnapshot = const [];
     _approvalTodoFetchInFlight = null;
@@ -1429,6 +1493,7 @@ class AppState with ChangeNotifier {
     _salesIdentityUser = _currentUser;
     _salesIdentityError = null;
     _userRole = MobileRole.developer;
+    _permissionEnabledModules = MobileRoleRegistry.fullAccessModules();
     _selectedSiteName = 'Sample Offline';
     _selectedSiteCode = 'SAMPLE';
     _frappeService.baseUrl = '';
@@ -5555,12 +5620,14 @@ class AppState with ChangeNotifier {
   Future<StockEntry> createStockEntry({
     required String stockEntryType,
     required List<Map<String, dynamic>> items,
+    String? company,
     DateTime? postingDate,
   }) async {
     await _frappeService.ensureLoggedIn();
 
     final payload = <String, dynamic>{
       'stock_entry_type': stockEntryType,
+      if (company?.trim().isNotEmpty == true) 'company': company!.trim(),
       'posting_date': (postingDate ?? DateTime.now())
           .toIso8601String()
           .split('T')

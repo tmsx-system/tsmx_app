@@ -27,6 +27,7 @@ class AuthState extends AppStateProxyNotifier {
   bool get canUseSales => appState.canUseSales;
   bool get canUseSpg => appState.canUseSpg;
   bool get canUsePurchase => appState.canUsePurchase;
+  bool get canUsePos => appState.canUsePos;
   bool get canUseStock => appState.canUseStock;
   bool get canUseApprovals => appState.canUseApprovals;
 

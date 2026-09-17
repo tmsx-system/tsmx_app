@@ -16,6 +16,7 @@ class DashboardState extends AppStateProxyNotifier {
     appState.mobileBoot,
     appState.selectedSiteBaseUrl,
     appState.currentUser,
+    appState.mobileAccess.enabledModules.join(','),
   ];
 
   FrappeService get frappeService => appState.frappeService;
@@ -27,6 +28,7 @@ class DashboardState extends AppStateProxyNotifier {
   String get appDisplayName => appState.appDisplayName;
   bool get canUseSales => appState.canUseSales;
   bool get canUsePurchase => appState.canUsePurchase;
+  bool get canUsePos => appState.canUsePos;
   bool get canUseStock => appState.canUseStock;
   bool get canUseWarehouse => appState.canUseWarehouse;
   bool get canUseLogistics => appState.canUseLogistics;

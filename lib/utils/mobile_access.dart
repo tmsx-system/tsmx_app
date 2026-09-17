@@ -7,7 +7,13 @@ class MobileAccess {
   final String role;
   final MobileBoot? boot;
 
-  const MobileAccess({required this.role, this.boot});
+  final Set<String>? permissionModules;
+
+  const MobileAccess({
+    required this.role,
+    this.boot,
+    this.permissionModules,
+  });
 
   bool get hasBoot => boot != null;
   String get normalizedRole => MobileRoleRegistry.normalizeRoleProfile(role);
@@ -43,12 +49,37 @@ class MobileAccess {
   }
 
   Set<String> get enabledModules {
-    final bootModules = boot?.modules ?? const <String>{};
-    final roleModules = MobileRoleRegistry.modulesForRole(normalizedRole);
-    if (boot != null && bootModules.isNotEmpty) {
-      return {...roleModules, ...bootModules};
+    if (MobileRoleRegistry.isFullAccessRole(normalizedRole)) {
+      return MobileRoleRegistry.fullAccessModules();
     }
 
-    return roleModules;
+    final fromPermissions = permissionModules;
+    if (fromPermissions != null) {
+      return {...fromPermissions, MobileModule.dashboard};
+    }
+
+    return {MobileModule.dashboard};
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! MobileAccess) return false;
+    return normalizedRole == other.normalizedRole &&
+        _sameStringSet(enabledModules, other.enabledModules) &&
+        identical(boot, other.boot);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    normalizedRole,
+    Object.hashAll(enabledModules.toList()..sort()),
+    boot,
+  );
+
+  static bool _sameStringSet(Set<String> a, Set<String> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    return a.containsAll(b);
   }
 }

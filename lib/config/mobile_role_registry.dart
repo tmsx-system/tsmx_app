@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// Canonical mobile module keys — must stay in sync with `tmsx_mobile` backend.
 class MobileModule {
   MobileModule._();
 
@@ -9,6 +8,7 @@ class MobileModule {
   static const spg = 'spg';
   static const collection = 'collection';
   static const purchase = 'purchase';
+  static const pos = 'pos';
   static const stock = 'stock';
   static const warehouse = 'warehouse';
   static const qualityControl = 'quality_control';
@@ -24,6 +24,7 @@ class MobileModule {
     spg,
     collection,
     purchase,
+    pos,
     stock,
     warehouse,
     qualityControl,
@@ -40,6 +41,7 @@ class MobileModule {
     spg,
     collection,
     purchase,
+    pos,
     stock,
     warehouse,
     qualityControl,
@@ -52,7 +54,6 @@ class MobileModule {
   static const planned = [plantation];
 }
 
-/// Canonical mobile role profile names shown in the app.
 class MobileRole {
   MobileRole._();
 
@@ -115,7 +116,16 @@ class MobileModuleGroupMeta {
   });
 }
 
-/// Single source of truth for role aliases, default modules, and module metadata.
+class MobileModuleAccessRule {
+  final String module;
+  final List<String> readDoctypes;
+
+  const MobileModuleAccessRule({
+    required this.module,
+    required this.readDoctypes,
+  });
+}
+
 class MobileRoleRegistry {
   MobileRoleRegistry._();
 
@@ -170,6 +180,14 @@ class MobileRoleRegistry {
       defaultLabel: 'Pembelian',
       defaultSubtitle: 'PO, receipt, invoice, material request',
       icon: Icons.shopping_bag_rounded,
+      menuOrder: 3,
+    ),
+    MobileModule.pos: MobileModuleMeta(
+      key: MobileModule.pos,
+      groupKey: 'sales',
+      defaultLabel: 'POS',
+      defaultSubtitle: 'Dashboard, profile, opening, invoice, closing',
+      icon: Icons.receipt_long_rounded,
       menuOrder: 3,
     ),
     MobileModule.stock: MobileModuleMeta(
@@ -239,7 +257,74 @@ class MobileRoleRegistry {
     ),
   };
 
-  /// Frappe role aliases → canonical mobile role. More specific entries first.
+  static const permissionModuleRules = [
+    MobileModuleAccessRule(
+      module: MobileModule.sales,
+      readDoctypes: [
+        'Sales Order',
+        'Delivery Note',
+        'Sales Invoice',
+        'Customer',
+        'Sales Visit',
+        'Employee Checkin',
+      ],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.collection,
+      readDoctypes: ['Sales Invoice', 'Payment Entry'],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.spg,
+      readDoctypes: ['SPG Visit', 'SPG Daily Activity', 'SPG Daily Report'],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.purchase,
+      readDoctypes: [
+        'Material Request',
+        'Purchase Order',
+        'Purchase Receipt',
+        'Purchase Invoice',
+      ],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.pos,
+      readDoctypes: [
+        'POS Profile',
+        'POS Opening Entry',
+        'POS Invoice',
+        'POS Closing Entry',
+      ],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.stock,
+      readDoctypes: ['Bin', 'Item', 'Stock Ledger Entry'],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.warehouse,
+      readDoctypes: ['Warehouse', 'Stock Entry', 'Stock Reconciliation'],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.qualityControl,
+      readDoctypes: ['Quality Inspection'],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.logistics,
+      readDoctypes: ['Delivery Note', 'Delivery Trip', 'Vehicle'],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.approvals,
+      readDoctypes: ['ToDo'],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.finance,
+      readDoctypes: ['Payment Entry', 'Sales Invoice', 'Purchase Invoice'],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.accounting,
+      readDoctypes: ['GL Entry', 'Journal Entry', 'Account'],
+    ),
+  ];
+
   static const _frappeRoleAliases = <String, String>{
     'developer': MobileRole.developer,
     'system manager': MobileRole.administrator,
@@ -323,99 +408,26 @@ class MobileRoleRegistry {
     MobileRole.driver,
   ];
 
-  static const _roleModules = {
-    MobileRole.administrator: {
-      MobileModule.dashboard,
-      MobileModule.sales,
-      MobileModule.spg,
-      MobileModule.collection,
-      MobileModule.purchase,
-      MobileModule.stock,
-      MobileModule.warehouse,
-      MobileModule.qualityControl,
-      MobileModule.logistics,
-      MobileModule.approvals,
-      MobileModule.finance,
-      MobileModule.accounting,
-      MobileModule.plantation,
-    },
-    MobileRole.developer: {
-      MobileModule.dashboard,
-      MobileModule.sales,
-      MobileModule.spg,
-      MobileModule.collection,
-      MobileModule.purchase,
-      MobileModule.stock,
-      MobileModule.warehouse,
-      MobileModule.qualityControl,
-      MobileModule.logistics,
-      MobileModule.approvals,
-      MobileModule.finance,
-      MobileModule.accounting,
-      MobileModule.plantation,
-    },
-    MobileRole.companyAdministrator: {
-      MobileModule.dashboard,
-      MobileModule.sales,
-      MobileModule.spg,
-      MobileModule.collection,
-      MobileModule.purchase,
-      MobileModule.stock,
-      MobileModule.warehouse,
-      MobileModule.qualityControl,
-      MobileModule.logistics,
-      MobileModule.approvals,
-    },
-    MobileRole.director: {
-      MobileModule.dashboard,
-      MobileModule.sales,
-      MobileModule.spg,
-      MobileModule.collection,
-      MobileModule.purchase,
-      MobileModule.stock,
-      MobileModule.warehouse,
-      MobileModule.logistics,
-      MobileModule.approvals,
-    },
-    MobileRole.salesManager: {
-      MobileModule.dashboard,
-      MobileModule.sales,
-      MobileModule.approvals,
-    },
-    MobileRole.sales: {MobileModule.dashboard, MobileModule.sales},
-    MobileRole.spg: {MobileModule.dashboard, MobileModule.spg},
-    MobileRole.collection: {MobileModule.dashboard, MobileModule.collection},
-    MobileRole.purchaseManager: {
-      MobileModule.dashboard,
-      MobileModule.purchase,
-      MobileModule.approvals,
-    },
-    MobileRole.purchase: {MobileModule.dashboard, MobileModule.purchase},
-    MobileRole.warehouse: {
-      MobileModule.dashboard,
-      MobileModule.stock,
-      MobileModule.warehouse,
-    },
-    MobileRole.qualityControl: {
-      MobileModule.dashboard,
-      MobileModule.stock,
-      MobileModule.warehouse,
-      MobileModule.qualityControl,
-    },
-    MobileRole.logistics: {
-      MobileModule.dashboard,
-      MobileModule.stock,
-      MobileModule.logistics,
-    },
-    MobileRole.driver: {MobileModule.dashboard, MobileModule.logistics},
-    MobileRole.finance: {MobileModule.dashboard, MobileModule.finance},
-    MobileRole.accounting: {MobileModule.dashboard, MobileModule.accounting},
-    MobileRole.plantationSupervisor: {
-      MobileModule.dashboard,
-      MobileModule.plantation,
-    },
-    MobileRole.unassigned: {MobileModule.dashboard},
-  };
+  static const knownRoles = [
+    MobileRole.administrator,
+    MobileRole.companyAdministrator,
+    MobileRole.developer,
+    MobileRole.sales,
+    MobileRole.salesManager,
+    MobileRole.spg,
+    MobileRole.collection,
+    MobileRole.warehouse,
+    MobileRole.qualityControl,
+    MobileRole.purchase,
+    MobileRole.purchaseManager,
+    MobileRole.logistics,
+    MobileRole.driver,
+    MobileRole.finance,
+    MobileRole.accounting,
+    MobileRole.plantationSupervisor,
+    MobileRole.director,
+    MobileRole.unassigned,
+  ];
 
   static String normalizeRoleProfile(String roleProfile) {
     final normalized = roleProfile.trim();
@@ -429,7 +441,7 @@ class MobileRoleRegistry {
     final aliasMatch = _frappeRoleAliases[lower];
     if (aliasMatch != null) return aliasMatch;
 
-    for (final role in _roleModules.keys) {
+    for (final role in knownRoles) {
       if (role.toLowerCase() == lower) return role;
     }
 
@@ -450,11 +462,36 @@ class MobileRoleRegistry {
     return MobileRole.unassigned;
   }
 
-  static Set<String> modulesForRole(String role) {
-    final normalized = normalizeRoleProfile(role);
-    return Set<String>.from(
-      _roleModules[normalized] ?? _roleModules[MobileRole.unassigned]!,
-    );
+  static Set<String> gateDoctypes() {
+    final doctypes = <String>{};
+    for (final rule in permissionModuleRules) {
+      for (final doctype in rule.readDoctypes) {
+        final trimmed = doctype.trim();
+        if (trimmed.isNotEmpty) doctypes.add(trimmed);
+      }
+    }
+    return doctypes;
+  }
+
+  static Set<String> modulesForReadableDoctypes(Iterable<String> readable) {
+    final readableSet = {
+      for (final doctype in readable)
+        if (doctype.trim().isNotEmpty) doctype.trim(),
+    };
+    final enabled = <String>{MobileModule.dashboard};
+    for (final rule in permissionModuleRules) {
+      final granted = rule.readDoctypes.any(readableSet.contains);
+      if (granted) enabled.add(rule.module);
+    }
+    return enabled;
+  }
+
+  static Set<String> fullAccessModules() {
+    return {
+      MobileModule.dashboard,
+      ...MobileModule.implemented,
+      ...MobileModule.planned,
+    };
   }
 
   static bool isFullAccessRole(String role) {

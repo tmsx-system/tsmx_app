@@ -117,13 +117,9 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
       setState(() => _error = 'Gudang asal dan tujuan harus berbeda.');
       return;
     }
-    if (widget.operation == WarehouseOperation.transfer &&
-        _warehouseCompany(_sourceWarehouse) !=
-            _warehouseCompany(_targetWarehouse)) {
-      setState(
-        () => _error =
-            'Transfer antar gudang hanya dapat dilakukan dalam company yang sama.',
-      );
+    final rowError = _validateRows();
+    if (rowError != null) {
+      setState(() => _error = rowError);
       return;
     }
     final stockError = _validateSourceStock();
@@ -141,13 +137,16 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
         for (final row in _rows)
           {
             'item_code': row.item.sku,
+            'item_name': row.item.name,
             'qty': row.qty,
-            if (_needsSource) 's_warehouse': _sourceWarehouse,
-            if (_needsTarget) 't_warehouse': _targetWarehouse,
+            if (row.item.unitValue > 0) 'basic_rate': row.item.unitValue,
+            if (_needsSource) 's_warehouse': row.sourceWarehouse,
+            if (_needsTarget) 't_warehouse': row.targetWarehouse,
           },
       ];
       await context.read<WarehouseStockState>().createStockEntry(
         stockEntryType: widget.operation.stockEntryType,
+        company: _entryCompany(),
         items: payload,
       );
       if (!mounted) return;
@@ -168,20 +167,65 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
   }
 
   String? _validateSourceStock() {
-    if (!_needsSource || _sourceWarehouse == null) return null;
+    if (!_needsSource) return null;
     for (final row in _rows) {
+      final sourceWarehouse = row.sourceWarehouse;
+      if (sourceWarehouse == null || sourceWarehouse.isEmpty) {
+        return 'Source Warehouse wajib dipilih untuk ${row.item.name}.';
+      }
       final available = context
           .read<WarehouseStockState>()
           .inventory
           .where(
             (item) =>
-                item.sku == row.item.sku &&
-                item.warehouseId == _sourceWarehouse,
+                item.sku == row.item.sku && item.warehouseId == sourceWarehouse,
           )
           .fold<int>(0, (sum, item) => sum + item.quantity);
       if (row.qty > available) {
-        return '${row.item.name} hanya tersedia $available di gudang asal.';
+        return '${row.item.name} hanya tersedia $available di $sourceWarehouse.';
       }
+    }
+    return null;
+  }
+
+  String _entryCompany() {
+    for (final row in _rows) {
+      final warehouse = row.sourceWarehouse ?? row.targetWarehouse;
+      final company = _warehouseCompany(warehouse);
+      if (company.isNotEmpty) return company;
+    }
+    final company = _warehouseCompany(_sourceWarehouse).isNotEmpty
+        ? _warehouseCompany(_sourceWarehouse)
+        : _warehouseCompany(_targetWarehouse);
+    return company;
+  }
+
+  String? _validateRows() {
+    final companies = <String>{};
+    for (final row in _rows) {
+      if (_needsSource &&
+          (row.sourceWarehouse == null || row.sourceWarehouse!.isEmpty)) {
+        return 'Source Warehouse wajib dipilih untuk ${row.item.name}.';
+      }
+      if (_needsTarget &&
+          (row.targetWarehouse == null || row.targetWarehouse!.isEmpty)) {
+        return 'Target Warehouse wajib dipilih untuk ${row.item.name}.';
+      }
+      if (_needsSource &&
+          _needsTarget &&
+          row.sourceWarehouse == row.targetWarehouse) {
+        return 'Source dan Target Warehouse ${row.item.name} harus berbeda.';
+      }
+      final sourceCompany = _warehouseCompany(row.sourceWarehouse);
+      final targetCompany = _warehouseCompany(row.targetWarehouse);
+      if (_needsSource && _needsTarget && sourceCompany != targetCompany) {
+        return 'Transfer ${row.item.name} hanya bisa antar gudang dalam company yang sama.';
+      }
+      final company = sourceCompany.isNotEmpty ? sourceCompany : targetCompany;
+      if (company.isNotEmpty) companies.add(company);
+    }
+    if (companies.length > 1) {
+      return 'Semua item dalam satu Stock Entry harus berada pada company yang sama.';
     }
     return null;
   }
@@ -534,7 +578,7 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
     padding: const EdgeInsets.only(bottom: 10),
     child: WarehouseModernCard(
       child: InkWell(
-        onTap: () => _askQuantity(row.item, existingIndex: index),
+        onTap: () => _editRow(existingIndex: index),
         borderRadius: BorderRadius.circular(18),
         child: Row(
           children: [
@@ -566,6 +610,32 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (_needsSource)
+                        _rowChip(
+                          Icons.logout_rounded,
+                          'Source',
+                          row.sourceWarehouse ?? '-',
+                        ),
+                      if (_needsTarget)
+                        _rowChip(
+                          Icons.login_rounded,
+                          'Target',
+                          row.targetWarehouse ?? '-',
+                        ),
+                      _rowChip(
+                        Icons.payments_outlined,
+                        'Rate',
+                        row.item.unitValue > 0
+                            ? 'Rp ${row.item.unitValue.toStringAsFixed(0)}'
+                            : '-',
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -579,6 +649,32 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
       ),
     ),
   );
+
+  Widget _rowChip(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.primary),
+          const SizedBox(width: 4),
+          Text(
+            '$label: $value',
+            style: const TextStyle(
+              color: AppColors.slate,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _showItemPicker() async {
     final selected = await showModalBottomSheet<InventoryItem>(
@@ -731,52 +827,315 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
         );
       },
     );
-    if (selected != null) await _askQuantity(selected);
+    if (selected != null) await _editRow(item: selected);
   }
 
-  Future<void> _askQuantity(InventoryItem item, {int? existingIndex}) async {
+  Future<void> _editRow({InventoryItem? item, int? existingIndex}) async {
+    final existing = existingIndex == null ? null : _rows[existingIndex];
+    final selectedItem = item ?? existing?.item;
+    if (selectedItem == null) return;
+
     final controller = TextEditingController(
-      text: existingIndex == null ? '1' : '${_rows[existingIndex].qty}',
+      text: existing == null ? '1' : '${existing.qty}',
     );
-    final qty = await showDialog<double>(
+    var sourceWarehouse =
+        existing?.sourceWarehouse ?? (_needsSource ? _sourceWarehouse : null);
+    var targetWarehouse =
+        existing?.targetWarehouse ?? (_needsTarget ? _targetWarehouse : null);
+
+    final row = await showModalBottomSheet<_WarehouseOperationRow>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(item.name),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Quantity'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = double.tryParse(controller.text.trim());
-              if (value != null && value > 0) {
-                Navigator.pop(dialogContext, value);
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        String? errorText;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> pickWarehouse({
+              required bool source,
+              required String title,
+            }) async {
+              final current = source ? sourceWarehouse : targetWarehouse;
+              final picked = await _showWarehousePicker(title, current);
+              if (picked == null) return;
+              setSheetState(() {
+                if (source) {
+                  sourceWarehouse = picked.name;
+                  if (targetWarehouse == picked.name) targetWarehouse = null;
+                } else {
+                  targetWarehouse = picked.name;
+                  if (sourceWarehouse == picked.name) sourceWarehouse = null;
+                }
+                errorText = null;
+              });
+            }
+
+            void submit() {
+              final qty = double.tryParse(controller.text.trim());
+              if (qty == null || qty <= 0) {
+                setSheetState(() => errorText = 'Qty harus lebih dari 0.');
+                return;
               }
-            },
-            child: const Text('Simpan'),
+              if (_needsSource &&
+                  (sourceWarehouse == null || sourceWarehouse!.isEmpty)) {
+                setSheetState(
+                  () => errorText = 'Source Warehouse wajib dipilih.',
+                );
+                return;
+              }
+              if (_needsTarget &&
+                  (targetWarehouse == null || targetWarehouse!.isEmpty)) {
+                setSheetState(
+                  () => errorText = 'Target Warehouse wajib dipilih.',
+                );
+                return;
+              }
+              if (_needsSource &&
+                  _needsTarget &&
+                  sourceWarehouse == targetWarehouse) {
+                setSheetState(
+                  () =>
+                      errorText = 'Source dan Target Warehouse harus berbeda.',
+                );
+                return;
+              }
+              if (_needsSource &&
+                  _needsTarget &&
+                  _warehouseCompany(sourceWarehouse) !=
+                      _warehouseCompany(targetWarehouse)) {
+                setSheetState(
+                  () => errorText =
+                      'Transfer hanya bisa dalam company yang sama.',
+                );
+                return;
+              }
+              Navigator.pop(
+                sheetContext,
+                _WarehouseOperationRow(
+                  item: selectedItem,
+                  qty: qty,
+                  sourceWarehouse: sourceWarehouse,
+                  targetWarehouse: targetWarehouse,
+                ),
+              );
+            }
+
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 12,
+                  right: 12,
+                  bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 12,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryDark.withValues(alpha: 0.16),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.border,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        selectedItem.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        selectedItem.sku,
+                        style: const TextStyle(
+                          color: AppColors.slate,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: controller,
+                        autofocus: existing == null,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Qty',
+                          prefixIcon: const Icon(Icons.numbers_rounded),
+                          filled: true,
+                          fillColor: AppColors.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      if (_needsSource) ...[
+                        const SizedBox(height: 10),
+                        _sheetSelectTile(
+                          label: 'Source Warehouse',
+                          value: sourceWarehouse ?? 'Pilih gudang asal',
+                          icon: Icons.logout_rounded,
+                          onTap: () => pickWarehouse(
+                            source: true,
+                            title: 'Source Warehouse',
+                          ),
+                        ),
+                      ],
+                      if (_needsTarget) ...[
+                        const SizedBox(height: 10),
+                        _sheetSelectTile(
+                          label: 'Target Warehouse',
+                          value: targetWarehouse ?? 'Pilih gudang tujuan',
+                          icon: Icons.login_rounded,
+                          onTap: () => pickWarehouse(
+                            source: false,
+                            title: 'Target Warehouse',
+                          ),
+                        ),
+                      ],
+                      if (selectedItem.unitValue > 0) ...[
+                        const SizedBox(height: 10),
+                        _sheetInfoTile(
+                          label: 'Basic Rate',
+                          value:
+                              'Rp ${selectedItem.unitValue.toStringAsFixed(0)}',
+                          icon: Icons.payments_outlined,
+                        ),
+                      ],
+                      if (errorText != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          errorText!,
+                          style: const TextStyle(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: submit,
+                        icon: const Icon(Icons.check_rounded),
+                        label: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text('Simpan Item'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    if (row == null || !mounted) return;
+    setState(() {
+      final duplicate = _rows.indexWhere(
+        (current) =>
+            current.item.sku == row.item.sku &&
+            current.sourceWarehouse == row.sourceWarehouse &&
+            current.targetWarehouse == row.targetWarehouse,
+      );
+      if (existingIndex != null) {
+        _rows[existingIndex] = row;
+      } else if (duplicate >= 0) {
+        _rows[duplicate] = row;
+      } else {
+        _rows.add(row);
+      }
+    });
+  }
+
+  Widget _sheetSelectTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: _sheetInfoTile(
+        label: label,
+        value: value,
+        icon: icon,
+        trailing: const Icon(Icons.chevron_right_rounded),
+      ),
+    );
+  }
+
+  Widget _sheetInfoTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    Widget? trailing,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.slate,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
           ),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing],
         ],
       ),
     );
-    controller.dispose();
-    if (qty == null || !mounted) return;
-    setState(() {
-      final duplicate = _rows.indexWhere((row) => row.item.sku == item.sku);
-      if (existingIndex != null) {
-        _rows[existingIndex] = _WarehouseOperationRow(item: item, qty: qty);
-      } else if (duplicate >= 0) {
-        _rows[duplicate] = _WarehouseOperationRow(item: item, qty: qty);
-      } else {
-        _rows.add(_WarehouseOperationRow(item: item, qty: qty));
-      }
-    });
   }
 
   String _friendlyError(Object error) {
@@ -792,6 +1151,13 @@ class _WarehouseStockEntryScreenState extends State<WarehouseStockEntryScreen> {
 class _WarehouseOperationRow {
   final InventoryItem item;
   final double qty;
+  final String? sourceWarehouse;
+  final String? targetWarehouse;
 
-  const _WarehouseOperationRow({required this.item, required this.qty});
+  const _WarehouseOperationRow({
+    required this.item,
+    required this.qty,
+    this.sourceWarehouse,
+    this.targetWarehouse,
+  });
 }
