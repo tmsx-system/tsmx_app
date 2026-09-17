@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../models/sales_workspace.dart';
 import '../../../services/local_app_database.dart';
+import '../../../services/native_file_service.dart';
 import '../../../state/selling/sales_overview_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
@@ -785,16 +786,17 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
         .map((row) => row.map(_csvCell).join(','))
         .join(Platform.lineTerminator);
     await file.writeAsString(csv, flush: true);
+    await NativeFileService.instance.saveFileToDownloads(
+      sourcePath: file.path,
+      fileName: fileName,
+      mimeType: 'text/csv',
+    );
     if (!mounted) return;
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path, mimeType: 'text/csv')],
         subject: fileName,
       ),
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('File export tersimpan: ${file.path}')),
     );
   }
 

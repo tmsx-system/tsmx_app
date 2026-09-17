@@ -5,16 +5,23 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Environment
 import android.os.Build
+import android.provider.MediaStore
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
     private val methodChannelName = "com.tmsxhub/notifications"
+    private val fileChannelName = "com.tmsxhub/files"
     private val approvalChannelId = "approval_todo"
     private var permissionResult: MethodChannel.Result? = null
     private var notificationChannel: MethodChannel? = null
@@ -43,6 +50,21 @@ class MainActivity : FlutterActivity() {
                     result.success(pendingTapPayload)
                     pendingTapPayload = null
                 }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            fileChannelName,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "saveFileToDownloads" -> saveFileToDownloads(
+                    call.argument<String>("sourcePath"),
+                    call.argument<String>("fileName"),
+                    call.argument<String>("mimeType"),
+                    call.argument<String>("subdirectory"),
+                    result,
+                )
                 else -> result.notImplemented()
             }
         }
@@ -141,5 +163,63 @@ class MainActivity : FlutterActivity() {
             .build()
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(id, notification)
+    }
+
+    private fun saveFileToDownloads(
+        sourcePath: String?,
+        fileName: String?,
+        mimeType: String?,
+        subdirectory: String?,
+        result: MethodChannel.Result,
+    ) {
+        try {
+            val source = File(sourcePath ?: "")
+            val targetName = fileName?.takeIf { it.isNotBlank() } ?: source.name
+            val targetMime = mimeType?.takeIf { it.isNotBlank() } ?: "application/octet-stream"
+            val targetSubdirectory = subdirectory?.takeIf { it.isNotBlank() } ?: "TMSX Hub"
+            if (!source.exists() || !source.isFile) {
+                result.error("FILE_NOT_FOUND", "Source file not found", sourcePath)
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, targetName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, targetMime)
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_DOWNLOADS}/$targetSubdirectory",
+                    )
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val resolver = applicationContext.contentResolver
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri == null) {
+                    result.error("CREATE_FAILED", "Failed to create download file", null)
+                    return
+                }
+                resolver.openOutputStream(uri)?.use { output ->
+                    FileInputStream(source).use { input -> input.copyTo(output) }
+                }
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                result.success("Download/$targetSubdirectory/$targetName")
+                return
+            }
+
+            val directory = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                targetSubdirectory,
+            )
+            if (!directory.exists()) directory.mkdirs()
+            val target = File(directory, targetName)
+            FileInputStream(source).use { input ->
+                FileOutputStream(target).use { output -> input.copyTo(output) }
+            }
+            result.success(target.absolutePath)
+        } catch (error: Exception) {
+            result.error("SAVE_FAILED", error.message, null)
+        }
     }
 }
