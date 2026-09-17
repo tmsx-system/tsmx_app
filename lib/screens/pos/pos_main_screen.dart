@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../state/app_state.dart';
+import '../../state/pos/pos_state.dart';
 import '../../theme/app_colors.dart';
+import '../shared/role_main_screen.dart';
+import 'pos_closing_entry/create_pos_closing_entry_screen.dart';
+import 'pos_closing_entry/pos_closing_entry_panel.dart';
+import 'pos_invoice/create_pos_invoice_screen.dart';
+import 'pos_invoice/pos_invoice_panel.dart';
+import 'pos_opening_entry/create_pos_opening_entry_screen.dart';
+import 'pos_opening_entry/pos_opening_entry_panel.dart';
+import 'pos_overview_tab.dart';
+import 'pos_profile/pos_profile_panel.dart';
 
 class PosMainScreen extends StatefulWidget {
   const PosMainScreen({super.key});
@@ -13,386 +22,371 @@ class PosMainScreen extends StatefulWidget {
 }
 
 class _PosMainScreenState extends State<PosMainScreen> {
-  late Future<List<_PosAccessEntry>> _accessFuture;
-
-  static const _items = [
-    _PosItem(
-      title: 'Dashboard POS',
-      subtitle: 'Ringkasan dan workspace kasir',
-      doctype: 'POS Invoice',
-      route: '/app/point-of-sale',
-      icon: Icons.dashboard_rounded,
-      color: Color(0xFF2563EB),
-    ),
-    _PosItem(
-      title: 'POS Profile',
-      subtitle: 'Konfigurasi profile kasir',
-      doctype: 'POS Profile',
-      route: '/app/pos-profile',
-      icon: Icons.badge_rounded,
-      color: Color(0xFF0F766E),
-    ),
-    _PosItem(
-      title: 'POS Opening Entry',
-      subtitle: 'Buka sesi kasir',
-      doctype: 'POS Opening Entry',
-      route: '/app/pos-opening-entry',
-      icon: Icons.login_rounded,
-      color: Color(0xFF16A34A),
-      needsCreate: true,
-    ),
-    _PosItem(
-      title: 'POS Invoice',
-      subtitle: 'Transaksi penjualan POS',
-      doctype: 'POS Invoice',
-      route: '/app/pos-invoice',
-      icon: Icons.receipt_long_rounded,
-      color: Color(0xFFF59E0B),
-      needsCreate: true,
-    ),
-    _PosItem(
-      title: 'POS Closing Entry',
-      subtitle: 'Tutup sesi kasir',
-      doctype: 'POS Closing Entry',
-      route: '/app/pos-closing-entry/view/list',
-      icon: Icons.logout_rounded,
-      color: Color(0xFF7C3AED),
-      needsCreate: true,
-    ),
-  ];
+  Future<_PosDoctypePermissions>? _permissionsFuture;
+  final Set<String> _loadedKeys = <String>{};
 
   @override
-  void initState() {
-    super.initState();
-    _accessFuture = _loadAccess();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _permissionsFuture ??= _loadPermissions();
   }
 
-  Future<List<_PosAccessEntry>> _loadAccess() async {
+  Future<_PosDoctypePermissions> _loadPermissions() async {
     final state = context.read<AppState>();
-    final entries = <_PosAccessEntry>[];
-    for (final item in _items) {
-      final canRead = await state.canReadDoctype(item.doctype);
-      final canCreate = item.needsCreate
-          ? await state.canCreateDoctype(item.doctype)
-          : false;
-      entries.add(
-        _PosAccessEntry(item: item, canRead: canRead, canCreate: canCreate),
+    if (state.mobileAccess.isDeveloper ||
+        state.mobileAccess.isAdministrator ||
+        state.mobileAccess.isCompanyAdministrator ||
+        state.mobileAccess.isDirector) {
+      return _PosDoctypePermissions.fullAccess();
+    }
+
+    final results = await Future.wait([
+      state.canReadDoctype('POS Profile'),
+      state.canReadDoctype('POS Opening Entry'),
+      state.canCreateDoctype('POS Opening Entry'),
+      state.canReadDoctype('POS Invoice'),
+      state.canCreateDoctype('POS Invoice'),
+      state.canReadDoctype('POS Closing Entry'),
+      state.canCreateDoctype('POS Closing Entry'),
+    ]);
+
+    return _PosDoctypePermissions(
+      canReadProfile: results[0],
+      canReadOpening: results[1],
+      canCreateOpening: results[2],
+      canReadInvoice: results[3],
+      canCreateInvoice: results[4],
+      canReadClosing: results[5],
+      canCreateClosing: results[6],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_PosDoctypePermissions>(
+      future: _permissionsFuture,
+      builder: (context, snapshot) {
+        final permissions = snapshot.data;
+        if (permissions == null) {
+          return const Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
+          );
+        }
+        if (!permissions.hasAnyAccess) {
+          return const _NoPosAccessScreen();
+        }
+        return _buildRoleScreen(permissions);
+      },
+    );
+  }
+
+  Widget _buildRoleScreen(_PosDoctypePermissions permissions) {
+    final entries = _buildMenuEntries(permissions);
+    final indexByKey = {
+      for (var index = 0; index < entries.length; index++)
+        entries[index].key: index,
+    };
+
+    return RoleMainScreen(
+      title: 'POS',
+      fallbackUsername: 'Kasir',
+      onTabChanged: (context, index) =>
+          _ensureEntryLoaded(context, entries[index].key),
+      screensBuilder: (onMenuSelected) => entries
+          .map((entry) {
+            if (entry.key == 'home') {
+              return PosOverviewTab(
+                onMenuSelected: onMenuSelected,
+                actions: _buildOverviewActions(onMenuSelected, indexByKey, entries),
+              );
+            }
+            return entry.builder(onMenuSelected);
+          })
+          .toList(growable: false),
+      floatingActionButtonBuilder: (context, currentIndex) =>
+          _buildFab(context, currentIndex, entries),
+      destinations: entries.map((entry) => entry.destination).toList(),
+    );
+  }
+
+  Future<void> _ensureEntryLoaded(BuildContext context, String key) async {
+    if (!_loadedKeys.add(key)) return;
+    final state = context.read<PosState>();
+    switch (key) {
+      case 'home':
+        await Future.wait([
+          state.refreshProfiles(),
+          state.refreshOpenings(),
+          state.refreshInvoices(),
+          state.refreshClosings(),
+        ]);
+      case 'profile':
+        await state.refreshProfiles();
+      case 'opening':
+        await state.refreshOpenings();
+      case 'invoice':
+        await state.refreshInvoices();
+      case 'closing':
+        await state.refreshClosings();
+    }
+  }
+
+  List<PosOverviewAction> _buildOverviewActions(
+    ValueChanged<int> onMenuSelected,
+    Map<String, int> indexByKey,
+    List<_PosMenuEntry> entries,
+  ) {
+    final byKey = {for (final entry in entries) entry.key: entry};
+
+    PosOverviewAction? actionFor(
+      String key,
+      String label,
+      IconData icon,
+      Color color,
+    ) {
+      final index = indexByKey[key];
+      final entry = byKey[key];
+      if (index == null || entry == null) return null;
+      return PosOverviewAction(
+        key: key,
+        label: label,
+        icon: icon,
+        color: color,
+        onTap: () => onMenuSelected(index),
       );
     }
+
+    return [
+      actionFor(
+        'profile',
+        'Profile',
+        Icons.badge_rounded,
+        const Color(0xFF0F766E),
+      ),
+      actionFor(
+        'opening',
+        'Opening',
+        Icons.login_rounded,
+        const Color(0xFF16A34A),
+      ),
+      actionFor(
+        'invoice',
+        'Invoice',
+        Icons.receipt_long_rounded,
+        const Color(0xFFF59E0B),
+      ),
+      actionFor(
+        'closing',
+        'Closing',
+        Icons.logout_rounded,
+        const Color(0xFF7C3AED),
+      ),
+    ].whereType<PosOverviewAction>().toList(growable: false);
+  }
+
+  List<_PosMenuEntry> _buildMenuEntries(_PosDoctypePermissions permissions) {
+    final entries = <_PosMenuEntry>[
+      _PosMenuEntry(
+        key: 'home',
+        destination: const NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home_rounded),
+          label: 'Home',
+        ),
+        builder: (onMenuSelected) => PosOverviewTab(onMenuSelected: onMenuSelected),
+      ),
+    ];
+
+    if (permissions.canReadProfile) {
+      entries.add(
+        _PosMenuEntry(
+          key: 'profile',
+          destination: const NavigationDestination(
+            icon: Icon(Icons.badge_outlined),
+            selectedIcon: Icon(Icons.badge_rounded),
+            label: 'Profile',
+          ),
+          builder: (_) => const PosProfilePanel(),
+        ),
+      );
+    }
+    if (permissions.canReadOpening) {
+      entries.add(
+        _PosMenuEntry(
+          key: 'opening',
+          destination: const NavigationDestination(
+            icon: Icon(Icons.login_outlined),
+            selectedIcon: Icon(Icons.login_rounded),
+            label: 'Opening',
+          ),
+          builder: (_) => const PosOpeningEntryPanel(),
+          canCreate: permissions.canCreateOpening,
+        ),
+      );
+    }
+    if (permissions.canReadInvoice) {
+      entries.add(
+        _PosMenuEntry(
+          key: 'invoice',
+          destination: const NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long_rounded),
+            label: 'Invoice',
+          ),
+          builder: (_) => const PosInvoicePanel(),
+          canCreate: permissions.canCreateInvoice,
+        ),
+      );
+    }
+    if (permissions.canReadClosing) {
+      entries.add(
+        _PosMenuEntry(
+          key: 'closing',
+          destination: const NavigationDestination(
+            icon: Icon(Icons.logout_outlined),
+            selectedIcon: Icon(Icons.logout_rounded),
+            label: 'Closing',
+          ),
+          builder: (_) => const PosClosingEntryPanel(),
+          canCreate: permissions.canCreateClosing,
+        ),
+      );
+    }
+
     return entries;
   }
 
-  Future<void> _refresh() async {
-    final next = _loadAccess();
-    setState(() => _accessFuture = next);
-    await next;
+  Widget? _buildFab(
+    BuildContext context,
+    int currentIndex,
+    List<_PosMenuEntry> entries,
+  ) {
+    if (currentIndex < 0 || currentIndex >= entries.length) return null;
+    final entry = entries[currentIndex];
+    if (!entry.canCreate) return null;
+
+    return FloatingActionButton.extended(
+      onPressed: () => _openCreate(context, entry.key),
+      backgroundColor: AppColors.primary,
+      foregroundColor: Colors.white,
+      icon: const Icon(Icons.add_rounded),
+      label: Text(_fabLabel(entry.key)),
+    );
   }
+
+  String _fabLabel(String key) {
+    return switch (key) {
+      'opening' => 'Opening',
+      'invoice' => 'Invoice',
+      'closing' => 'Closing',
+      _ => 'Buat',
+    };
+  }
+
+  Future<void> _openCreate(BuildContext context, String key) async {
+    final state = context.read<PosState>();
+    final screen = switch (key) {
+      'opening' => const CreatePosOpeningEntryScreen(),
+      'invoice' => const CreatePosInvoiceScreen(),
+      'closing' => const CreatePosClosingEntryScreen(),
+      _ => null,
+    };
+    if (screen == null) return;
+
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => screen),
+    );
+    if (created != true || !context.mounted) return;
+
+    switch (key) {
+      case 'opening':
+        await state.refreshOpenings();
+      case 'invoice':
+        await state.refreshInvoices();
+      case 'closing':
+        await state.refreshClosings();
+    }
+  }
+}
+
+class _PosMenuEntry {
+  final String key;
+  final NavigationDestination destination;
+  final Widget Function(ValueChanged<int> onMenuSelected) builder;
+  final bool canCreate;
+
+  const _PosMenuEntry({
+    required this.key,
+    required this.destination,
+    required this.builder,
+    this.canCreate = false,
+  });
+}
+
+class _PosDoctypePermissions {
+  final bool canReadProfile;
+  final bool canReadOpening;
+  final bool canCreateOpening;
+  final bool canReadInvoice;
+  final bool canCreateInvoice;
+  final bool canReadClosing;
+  final bool canCreateClosing;
+
+  const _PosDoctypePermissions({
+    required this.canReadProfile,
+    required this.canReadOpening,
+    required this.canCreateOpening,
+    required this.canReadInvoice,
+    required this.canCreateInvoice,
+    required this.canReadClosing,
+    required this.canCreateClosing,
+  });
+
+  factory _PosDoctypePermissions.fullAccess() {
+    return const _PosDoctypePermissions(
+      canReadProfile: true,
+      canReadOpening: true,
+      canCreateOpening: true,
+      canReadInvoice: true,
+      canCreateInvoice: true,
+      canReadClosing: true,
+      canCreateClosing: true,
+    );
+  }
+
+  bool get hasAnyAccess =>
+      canReadProfile || canReadOpening || canReadInvoice || canReadClosing;
+}
+
+class _NoPosAccessScreen extends StatelessWidget {
+  const _NoPosAccessScreen();
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        title: const Text('POS'),
         backgroundColor: AppColors.background,
-        elevation: 0,
         foregroundColor: AppColors.primary,
-        titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'POS',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            if (state.selectedSiteName.trim().isNotEmpty)
-              Text(
-                state.selectedSiteName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.slate,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-          ],
-        ),
+        elevation: 0,
       ),
-      body: FutureBuilder<List<_PosAccessEntry>>(
-        future: _accessFuture,
-        builder: (context, snapshot) {
-          final entries = snapshot.data;
-          if (entries == null) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            );
-          }
-
-          return RefreshIndicator(
-            color: AppColors.primary,
-            onRefresh: _refresh,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
-              children: [
-                _PosHeader(siteName: state.selectedSiteName),
-                const SizedBox(height: 14),
-                for (final entry in entries) ...[
-                  _PosAccessCard(entry: entry, onTap: () => _openEntry(entry)),
-                  const SizedBox(height: 12),
-                ],
-              ],
+      body: const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'User ini belum punya permission doctype POS Profile / Opening / Invoice / Closing.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.slate,
+              fontWeight: FontWeight.w700,
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _openEntry(_PosAccessEntry entry) async {
-    final state = context.read<AppState>();
-    final baseUrl = state.selectedSiteBaseUrl.trim();
-    if (baseUrl.isEmpty) {
-      _showSnack('Site ERPNext belum dipilih.');
-      return;
-    }
-    if (!entry.canUse) {
-      _showSnack('Akses ${entry.item.doctype} belum tersedia untuk user ini.');
-      return;
-    }
-
-    final uri = Uri.parse(baseUrl).resolve(entry.item.route);
-    try {
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened) _showSnack('Halaman POS tidak dapat dibuka.');
-    } catch (_) {
-      _showSnack('Halaman POS tidak dapat dibuka.');
-    }
-  }
-
-  void _showSnack(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.primaryDark,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-}
-
-class _PosHeader extends StatelessWidget {
-  const _PosHeader({required this.siteName});
-
-  final String siteName;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = siteName.trim().isEmpty ? 'ERPNext POS' : siteName.trim();
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.point_of_sale_rounded,
-              color: Color(0xFF2563EB),
-              size: 27,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Dashboard dan transaksi POS ERPNext',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: AppColors.slate,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PosAccessCard extends StatelessWidget {
-  const _PosAccessCard({required this.entry, required this.onTap});
-
-  final _PosAccessEntry entry;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final item = entry.item;
-    final enabled = entry.canUse;
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: enabled
-                  ? item.color.withValues(alpha: 0.22)
-                  : AppColors.border,
-            ),
-            boxShadow: AppColors.cardShadow,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: item.color.withValues(alpha: enabled ? 0.14 : 0.08),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(
-                  item.icon,
-                  color: enabled ? item.color : AppColors.slate,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: enabled ? AppColors.navy : AppColors.slate,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item.subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.slate,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              _AccessBadge(entry: entry),
-            ],
           ),
         ),
       ),
     );
   }
-}
-
-class _AccessBadge extends StatelessWidget {
-  const _AccessBadge({required this.entry});
-
-  final _PosAccessEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = entry.canCreate
-        ? 'Create'
-        : entry.canRead
-        ? 'Read'
-        : 'No Access';
-    final color = entry.canUse ? AppColors.primary : AppColors.slate;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _PosItem {
-  final String title;
-  final String subtitle;
-  final String doctype;
-  final String route;
-  final IconData icon;
-  final Color color;
-  final bool needsCreate;
-
-  const _PosItem({
-    required this.title,
-    required this.subtitle,
-    required this.doctype,
-    required this.route,
-    required this.icon,
-    required this.color,
-    this.needsCreate = false,
-  });
-}
-
-class _PosAccessEntry {
-  final _PosItem item;
-  final bool canRead;
-  final bool canCreate;
-
-  const _PosAccessEntry({
-    required this.item,
-    required this.canRead,
-    required this.canCreate,
-  });
-
-  bool get canUse => item.needsCreate ? canCreate || canRead : canRead;
 }

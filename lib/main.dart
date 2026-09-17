@@ -18,6 +18,7 @@ import 'state/purchasing/purchase_receipt_state.dart';
 import 'state/purchasing/purchasing_filter_state.dart';
 import 'state/purchasing/purchasing_summary_state.dart';
 import 'state/profile/profile_state.dart';
+import 'state/pos/pos_state.dart';
 import 'state/selling/collection_state.dart';
 import 'state/selling/customer_state.dart';
 import 'state/selling/delivery_note_state.dart';
@@ -388,6 +389,11 @@ void main() {
           update: (_, appState, state) =>
               (state ?? LogisticsDeliveryState(appState: appState))
                 ..updateAppState(appState),
+        ),
+        ChangeNotifierProxyProvider<AppState, PosState>(
+          create: (context) => PosState(appState: context.read<AppState>()),
+          update: (_, appState, state) =>
+              (state ?? PosState(appState: appState))..updateAppState(appState),
         ),
       ],
       child: const TmsxHubApp(),
