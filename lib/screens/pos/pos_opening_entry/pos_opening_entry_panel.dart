@@ -12,6 +12,7 @@ import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/pos_document_actions.dart';
+import '../shared/pos_list_filters.dart';
 import '../shared/pos_ui.dart';
 import 'create_pos_opening_entry_screen.dart';
 
@@ -26,6 +27,8 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
   final _searchController = TextEditingController();
   Timer? _debounce;
   bool _didLoadPermissions = false;
+  bool _didLoadProfiles = false;
+  List<String> _profiles = const [];
   PosDoctypeActionPermissions _permissions =
       const PosDoctypeActionPermissions();
 
@@ -34,9 +37,14 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_didLoadPermissions) return;
-    _didLoadPermissions = true;
-    unawaited(_loadPermissions());
+    if (!_didLoadPermissions) {
+      _didLoadPermissions = true;
+      unawaited(_loadPermissions());
+    }
+    if (!_didLoadProfiles) {
+      _didLoadProfiles = true;
+      unawaited(_loadProfiles());
+    }
   }
 
   Future<void> _loadPermissions() async {
@@ -48,6 +56,16 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
     setState(() => _permissions = permissions);
   }
 
+  Future<void> _loadProfiles() async {
+    try {
+      final profiles = await context
+          .read<PosState>()
+          .fetchSelectableProfileNames();
+      if (!mounted) return;
+      setState(() => _profiles = profiles);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -56,11 +74,25 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
   }
 
   void _onSearch(String value) {
+    setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       context.read<PosState>().setOpeningSearch(value);
     });
+  }
+
+  bool get _hasActiveFilters {
+    final state = context.read<PosState>();
+    return _searchController.text.trim().isNotEmpty ||
+        state.openingProfileFilter != null ||
+        state.openingStatusFilter != null;
+  }
+
+  Future<void> _resetFilters() async {
+    _searchController.clear();
+    setState(() {});
+    await context.read<PosState>().clearOpeningListFilters();
   }
 
   Future<void> _openEdit(String name) async {
@@ -150,12 +182,20 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: TmsxResponsive.pagePadding(context, top: 14, bottom: 110),
         children: [
-          TextField(
-            controller: _searchController,
-            onChanged: _onSearch,
-            decoration: posFieldDecoration('Cari Opening Entry').copyWith(
-              prefixIcon: const Icon(Icons.search_rounded),
-            ),
+          PosListFilterBar(
+            searchController: _searchController,
+            searchHint: 'Cari Opening Entry',
+            onSearchChanged: _onSearch,
+            profiles: _profiles,
+            selectedProfile: state.openingProfileFilter,
+            onProfileChanged: (value) =>
+                context.read<PosState>().setOpeningProfileFilter(value),
+            statusChips: posOpeningStatusChips(),
+            selectedStatus: state.openingStatusFilter,
+            onStatusChanged: (value) =>
+                context.read<PosState>().setOpeningStatusFilter(value),
+            hasActiveFilters: _hasActiveFilters,
+            onReset: _resetFilters,
           ),
           const SizedBox(height: 14),
           if (state.openingsLoading && rows.isEmpty)
@@ -169,8 +209,8 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
             ErpErrorBox(message: state.openingsError!)
           else if (rows.isEmpty)
             const ErpEmptyState(
-              title: 'Belum ada Opening Entry',
-              message: 'Buat opening untuk memulai sesi kasir.',
+              title: 'Tidak ada Opening Entry',
+              message: 'Coba ubah filter POS Profile / Status, atau buat opening baru.',
             )
           else
             TmsxResponsiveCardGrid(

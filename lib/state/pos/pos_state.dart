@@ -35,6 +35,13 @@ class PosState extends AppStateProxyNotifier {
   String _invoiceSearch = '';
   String _closingSearch = '';
 
+  String? _openingProfileFilter;
+  String? _openingStatusFilter;
+  String? _invoiceProfileFilter;
+  String? _invoiceStatusFilter;
+  String? _closingProfileFilter;
+  String? _closingStatusFilter;
+
   int _profilesVersion = 0;
   int _openingsVersion = 0;
   int _invoicesVersion = 0;
@@ -72,6 +79,13 @@ class PosState extends AppStateProxyNotifier {
   String? get invoicesError => _invoicesError;
   String? get closingsError => _closingsError;
 
+  String? get openingProfileFilter => _openingProfileFilter;
+  String? get openingStatusFilter => _openingStatusFilter;
+  String? get invoiceProfileFilter => _invoiceProfileFilter;
+  String? get invoiceStatusFilter => _invoiceStatusFilter;
+  String? get closingProfileFilter => _closingProfileFilter;
+  String? get closingStatusFilter => _closingStatusFilter;
+
   @override
   void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
     if (didAuthScopeChange(
@@ -94,6 +108,16 @@ class PosState extends AppStateProxyNotifier {
     _openingsError = null;
     _invoicesError = null;
     _closingsError = null;
+    _profileSearch = '';
+    _openingSearch = '';
+    _invoiceSearch = '';
+    _closingSearch = '';
+    _openingProfileFilter = null;
+    _openingStatusFilter = null;
+    _invoiceProfileFilter = null;
+    _invoiceStatusFilter = null;
+    _closingProfileFilter = null;
+    _closingStatusFilter = null;
     _profilesVersion++;
     _openingsVersion++;
     _invoicesVersion++;
@@ -177,6 +201,84 @@ class PosState extends AppStateProxyNotifier {
     await refreshClosings();
   }
 
+  Future<void> setOpeningProfileFilter(String? profile) async {
+    final next = profile?.trim();
+    final normalized = (next == null || next.isEmpty) ? null : next;
+    if (_openingProfileFilter == normalized) return;
+    _openingProfileFilter = normalized;
+    _openingsInFlight = null;
+    await refreshOpenings();
+  }
+
+  Future<void> setOpeningStatusFilter(String? status) async {
+    final next = status?.trim();
+    final normalized = (next == null || next.isEmpty) ? null : next;
+    if (_openingStatusFilter == normalized) return;
+    _openingStatusFilter = normalized;
+    _openingsInFlight = null;
+    await refreshOpenings();
+  }
+
+  Future<void> setInvoiceProfileFilter(String? profile) async {
+    final next = profile?.trim();
+    final normalized = (next == null || next.isEmpty) ? null : next;
+    if (_invoiceProfileFilter == normalized) return;
+    _invoiceProfileFilter = normalized;
+    _invoicesInFlight = null;
+    await refreshInvoices();
+  }
+
+  Future<void> setInvoiceStatusFilter(String? status) async {
+    final next = status?.trim();
+    final normalized = (next == null || next.isEmpty) ? null : next;
+    if (_invoiceStatusFilter == normalized) return;
+    _invoiceStatusFilter = normalized;
+    _invoicesInFlight = null;
+    await refreshInvoices();
+  }
+
+  Future<void> setClosingProfileFilter(String? profile) async {
+    final next = profile?.trim();
+    final normalized = (next == null || next.isEmpty) ? null : next;
+    if (_closingProfileFilter == normalized) return;
+    _closingProfileFilter = normalized;
+    _closingsInFlight = null;
+    await refreshClosings();
+  }
+
+  Future<void> setClosingStatusFilter(String? status) async {
+    final next = status?.trim();
+    final normalized = (next == null || next.isEmpty) ? null : next;
+    if (_closingStatusFilter == normalized) return;
+    _closingStatusFilter = normalized;
+    _closingsInFlight = null;
+    await refreshClosings();
+  }
+
+  Future<void> clearOpeningListFilters() async {
+    _openingSearch = '';
+    _openingProfileFilter = null;
+    _openingStatusFilter = null;
+    _openingsInFlight = null;
+    await refreshOpenings();
+  }
+
+  Future<void> clearInvoiceListFilters() async {
+    _invoiceSearch = '';
+    _invoiceProfileFilter = null;
+    _invoiceStatusFilter = null;
+    _invoicesInFlight = null;
+    await refreshInvoices();
+  }
+
+  Future<void> clearClosingListFilters() async {
+    _closingSearch = '';
+    _closingProfileFilter = null;
+    _closingStatusFilter = null;
+    _closingsInFlight = null;
+    await refreshClosings();
+  }
+
   Future<void> _fetchProfiles() async {
     final version = ++_profilesVersion;
     _profilesLoading = true;
@@ -234,7 +336,11 @@ class PosState extends AppStateProxyNotifier {
           'modified',
         ],
         orderBy: 'period_start_date desc, name desc',
-        filters: _posProfileLinkFilters(assigned),
+        filters: _mergeFilters([
+          _posProfileLinkFilters(assigned),
+          _exactProfileFilter(_openingProfileFilter),
+          _statusFilter(_openingStatusFilter),
+        ]),
         orFilters: _searchFilters(_openingSearch, const [
           'name',
           'pos_profile',
@@ -278,7 +384,11 @@ class PosState extends AppStateProxyNotifier {
           'owner',
         ],
         orderBy: 'posting_date desc, name desc',
-        filters: _posProfileLinkFilters(assigned),
+        filters: _mergeFilters([
+          _posProfileLinkFilters(assigned),
+          _exactProfileFilter(_invoiceProfileFilter),
+          _statusFilter(_invoiceStatusFilter),
+        ]),
         orFilters: _searchFilters(_invoiceSearch, const [
           'name',
           'customer',
@@ -323,7 +433,11 @@ class PosState extends AppStateProxyNotifier {
           'modified',
         ],
         orderBy: 'period_end_date desc, name desc',
-        filters: _posProfileLinkFilters(assigned),
+        filters: _mergeFilters([
+          _posProfileLinkFilters(assigned),
+          _exactProfileFilter(_closingProfileFilter),
+          _statusFilter(_closingStatusFilter),
+        ]),
         orFilters: _searchFilters(_closingSearch, const [
           'name',
           'pos_profile',
@@ -653,6 +767,7 @@ class PosState extends AppStateProxyNotifier {
     scrubChildren('pos_invoices');
     scrubChildren('payments');
     scrubChildren('items');
+    scrubChildren('sales_team');
     scrubChildren('taxes');
 
     final created = await frappeService.createDocument(doctype, payload);
@@ -843,6 +958,42 @@ class PosState extends AppStateProxyNotifier {
     return [
       ['pos_profile', 'in', assigned.toList()],
     ];
+  }
+
+  List<List<dynamic>>? _exactProfileFilter(String? profile) {
+    final value = profile?.trim() ?? '';
+    if (value.isEmpty) return null;
+    return [
+      ['pos_profile', '=', value],
+    ];
+  }
+
+  List<List<dynamic>>? _statusFilter(String? status) {
+    final value = status?.trim() ?? '';
+    if (value.isEmpty) return null;
+    final lower = value.toLowerCase();
+    if (lower == 'draft') {
+      return [
+        ['docstatus', '=', 0],
+      ];
+    }
+    if (lower == 'cancelled') {
+      return [
+        ['docstatus', '=', 2],
+      ];
+    }
+    return [
+      ['status', '=', value],
+    ];
+  }
+
+  List<List<dynamic>>? _mergeFilters(List<List<List<dynamic>>?> parts) {
+    final merged = <List<dynamic>>[
+      for (final part in parts)
+        if (part != null)
+          for (final filter in part) filter,
+    ];
+    return merged.isEmpty ? null : merged;
   }
 
   /// Null/empty = user is not assigned anywhere, so all readable POS data is shown.

@@ -12,6 +12,7 @@ import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/pos_document_actions.dart';
+import '../shared/pos_list_filters.dart';
 import '../shared/pos_ui.dart';
 import 'create_pos_closing_entry_screen.dart';
 
@@ -26,6 +27,8 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
   final _searchController = TextEditingController();
   Timer? _debounce;
   bool _didLoadPermissions = false;
+  bool _didLoadProfiles = false;
+  List<String> _profiles = const [];
   PosDoctypeActionPermissions _permissions =
       const PosDoctypeActionPermissions();
 
@@ -34,9 +37,14 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_didLoadPermissions) return;
-    _didLoadPermissions = true;
-    unawaited(_loadPermissions());
+    if (!_didLoadPermissions) {
+      _didLoadPermissions = true;
+      unawaited(_loadPermissions());
+    }
+    if (!_didLoadProfiles) {
+      _didLoadProfiles = true;
+      unawaited(_loadProfiles());
+    }
   }
 
   Future<void> _loadPermissions() async {
@@ -48,6 +56,16 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
     setState(() => _permissions = permissions);
   }
 
+  Future<void> _loadProfiles() async {
+    try {
+      final profiles = await context
+          .read<PosState>()
+          .fetchSelectableProfileNames();
+      if (!mounted) return;
+      setState(() => _profiles = profiles);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -56,11 +74,25 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
   }
 
   void _onSearch(String value) {
+    setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       context.read<PosState>().setClosingSearch(value);
     });
+  }
+
+  bool get _hasActiveFilters {
+    final state = context.read<PosState>();
+    return _searchController.text.trim().isNotEmpty ||
+        state.closingProfileFilter != null ||
+        state.closingStatusFilter != null;
+  }
+
+  Future<void> _resetFilters() async {
+    _searchController.clear();
+    setState(() {});
+    await context.read<PosState>().clearClosingListFilters();
   }
 
   Future<void> _openEdit(String name) async {
@@ -155,12 +187,20 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: TmsxResponsive.pagePadding(context, top: 14, bottom: 110),
         children: [
-          TextField(
-            controller: _searchController,
-            onChanged: _onSearch,
-            decoration: posFieldDecoration('Cari Closing Entry').copyWith(
-              prefixIcon: const Icon(Icons.search_rounded),
-            ),
+          PosListFilterBar(
+            searchController: _searchController,
+            searchHint: 'Cari Closing Entry',
+            onSearchChanged: _onSearch,
+            profiles: _profiles,
+            selectedProfile: state.closingProfileFilter,
+            onProfileChanged: (value) =>
+                context.read<PosState>().setClosingProfileFilter(value),
+            statusChips: posClosingStatusChips(),
+            selectedStatus: state.closingStatusFilter,
+            onStatusChanged: (value) =>
+                context.read<PosState>().setClosingStatusFilter(value),
+            hasActiveFilters: _hasActiveFilters,
+            onReset: _resetFilters,
           ),
           const SizedBox(height: 14),
           if (state.closingsLoading && rows.isEmpty)
@@ -174,8 +214,8 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
             ErpErrorBox(message: state.closingsError!)
           else if (rows.isEmpty)
             const ErpEmptyState(
-              title: 'Belum ada Closing Entry',
-              message: 'Tutup sesi kasir untuk membuat closing entry.',
+              title: 'Tidak ada Closing Entry',
+              message: 'Coba ubah filter POS Profile / Status, atau tutup sesi kasir.',
             )
           else
             TmsxResponsiveCardGrid(

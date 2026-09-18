@@ -12,6 +12,7 @@ import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/pos_document_actions.dart';
+import '../shared/pos_list_filters.dart';
 import '../shared/pos_ui.dart';
 import 'create_pos_invoice_screen.dart';
 
@@ -26,6 +27,8 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
   final _searchController = TextEditingController();
   Timer? _debounce;
   bool _didLoadPermissions = false;
+  bool _didLoadProfiles = false;
+  List<String> _profiles = const [];
   PosDoctypeActionPermissions _permissions =
       const PosDoctypeActionPermissions();
 
@@ -34,9 +37,14 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_didLoadPermissions) return;
-    _didLoadPermissions = true;
-    unawaited(_loadPermissions());
+    if (!_didLoadPermissions) {
+      _didLoadPermissions = true;
+      unawaited(_loadPermissions());
+    }
+    if (!_didLoadProfiles) {
+      _didLoadProfiles = true;
+      unawaited(_loadProfiles());
+    }
   }
 
   Future<void> _loadPermissions() async {
@@ -49,6 +57,16 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
     setState(() => _permissions = permissions);
   }
 
+  Future<void> _loadProfiles() async {
+    try {
+      final profiles = await context
+          .read<PosState>()
+          .fetchSelectableProfileNames();
+      if (!mounted) return;
+      setState(() => _profiles = profiles);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -57,11 +75,25 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
   }
 
   void _onSearch(String value) {
+    setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       context.read<PosState>().setInvoiceSearch(value);
     });
+  }
+
+  bool get _hasActiveFilters {
+    final state = context.read<PosState>();
+    return _searchController.text.trim().isNotEmpty ||
+        state.invoiceProfileFilter != null ||
+        state.invoiceStatusFilter != null;
+  }
+
+  Future<void> _resetFilters() async {
+    _searchController.clear();
+    setState(() {});
+    await context.read<PosState>().clearInvoiceListFilters();
   }
 
   Future<void> _openEdit(String name) async {
@@ -164,12 +196,20 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: TmsxResponsive.pagePadding(context, top: 14, bottom: 110),
         children: [
-          TextField(
-            controller: _searchController,
-            onChanged: _onSearch,
-            decoration: posFieldDecoration('Cari POS Invoice').copyWith(
-              prefixIcon: const Icon(Icons.search_rounded),
-            ),
+          PosListFilterBar(
+            searchController: _searchController,
+            searchHint: 'Cari POS Invoice',
+            onSearchChanged: _onSearch,
+            profiles: _profiles,
+            selectedProfile: state.invoiceProfileFilter,
+            onProfileChanged: (value) =>
+                context.read<PosState>().setInvoiceProfileFilter(value),
+            statusChips: posInvoiceStatusChips(),
+            selectedStatus: state.invoiceStatusFilter,
+            onStatusChanged: (value) =>
+                context.read<PosState>().setInvoiceStatusFilter(value),
+            hasActiveFilters: _hasActiveFilters,
+            onReset: _resetFilters,
           ),
           const SizedBox(height: 14),
           if (state.invoicesLoading && rows.isEmpty)
@@ -183,8 +223,8 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
             ErpErrorBox(message: state.invoicesError!)
           else if (rows.isEmpty)
             const ErpEmptyState(
-              title: 'Belum ada POS Invoice',
-              message: 'Transaksi kasir akan muncul di sini.',
+              title: 'Tidak ada POS Invoice',
+              message: 'Coba ubah filter POS Profile / Status, atau buat transaksi baru.',
             )
           else
             TmsxResponsiveCardGrid(

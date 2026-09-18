@@ -66,6 +66,28 @@ class _PaymentRow {
   void dispose() => amountCtrl.dispose();
 }
 
+class _SalesTeamRow {
+  String? salesPerson;
+  final TextEditingController contributionCtrl;
+
+  _SalesTeamRow({this.salesPerson, String contribution = '100'})
+    : contributionCtrl = TextEditingController(text: contribution);
+
+  double get contribution {
+    final value = double.tryParse(contributionCtrl.text.trim()) ?? 0;
+    return value < 0 ? 0 : value;
+  }
+
+  void dispose() => contributionCtrl.dispose();
+}
+
+class _CostCenterOption {
+  final String name;
+  final String company;
+
+  const _CostCenterOption({required this.name, this.company = ''});
+}
+
 class _LinkOption {
   final String id;
   final String label;
@@ -81,16 +103,20 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   List<String> _profiles = const [];
   List<String> _companies = const [];
   List<String> _warehouses = const [];
+  List<_CostCenterOption> _costCenters = const [];
   List<_LinkOption> _customers = const [];
   List<_LinkOption> _items = const [];
+  List<_LinkOption> _salesPersons = const [];
   List<String> _modes = const [];
   List<_ItemRow> _itemRows = [];
   List<_PaymentRow> _paymentRows = [];
+  List<_SalesTeamRow> _salesTeamRows = [];
 
   String? _posProfile;
   String? _customer;
   String? _company;
   String? _warehouse;
+  String? _costCenter;
   String? _sellingPriceList;
   DateTime _postingDate = DateTime.now();
   bool _updateStock = true;
@@ -99,6 +125,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _loadingProfile = false;
+  bool _loadingCustomerDefaults = false;
   final Set<int> _loadingItemRates = {};
   String? _error;
   String? _savedName;
@@ -143,7 +170,19 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     for (final row in _paymentRows) {
       row.dispose();
     }
+    for (final row in _salesTeamRows) {
+      row.dispose();
+    }
     super.dispose();
+  }
+
+  List<_CostCenterOption> get _costCentersForCompany {
+    final company = _company?.trim() ?? '';
+    if (company.isEmpty) return _costCenters;
+    final filtered = _costCenters
+        .where((row) => row.company.isEmpty || row.company == company)
+        .toList();
+    return filtered.isNotEmpty ? filtered : _costCenters;
   }
 
   Future<void> _load() async {
@@ -181,6 +220,14 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           ],
         ),
         state.canPrintDoctype('POS Invoice'),
+        state.fetchLinkOptions(
+          'Cost Center',
+          fields: const ['name', 'company'],
+          filters: const [
+            ['is_group', '=', 0],
+          ],
+          orderBy: 'name asc',
+        ),
       ]);
 
       if (!mounted) return;
@@ -191,6 +238,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       final itemRows = results[4] as List<Map<String, dynamic>>;
       final modes = results[5] as List<String>;
       final canPrint = results[6] as bool;
+      final costCenterRows = results[7] as List<Map<String, dynamic>>;
 
       final customers = customerRows
           .map(
@@ -218,6 +266,15 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           )
           .where((row) => row.id.isNotEmpty)
           .toList();
+      final costCenters = costCenterRows
+          .map(
+            (row) => _CostCenterOption(
+              name: row['name']?.toString() ?? '',
+              company: row['company']?.toString() ?? '',
+            ),
+          )
+          .where((row) => row.name.isNotEmpty)
+          .toList();
 
       for (final row in _itemRows) {
         row.dispose();
@@ -225,11 +282,15 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       for (final row in _paymentRows) {
         row.dispose();
       }
+      for (final row in _salesTeamRows) {
+        row.dispose();
+      }
 
       setState(() {
         _profiles = profiles;
         _companies = companies;
         _warehouses = warehouses;
+        _costCenters = costCenters;
         _customers = customers;
         _items = items;
         _modes = modes;
@@ -270,6 +331,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       final warehouse = doc['warehouse']?.toString().trim() ?? '';
       final sellingPriceList =
           doc['selling_price_list']?.toString().trim() ?? '';
+      final costCenter = (doc['cost_center'] ?? doc['custom_cost_center'])
+              ?.toString()
+              .trim() ??
+          '';
       final profileModes = state.paymentModesFromProfile(doc);
       final updateStock = doc['update_stock'] == 1 ||
           doc['update_stock'] == true ||
@@ -290,6 +355,15 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         }
         if (sellingPriceList.isNotEmpty) {
           _sellingPriceList = sellingPriceList;
+        }
+        if (costCenter.isNotEmpty) {
+          _costCenter = costCenter;
+          if (!_costCenters.any((row) => row.name == costCenter)) {
+            _costCenters = [
+              _CostCenterOption(name: costCenter, company: company),
+              ..._costCenters,
+            ];
+          }
         }
         if (profileModes.isNotEmpty) {
           _modes = {...profileModes, ..._modes}.toList();
@@ -328,6 +402,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     final company = doc['company']?.toString().trim() ?? '';
     final warehouse =
         (doc['set_warehouse'] ?? doc['warehouse'])?.toString().trim() ?? '';
+    final costCenter = doc['cost_center']?.toString().trim() ?? '';
     final sellingPriceList =
         doc['selling_price_list']?.toString().trim() ?? '';
     final postingRaw = doc['posting_date']?.toString() ?? '';
@@ -340,6 +415,9 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       row.dispose();
     }
     for (final row in _paymentRows) {
+      row.dispose();
+    }
+    for (final row in _salesTeamRows) {
       row.dispose();
     }
 
@@ -386,6 +464,27 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       }
     }
 
+    final salesTeamRows = <_SalesTeamRow>[];
+    final rawSalesTeam = doc['sales_team'];
+    if (rawSalesTeam is List) {
+      for (final row in rawSalesTeam.whereType<Map>()) {
+        final person = row['sales_person']?.toString().trim() ?? '';
+        if (person.isEmpty) continue;
+        if (!_salesPersons.any((item) => item.id == person)) {
+          _salesPersons = [
+            _LinkOption(id: person, label: person),
+            ..._salesPersons,
+          ];
+        }
+        salesTeamRows.add(
+          _SalesTeamRow(
+            salesPerson: person,
+            contribution: (row['allocated_percentage'] ?? 100).toString(),
+          ),
+        );
+      }
+    }
+
     setState(() {
       _savedName = name;
       if (profile.isNotEmpty) {
@@ -415,6 +514,15 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           _warehouses = [warehouse, ..._warehouses];
         }
       }
+      if (costCenter.isNotEmpty) {
+        _costCenter = costCenter;
+        if (!_costCenters.any((row) => row.name == costCenter)) {
+          _costCenters = [
+            _CostCenterOption(name: costCenter, company: company),
+            ..._costCenters,
+          ];
+        }
+      }
       if (sellingPriceList.isNotEmpty) {
         _sellingPriceList = sellingPriceList;
       }
@@ -426,6 +534,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       _paymentRows = paymentRows.isEmpty
           ? [_PaymentRow(modeOfPayment: _modes.isNotEmpty ? _modes.first : null)]
           : paymentRows;
+      _salesTeamRows = salesTeamRows;
     });
   }
 
@@ -585,6 +694,151 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     }
   }
 
+  void _clearSalesTeam() {
+    for (final row in _salesTeamRows) {
+      row.dispose();
+    }
+    _salesTeamRows = [];
+  }
+
+  Future<void> _onCustomerSelected(String? value) async {
+    setState(() {
+      _customer = value;
+      if (value == null || value.isEmpty) {
+        _clearSalesTeam();
+      }
+    });
+    if (value != null && value.isNotEmpty) {
+      await _applyCustomerDefaults(value);
+    }
+  }
+
+  Future<void> _applyCustomerDefaults(String customerId) async {
+    setState(() => _loadingCustomerDefaults = true);
+    try {
+      final state = context.read<PosState>();
+      final customer = await state.frappeService.fetchDocument(
+        'Customer',
+        customerId,
+      );
+      if (!mounted || _customer != customerId) return;
+
+      final teamRows = <_SalesTeamRow>[];
+      final salesPersons = <_LinkOption>[..._salesPersons];
+      final rawTeam = customer['sales_team'];
+      if (rawTeam is List) {
+        for (final row in rawTeam.whereType<Map>()) {
+          final person = row['sales_person']?.toString().trim() ?? '';
+          if (person.isEmpty) continue;
+          if (!salesPersons.any((item) => item.id == person)) {
+            salesPersons.insert(0, _LinkOption(id: person, label: person));
+          }
+          teamRows.add(
+            _SalesTeamRow(
+              salesPerson: person,
+              contribution: (row['allocated_percentage'] ??
+                      row['contribution'] ??
+                      100)
+                  .toString(),
+            ),
+          );
+        }
+      }
+
+      String defaultCostCenter = '';
+      for (final field in const [
+        'cost_center',
+        'default_cost_center',
+        'custom_cost_center',
+        'custom_default_cost_center',
+      ]) {
+        final value = customer[field]?.toString().trim() ?? '';
+        if (value.isNotEmpty) {
+          defaultCostCenter = value;
+          break;
+        }
+      }
+
+      String? matchingCostCenter;
+      if (defaultCostCenter.isNotEmpty) {
+        for (final center in _costCentersForCompany) {
+          if (center.name.toLowerCase() == defaultCostCenter.toLowerCase()) {
+            matchingCostCenter = center.name;
+            break;
+          }
+        }
+        matchingCostCenter ??= defaultCostCenter;
+      }
+
+      for (final row in _salesTeamRows) {
+        row.dispose();
+      }
+
+      setState(() {
+        _salesPersons = salesPersons;
+        _salesTeamRows = teamRows;
+        if (matchingCostCenter != null && matchingCostCenter.isNotEmpty) {
+          _costCenter = matchingCostCenter;
+          if (!_costCenters.any((row) => row.name == matchingCostCenter)) {
+            _costCenters = [
+              _CostCenterOption(
+                name: matchingCostCenter,
+                company: _company ?? '',
+              ),
+              ..._costCenters,
+            ];
+          }
+        }
+      });
+    } catch (_) {
+      // Customer defaults are optional.
+    } finally {
+      if (mounted) setState(() => _loadingCustomerDefaults = false);
+    }
+  }
+
+  Future<List<_LinkOption>> _searchSalesPersons(String query) async {
+    final state = context.read<PosState>();
+    try {
+      final rows = await state.fetchLinkOptions(
+        'Sales Person',
+        fields: const ['name'],
+        filters: [
+          ['name', 'like', '%$query%'],
+        ],
+        orderBy: 'name asc',
+      );
+      return rows
+          .map(
+            (row) => _LinkOption(
+              id: row['name']?.toString() ?? '',
+              label: row['name']?.toString() ?? '',
+            ),
+          )
+          .where((row) => row.id.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  void _addSalesTeamRow() {
+    setState(() {
+      _salesTeamRows.add(
+        _SalesTeamRow(
+          contribution: _salesTeamRows.isEmpty ? '100' : '0',
+        ),
+      );
+    });
+  }
+
+  void _removeSalesTeamRow(int index) {
+    setState(() {
+      _salesTeamRows[index].dispose();
+      _salesTeamRows.removeAt(index);
+    });
+  }
+
   Future<void> _printInvoice(String name) async {
     if (!_canPrint) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -673,11 +927,24 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         'posting_date': postingDate,
         'update_stock': _updateStock ? 1 : 0,
         if (_updateStock && _warehouse != null) 'set_warehouse': _warehouse,
+        if (_costCenter != null && _costCenter!.trim().isNotEmpty)
+          'cost_center': _costCenter!.trim(),
         if (_sellingPriceList != null && _sellingPriceList!.isNotEmpty)
           'selling_price_list': _sellingPriceList,
         'discount_amount': _discount,
         'items': items,
         'payments': payments,
+        if (_salesTeamRows.any(
+          (row) => (row.salesPerson?.trim().isNotEmpty ?? false),
+        ))
+          'sales_team': [
+            for (final row in _salesTeamRows)
+              if ((row.salesPerson?.trim().isNotEmpty ?? false))
+                {
+                  'sales_person': row.salesPerson!.trim(),
+                  'allocated_percentage': row.contribution,
+                },
+          ],
       };
 
       String savedName;
@@ -824,14 +1091,12 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                           suffixIcon: _customer != null
                               ? IconButton(
                                   tooltip: 'Bersihkan Customer',
-                                  onPressed: () =>
-                                      setState(() => _customer = null),
+                                  onPressed: () => _onCustomerSelected(null),
                                   icon: const Icon(Icons.close_rounded),
                                 )
                               : const Icon(Icons.search_rounded),
                         ),
-                        onSelected: (value) =>
-                            setState(() => _customer = value),
+                        onSelected: _onCustomerSelected,
                         validator: (value) =>
                             value == null || value.isEmpty
                             ? 'Customer wajib'
@@ -899,8 +1164,14 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                               ),
                             ),
                         ],
-                        onChanged: (value) =>
-                            setState(() => _company = value),
+                        onChanged: (value) => setState(() {
+                          _company = value;
+                          final centers = _costCentersForCompany;
+                          if (_costCenter != null &&
+                              !centers.any((row) => row.name == _costCenter)) {
+                            _costCenter = null;
+                          }
+                        }),
                         validator: (value) =>
                             value == null ? 'Company wajib' : null,
                       ),
@@ -924,6 +1195,27 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                             ),
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 12),
+                      ErpItemAutocompleteField(
+                        key: ValueKey('cost-center-${_costCenter ?? 'none'}'),
+                        label: 'Cost Center',
+                        selectedId: _costCentersForCompany.any(
+                              (row) => row.name == _costCenter,
+                            )
+                            ? _costCenter
+                            : null,
+                        options: [
+                          for (final center in _costCentersForCompany)
+                            ErpItemOption(id: center.name, label: center.name),
+                        ],
+                        decoration: posFieldDecoration(
+                          'Cost Center',
+                          hintText: 'Pilih cost center',
+                          prefixIcon: const Icon(Icons.account_tree_outlined),
+                        ),
+                        onSelected: (value) =>
+                            setState(() => _costCenter = value),
                       ),
                       if (_sellingPriceList != null &&
                           _sellingPriceList!.isNotEmpty) ...[
@@ -982,7 +1274,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                           },
                         ),
                       ],
-                      if (_loadingProfile)
+                      if (_loadingProfile || _loadingCustomerDefaults)
                         const Padding(
                           padding: EdgeInsets.only(top: 8),
                           child: LinearProgressIndicator(
@@ -990,6 +1282,61 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                             minHeight: 2,
                           ),
                         ),
+                    ],
+                  ),
+                  PosSectionCard(
+                    title: 'Sales Team',
+                    children: [
+                      if (_salesTeamRows.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            'Sales Team akan terisi otomatis dari Customer.',
+                            style: TextStyle(
+                              color: AppColors.slate,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      else
+                        for (var i = 0; i < _salesTeamRows.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 12),
+                          _SalesTeamCard(
+                            index: i,
+                            row: _salesTeamRows[i],
+                            salesPersons: _salesPersons,
+                            canRemove: true,
+                            onRemove: () => _removeSalesTeamRow(i),
+                            onChanged: () => setState(() {}),
+                            onSalesPersonsUpdated: (options) {
+                              setState(() {
+                                for (final option in options) {
+                                  if (!_salesPersons.any(
+                                    (item) => item.id == option.id,
+                                  )) {
+                                    _salesPersons = [option, ..._salesPersons];
+                                  }
+                                }
+                              });
+                            },
+                            onSearchSalesPersons: _searchSalesPersons,
+                          ),
+                        ],
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: _addSalesTeamRow,
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: const Text(
+                            'Add Row',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   PosSectionCard(
@@ -1561,6 +1908,135 @@ class _InvoicePaymentCard extends StatelessWidget {
             validator: (value) {
               final amount = double.tryParse(value?.trim() ?? '');
               if (amount == null || amount < 0) return 'Amount invalid';
+              return null;
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SalesTeamCard extends StatelessWidget {
+  final int index;
+  final _SalesTeamRow row;
+  final List<_LinkOption> salesPersons;
+  final bool canRemove;
+  final VoidCallback onRemove;
+  final VoidCallback onChanged;
+  final ValueChanged<List<_LinkOption>> onSalesPersonsUpdated;
+  final Future<List<_LinkOption>> Function(String query) onSearchSalesPersons;
+
+  const _SalesTeamCard({
+    required this.index,
+    required this.row,
+    required this.salesPersons,
+    required this.canRemove,
+    required this.onRemove,
+    required this.onChanged,
+    required this.onSalesPersonsUpdated,
+    required this.onSearchSalesPersons,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.softGreen,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'No. ${index + 1}',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (canRemove)
+                IconButton(
+                  onPressed: onRemove,
+                  tooltip: 'Hapus sales person',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.redAccent,
+                    size: 22,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ErpItemAutocompleteField(
+            label: 'Sales Person *',
+            selectedId: row.salesPerson,
+            options: [
+              for (final person in salesPersons)
+                ErpItemOption(
+                  id: person.id,
+                  label: person.label == person.id
+                      ? person.id
+                      : '${person.label} (${person.id})',
+                ),
+            ],
+            decoration: posFieldDecoration(
+              'Sales Person *',
+              hintText: 'Pilih sales person',
+              prefixIcon: const Icon(Icons.badge_outlined),
+            ).copyWith(fillColor: AppColors.white),
+            onSelected: (value) {
+              row.salesPerson = value;
+              onChanged();
+            },
+            validator: (value) =>
+                value == null || value.isEmpty ? 'Sales Person wajib' : null,
+            onSearch: (query) async {
+              final found = await onSearchSalesPersons(query);
+              if (found.isNotEmpty) onSalesPersonsUpdated(found);
+              return [
+                for (final person in found)
+                  ErpItemOption(
+                    id: person.id,
+                    label: person.label == person.id
+                        ? person.id
+                        : '${person.label} (${person.id})',
+                  ),
+              ];
+            },
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: row.contributionCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: posFieldDecoration(
+              'Contribution (%)',
+            ).copyWith(fillColor: AppColors.white),
+            onChanged: (_) => onChanged(),
+            validator: (value) {
+              final pct = double.tryParse(value?.trim() ?? '');
+              if (pct == null || pct < 0 || pct > 100) {
+                return '0 - 100';
+              }
               return null;
             },
           ),
