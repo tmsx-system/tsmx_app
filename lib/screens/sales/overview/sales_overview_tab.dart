@@ -722,11 +722,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   }
 
   bool _canViewRanking(SalesOverviewState state) {
-    return state.isSalesManagerRole ||
-        state.mobileAccess.isAdministrator ||
-        state.mobileAccess.isDeveloper ||
-        state.mobileAccess.isCompanyAdministrator ||
-        state.mobileAccess.isDirector;
+    return state.isSalesManagerRole || state.mobileAccess.isAdministrator;
   }
 
   bool _canViewTopCustomers(SalesOverviewState state) {

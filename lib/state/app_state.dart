@@ -161,11 +161,15 @@ class AppState with ChangeNotifier {
   Future<bool> canSubmitDoctype(String doctype) =>
       _hasDoctypePermission(doctype, 'submit');
 
+  Future<bool> canPrintDoctype(String doctype) =>
+      _hasDoctypePermission(doctype, 'print');
+
   Future<bool> _hasDoctypePermission(String doctype, String permType) async {
     final normalizedDoctype = doctype.trim();
     final normalizedPermType = permType.trim().toLowerCase();
     if (normalizedDoctype.isEmpty || !_isAuthenticated) return false;
     if (normalizedPermType.isEmpty) return false;
+    if (_isSampleMode) return true;
     if (MobileRoleRegistry.isFullAccessRole(_userRole)) return true;
 
     final site = _frappeService.baseUrl.trim();

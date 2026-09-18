@@ -162,13 +162,6 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
 
   Future<_WarehouseDoctypePermissions> _loadPermissions() async {
     final state = context.read<WarehouseStockState>();
-    final access = state.appState.mobileAccess;
-    if (access.isAdministrator ||
-        access.isDeveloper ||
-        access.isCompanyAdministrator ||
-        access.isDirector) {
-      return _WarehouseDoctypePermissions.fullAccess();
-    }
     final results = await Future.wait([
       state.canReadDoctype('Warehouse'),
       state.canReadDoctype('Bin'),
@@ -191,15 +184,6 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
       canReadQualityInspection: results[7],
       canCreateQualityInspection: results[8],
     );
-    if (!permissions.hasAnyAccess &&
-        (state.appState.canUseWarehouse ||
-            state.appState.canUseStock ||
-            state.appState.canUseQualityControl)) {
-      return _WarehouseDoctypePermissions.legacyModuleAccess(
-        stockOnly: widget.stockOnly,
-        qualityOnly: widget.qualityOnly,
-      );
-    }
     return permissions;
   }
 }
@@ -230,53 +214,6 @@ class _WarehouseDoctypePermissions {
     required this.canReadQualityInspection,
     required this.canCreateQualityInspection,
   });
-
-  factory _WarehouseDoctypePermissions.fullAccess() {
-    return const _WarehouseDoctypePermissions(
-      canReadWarehouse: true,
-      canReadBin: true,
-      canReadStockLedger: true,
-      canReadStockEntry: true,
-      canCreateStockEntry: true,
-      canReadStockReconciliation: true,
-      canCreateStockReconciliation: true,
-      canReadQualityInspection: true,
-      canCreateQualityInspection: true,
-    );
-  }
-
-  factory _WarehouseDoctypePermissions.legacyModuleAccess({
-    required bool stockOnly,
-    required bool qualityOnly,
-  }) {
-    if (qualityOnly) {
-      return const _WarehouseDoctypePermissions(
-        canReadWarehouse: false,
-        canReadBin: false,
-        canReadStockLedger: false,
-        canReadStockEntry: false,
-        canCreateStockEntry: false,
-        canReadStockReconciliation: false,
-        canCreateStockReconciliation: false,
-        canReadQualityInspection: true,
-        canCreateQualityInspection: true,
-      );
-    }
-    if (stockOnly) {
-      return const _WarehouseDoctypePermissions(
-        canReadWarehouse: true,
-        canReadBin: true,
-        canReadStockLedger: true,
-        canReadStockEntry: false,
-        canCreateStockEntry: false,
-        canReadStockReconciliation: false,
-        canCreateStockReconciliation: false,
-        canReadQualityInspection: false,
-        canCreateQualityInspection: false,
-      );
-    }
-    return _WarehouseDoctypePermissions.fullAccess();
-  }
 
   bool get canReadStock => canReadBin || canReadStockLedger;
   bool get canUseOps =>

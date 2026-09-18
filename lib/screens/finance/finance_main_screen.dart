@@ -65,7 +65,7 @@ class _FinanceMainScreenState extends State<FinanceMainScreen> {
       state.canCreateDoctype('Journal Entry'),
     ]);
 
-    var access = _FinanceAccess(
+    return _FinanceAccess(
       canReadPaymentEntry: results[0],
       canCreatePaymentEntry: results[1],
       canReadSalesInvoice: results[2],
@@ -75,23 +75,6 @@ class _FinanceMainScreenState extends State<FinanceMainScreen> {
       canReadJournalEntry: results[6],
       canCreateJournalEntry: results[7],
     );
-
-    if (!access.hasAnyFinanceAccess) {
-      final legacyFinance = state.canUseFinance;
-      final legacyAccounting = state.canUseAccounting;
-      access = _FinanceAccess(
-        canReadPaymentEntry: legacyFinance,
-        canCreatePaymentEntry: legacyFinance,
-        canReadSalesInvoice: legacyFinance,
-        canReadPurchaseInvoice: legacyFinance,
-        canReadAccount: legacyFinance || legacyAccounting,
-        canReadGlEntry: legacyFinance || legacyAccounting,
-        canReadJournalEntry: legacyAccounting,
-        canCreateJournalEntry: legacyAccounting,
-      );
-    }
-
-    return access;
   }
 
   @override

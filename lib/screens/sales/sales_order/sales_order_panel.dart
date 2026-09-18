@@ -50,6 +50,9 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
   _DocStatusFilter _advancedDocStatus = _DocStatusFilter.all;
   Timer? _searchDebounce;
   bool _isOpeningDetail = false;
+  bool _didLoadActionPermissions = false;
+  bool _canWriteSalesOrder = false;
+  bool _canPrintSalesOrder = false;
 
   static const _defaultStatusChips = <String>[
     'Draft',
@@ -61,6 +64,27 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
     'Closed',
     'Cancelled',
   ];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didLoadActionPermissions) return;
+    _didLoadActionPermissions = true;
+    unawaited(_loadActionPermissions());
+  }
+
+  Future<void> _loadActionPermissions() async {
+    final sellingState = context.read<SalesOrderState>();
+    final results = await Future.wait([
+      sellingState.canWriteDoctype('Sales Order'),
+      sellingState.canPrintDoctype('Sales Order'),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _canWriteSalesOrder = results[0];
+      _canPrintSalesOrder = results[1];
+    });
+  }
 
   @override
   void dispose() {
@@ -304,7 +328,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       final canSubmit = isDocDraft(detail.docStatus)
           ? await sellingState.canSubmitDoctype('Sales Order')
           : false;
-      final canEdit = isDocDraft(detail.docStatus);
+      final canEdit = isDocDraft(detail.docStatus) && _canWriteSalesOrder;
       if (!mounted) return;
 
       showSellingDocumentDetailSheet(
@@ -389,11 +413,12 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
               icon: Icons.copy_rounded,
               onPressed: () => _duplicateSo(detail, closeSheet: true),
             ),
-            erpActionButton(
-              label: 'Download PDF / Share',
-              icon: Icons.picture_as_pdf_outlined,
-              onPressed: () => _downloadAndShareSoPdf(detail.id),
-            ),
+            if (_canPrintSalesOrder)
+              erpActionButton(
+                label: 'Download PDF / Share',
+                icon: Icons.picture_as_pdf_outlined,
+                onPressed: () => _downloadAndShareSoPdf(detail.id),
+              ),
             if (canEdit)
               erpActionButton(
                 label: 'Edit Sales Order',
@@ -812,11 +837,13 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
                     date: o.date,
                     value: o.value,
                     onTap: () => _openDetail(o),
-                    onEdit: isDocDraft(o.docStatus)
+                    onEdit: isDocDraft(o.docStatus) && _canWriteSalesOrder
                         ? () => _editSo(o.id)
                         : null,
                     onDuplicate: () => _duplicateSoFromList(o),
-                    onDownload: () => _downloadAndShareSoPdf(o.id),
+                    onDownload: _canPrintSalesOrder
+                        ? () => _downloadAndShareSoPdf(o.id)
+                        : null,
                   ),
                 )
                 .toList(),

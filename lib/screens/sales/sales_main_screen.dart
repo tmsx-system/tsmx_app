@@ -193,12 +193,6 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
 
   Future<_SalesDoctypePermissions> _loadPermissions() async {
     final state = context.read<AuthState>();
-    if (state.mobileAccess.isAdministrator ||
-        state.mobileAccess.isDeveloper ||
-        state.mobileAccess.isCompanyAdministrator ||
-        state.mobileAccess.isDirector) {
-      return _SalesDoctypePermissions.fullAccess();
-    }
     final results = await Future.wait([
       state.canReadDoctype('Sales Order'),
       state.canCreateDoctype('Sales Order'),
@@ -211,7 +205,7 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       state.canCreateDoctype('Employee Checkin'),
       state.canReadDoctype('Bin'),
     ]);
-    final permissions = _SalesDoctypePermissions(
+    return _SalesDoctypePermissions(
       canReadSalesOrder: results[0],
       canCreateSalesOrder: results[1],
       canReadDeliveryNote: results[2],
@@ -223,12 +217,6 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       canCreateEmployeeCheckin: results[8],
       canReadStock: results[9],
     );
-    if (!permissions.hasAnyAccess && state.canUseSales) {
-      return _SalesDoctypePermissions.legacyModuleAccess(
-        collectionOnly: state.mobileAccess.isCollectionUser,
-      );
-    }
-    return permissions;
   }
 
   Widget? _buildSalesFab(
@@ -300,41 +288,6 @@ class _SalesDoctypePermissions {
     required this.canCreateEmployeeCheckin,
     required this.canReadStock,
   });
-
-  factory _SalesDoctypePermissions.fullAccess() {
-    return const _SalesDoctypePermissions(
-      canReadSalesOrder: true,
-      canCreateSalesOrder: true,
-      canReadDeliveryNote: true,
-      canReadSalesInvoice: true,
-      canReadCustomer: true,
-      canReadSalesVisit: true,
-      canCreateSalesVisit: true,
-      canReadEmployeeCheckin: true,
-      canCreateEmployeeCheckin: true,
-      canReadStock: true,
-    );
-  }
-
-  factory _SalesDoctypePermissions.legacyModuleAccess({
-    required bool collectionOnly,
-  }) {
-    if (collectionOnly) {
-      return const _SalesDoctypePermissions(
-        canReadSalesOrder: false,
-        canCreateSalesOrder: false,
-        canReadDeliveryNote: false,
-        canReadSalesInvoice: true,
-        canReadCustomer: true,
-        canReadSalesVisit: false,
-        canCreateSalesVisit: false,
-        canReadEmployeeCheckin: false,
-        canCreateEmployeeCheckin: false,
-        canReadStock: false,
-      );
-    }
-    return _SalesDoctypePermissions.fullAccess();
-  }
 
   List<String> get sellingSegments => [
     if (canReadSalesOrder) 'so',

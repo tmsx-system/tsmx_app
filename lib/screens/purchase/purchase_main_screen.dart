@@ -257,12 +257,6 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
 
   Future<_PurchaseDoctypePermissions> _loadPermissions() async {
     final state = context.read<PurchasingFilterState>();
-    if (state.mobileAccess.isAdministrator ||
-        state.mobileAccess.isDeveloper ||
-        state.mobileAccess.isCompanyAdministrator ||
-        state.mobileAccess.isDirector) {
-      return _PurchaseDoctypePermissions.fullAccess();
-    }
     final results = await Future.wait([
       state.canReadDoctype('Purchase Order'),
       state.canCreateDoctype('Purchase Order'),
@@ -283,9 +277,6 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
       canReadMaterialRequest: results[6],
       canCreateMaterialRequest: results[7],
     );
-    if (!permissions.hasAnyAccess && state.canUsePurchase) {
-      return _PurchaseDoctypePermissions.legacyModuleAccess();
-    }
     return permissions;
   }
 
@@ -858,23 +849,6 @@ class _PurchaseDoctypePermissions {
     required this.canReadMaterialRequest,
     required this.canCreateMaterialRequest,
   });
-
-  factory _PurchaseDoctypePermissions.fullAccess() {
-    return const _PurchaseDoctypePermissions(
-      canReadPurchaseOrder: true,
-      canCreatePurchaseOrder: true,
-      canReadPurchaseReceipt: true,
-      canCreatePurchaseReceipt: true,
-      canReadPurchaseInvoice: true,
-      canCreatePurchaseInvoice: true,
-      canReadMaterialRequest: true,
-      canCreateMaterialRequest: true,
-    );
-  }
-
-  factory _PurchaseDoctypePermissions.legacyModuleAccess() {
-    return _PurchaseDoctypePermissions.fullAccess();
-  }
 
   bool get hasAnyAccess =>
       canReadPurchaseOrder ||

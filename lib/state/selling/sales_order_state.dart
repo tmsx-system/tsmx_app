@@ -410,6 +410,14 @@ class SalesOrderState extends AppStateProxyNotifier {
     return appState.canSubmitDoctype(doctype);
   }
 
+  Future<bool> canWriteDoctype(String doctype) {
+    return appState.canWriteDoctype(doctype);
+  }
+
+  Future<bool> canPrintDoctype(String doctype) {
+    return appState.canPrintDoctype(doctype);
+  }
+
   Future<List<String>> fetchDocumentWorkflowActions({
     required String doctype,
     required String name,

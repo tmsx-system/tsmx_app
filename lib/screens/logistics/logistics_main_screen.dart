@@ -140,13 +140,6 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
 
   Future<_LogisticsDoctypePermissions> _loadPermissions() async {
     final state = context.read<LogisticsOverviewState>();
-    final access = state.appState.mobileAccess;
-    if (access.isAdministrator ||
-        access.isDeveloper ||
-        access.isCompanyAdministrator ||
-        access.isDirector) {
-      return _LogisticsDoctypePermissions.fullAccess();
-    }
     final results = await Future.wait([
       state.canReadDoctype('Delivery Note'),
       state.canWriteDoctype('Delivery Note'),
@@ -159,9 +152,6 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
       canReadFile: results[2],
       canCreateFile: results[3],
     );
-    if (!permissions.hasAnyAccess && state.appState.canUseLogistics) {
-      return _LogisticsDoctypePermissions.legacyModuleAccess();
-    }
     return permissions;
   }
 }
@@ -181,19 +171,6 @@ class _LogisticsDoctypePermissions {
     required this.canReadFile,
     required this.canCreateFile,
   });
-
-  factory _LogisticsDoctypePermissions.fullAccess() {
-    return const _LogisticsDoctypePermissions(
-      canReadDeliveryNote: true,
-      canWriteDeliveryNote: true,
-      canReadFile: true,
-      canCreateFile: true,
-    );
-  }
-
-  factory _LogisticsDoctypePermissions.legacyModuleAccess() {
-    return _LogisticsDoctypePermissions.fullAccess();
-  }
 
   bool get hasAnyAccess => canReadDeliveryNote;
 }

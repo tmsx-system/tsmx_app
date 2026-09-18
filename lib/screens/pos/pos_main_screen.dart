@@ -33,13 +33,6 @@ class _PosMainScreenState extends State<PosMainScreen> {
 
   Future<_PosDoctypePermissions> _loadPermissions() async {
     final state = context.read<AppState>();
-    if (state.mobileAccess.isDeveloper ||
-        state.mobileAccess.isAdministrator ||
-        state.mobileAccess.isCompanyAdministrator ||
-        state.mobileAccess.isDirector) {
-      return _PosDoctypePermissions.fullAccess();
-    }
-
     final results = await Future.wait([
       state.canReadDoctype('POS Profile'),
       state.canReadDoctype('POS Opening Entry'),
@@ -344,18 +337,6 @@ class _PosDoctypePermissions {
     required this.canReadClosing,
     required this.canCreateClosing,
   });
-
-  factory _PosDoctypePermissions.fullAccess() {
-    return const _PosDoctypePermissions(
-      canReadProfile: true,
-      canReadOpening: true,
-      canCreateOpening: true,
-      canReadInvoice: true,
-      canCreateInvoice: true,
-      canReadClosing: true,
-      canCreateClosing: true,
-    );
-  }
 
   bool get hasAnyAccess =>
       canReadProfile || canReadOpening || canReadInvoice || canReadClosing;

@@ -61,7 +61,7 @@ class PosOverviewTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Alur ERPNext 15: Profile → Opening → Invoice → Closing',
+                  'Alur : Profile → Opening → Invoice → Closing',
                   style: TextStyle(
                     color: AppColors.slate,
                     fontSize: 12,

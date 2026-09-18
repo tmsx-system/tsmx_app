@@ -25,13 +25,6 @@ class _CollectionMainScreenState extends State<CollectionMainScreen> {
 
   Future<bool> _loadAccess() async {
     final state = context.read<AuthState>();
-    if (state.mobileAccess.isAdministrator ||
-        state.mobileAccess.isDeveloper ||
-        state.mobileAccess.isCompanyAdministrator ||
-        state.mobileAccess.isDirector ||
-        state.mobileAccess.isCollectionUser) {
-      return true;
-    }
     return state.canReadDoctype('Sales Invoice');
   }
 

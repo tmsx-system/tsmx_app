@@ -76,12 +76,7 @@ class MobileRole {
   static const director = 'Director';
   static const unassigned = 'Unassigned';
 
-  static const fullAccessRoles = {
-    administrator,
-    companyAdministrator,
-    developer,
-    director,
-  };
+  static const fullAccessRoles = {administrator};
 }
 
 class MobileModuleMeta {
