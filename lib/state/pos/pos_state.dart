@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../config/mobile_role_registry.dart';
 import '../../models/pos_closing_entry.dart';
 import '../../models/pos_invoice.dart';
 import '../../models/pos_opening_entry.dart';
@@ -43,6 +44,7 @@ class PosState extends AppStateProxyNotifier {
   Future<void>? _openingsInFlight;
   Future<void>? _invoicesInFlight;
   Future<void>? _closingsInFlight;
+  Future<Set<String>?>? _assignedProfilesInFlight;
 
   @override
   List<Object?> get watchFields => [
@@ -100,6 +102,7 @@ class PosState extends AppStateProxyNotifier {
     _openingsInFlight = null;
     _invoicesInFlight = null;
     _closingsInFlight = null;
+    _assignedProfilesInFlight = null;
   }
 
   Future<void> refreshProfiles() {
@@ -180,6 +183,7 @@ class PosState extends AppStateProxyNotifier {
     _profilesError = null;
     notifyListeners();
     try {
+      final assigned = await _assignedPosProfileNames();
       final rows = await _fetchWithFieldFallback(
         doctype: 'POS Profile',
         fields: const [
@@ -193,6 +197,7 @@ class PosState extends AppStateProxyNotifier {
           'modified',
         ],
         orderBy: 'modified desc',
+        filters: _profileNameFilters(assigned),
         orFilters: _searchFilters(_profileSearch, const ['name', 'company']),
       );
       if (version != _profilesVersion) return;
@@ -214,6 +219,7 @@ class PosState extends AppStateProxyNotifier {
     _openingsError = null;
     notifyListeners();
     try {
+      final assigned = await _assignedPosProfileNames();
       final rows = await _fetchWithFieldFallback(
         doctype: 'POS Opening Entry',
         fields: const [
@@ -228,6 +234,7 @@ class PosState extends AppStateProxyNotifier {
           'modified',
         ],
         orderBy: 'period_start_date desc, name desc',
+        filters: _posProfileLinkFilters(assigned),
         orFilters: _searchFilters(_openingSearch, const [
           'name',
           'pos_profile',
@@ -253,6 +260,7 @@ class PosState extends AppStateProxyNotifier {
     _invoicesError = null;
     notifyListeners();
     try {
+      final assigned = await _assignedPosProfileNames();
       final rows = await _fetchWithFieldFallback(
         doctype: 'POS Invoice',
         fields: const [
@@ -270,6 +278,7 @@ class PosState extends AppStateProxyNotifier {
           'owner',
         ],
         orderBy: 'posting_date desc, name desc',
+        filters: _posProfileLinkFilters(assigned),
         orFilters: _searchFilters(_invoiceSearch, const [
           'name',
           'customer',
@@ -296,6 +305,7 @@ class PosState extends AppStateProxyNotifier {
     _closingsError = null;
     notifyListeners();
     try {
+      final assigned = await _assignedPosProfileNames();
       final rows = await _fetchWithFieldFallback(
         doctype: 'POS Closing Entry',
         fields: const [
@@ -313,6 +323,7 @@ class PosState extends AppStateProxyNotifier {
           'modified',
         ],
         orderBy: 'period_end_date desc, name desc',
+        filters: _posProfileLinkFilters(assigned),
         orFilters: _searchFilters(_closingSearch, const [
           'name',
           'pos_profile',
@@ -337,9 +348,55 @@ class PosState extends AppStateProxyNotifier {
     return PosProfile.fromJson(doc);
   }
 
+  Future<Map<String, dynamic>> loadProfileDocument(String name) {
+    return frappeService.fetchDocument('POS Profile', name);
+  }
+
+  List<String> paymentModesFromProfile(Map<String, dynamic> doc) {
+    final raw = doc['payments'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((row) => row['mode_of_payment']?.toString().trim() ?? '')
+        .where((mode) => mode.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  List<String> assignedUsersFromProfile(Map<String, dynamic> doc) {
+    final raw = doc['applicable_for_users'] ?? doc['users'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((row) => row['user']?.toString().trim() ?? '')
+        .where((user) => user.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  bool isCurrentUserAssignedToProfile(Map<String, dynamic> doc) {
+    final user = currentUser?.trim() ?? '';
+    if (user.isEmpty) return false;
+    final assigned = assignedUsersFromProfile(doc);
+    if (assigned.isEmpty) return false;
+    return assigned.any((item) => item.toLowerCase() == user.toLowerCase());
+  }
+
   Future<PosOpeningEntry> loadOpeningDetail(String name) async {
     final doc = await frappeService.fetchDocument('POS Opening Entry', name);
     return PosOpeningEntry.fromJson(doc);
+  }
+
+  Future<Map<String, dynamic>> loadOpeningDocument(String name) {
+    return frappeService.fetchDocument('POS Opening Entry', name);
+  }
+
+  Future<Map<String, dynamic>> loadInvoiceDocument(String name) {
+    return frappeService.fetchDocument('POS Invoice', name);
+  }
+
+  Future<Map<String, dynamic>> loadClosingDocument(String name) {
+    return frappeService.fetchDocument('POS Closing Entry', name);
   }
 
   Future<PosInvoice> loadInvoiceDetail(String name) async {
@@ -387,6 +444,152 @@ class PosState extends AppStateProxyNotifier {
     return entry;
   }
 
+  Future<void> updateOpeningEntry(
+    String name,
+    Map<String, dynamic> payload,
+  ) async {
+    await frappeService.updateDocument(
+      'POS Opening Entry',
+      name,
+      payload,
+    );
+    unawaited(refreshOpenings());
+  }
+
+  Future<void> updateInvoice(
+    String name,
+    Map<String, dynamic> payload,
+  ) async {
+    await frappeService.updateDocument(
+      'POS Invoice',
+      name,
+      payload,
+    );
+    unawaited(refreshInvoices());
+  }
+
+  Future<void> updateClosingEntry(
+    String name,
+    Map<String, dynamic> payload,
+  ) async {
+    await frappeService.updateDocument(
+      'POS Closing Entry',
+      name,
+      payload,
+    );
+    unawaited(refreshClosings());
+  }
+
+  Future<void> submitPosDocument(String doctype, String name) async {
+    await frappeService.submitDocument(doctype, name);
+    await _refreshDoctype(doctype);
+  }
+
+  Future<void> cancelPosDocument(String doctype, String name) async {
+    await frappeService.cancelDocument(doctype, name);
+    await _refreshDoctype(doctype);
+  }
+
+  Future<void> deletePosDocument(String doctype, String name) async {
+    await frappeService.deleteDocument(doctype, name);
+    await _refreshDoctype(doctype);
+  }
+
+  Future<String> amendPosDocument(String doctype, String name) async {
+    final source = await frappeService.fetchDocument(doctype, name);
+    final payload = Map<String, dynamic>.from(source);
+    const dropKeys = {
+      'name',
+      'owner',
+      'creation',
+      'modified',
+      'modified_by',
+      'docstatus',
+      'idx',
+      '_user_tags',
+      '_comments',
+      '_assign',
+      '_liked_by',
+      'status',
+    };
+    payload.removeWhere((key, _) => dropKeys.contains(key));
+    payload['amended_from'] = name;
+    payload['docstatus'] = 0;
+
+    void scrubChildren(String key) {
+      final raw = payload[key];
+      if (raw is! List) return;
+      payload[key] = [
+        for (final row in raw)
+          if (row is Map)
+            () {
+              final copy = Map<String, dynamic>.from(row);
+              copy.remove('name');
+              copy.remove('owner');
+              copy.remove('creation');
+              copy.remove('modified');
+              copy.remove('modified_by');
+              copy.remove('parent');
+              copy.remove('parenttype');
+              copy.remove('parentfield');
+              copy.remove('docstatus');
+              return copy;
+            }()
+          else
+            row,
+      ];
+    }
+
+    scrubChildren('balance_details');
+    scrubChildren('payment_reconciliation');
+    scrubChildren('payments');
+    scrubChildren('items');
+    scrubChildren('taxes');
+
+    final created = await frappeService.createDocument(doctype, payload);
+    await _refreshDoctype(doctype);
+    return created['name']?.toString() ?? '';
+  }
+
+  Future<List<int>> downloadPosPdf(String doctype, String name) {
+    return frappeService.downloadPrintPdf(doctype: doctype, name: name);
+  }
+
+  Future<bool> canWriteDoctype(String doctype) =>
+      appState.canWriteDoctype(doctype);
+  Future<bool> canSubmitDoctype(String doctype) =>
+      appState.canSubmitDoctype(doctype);
+  Future<bool> canDeleteDoctype(String doctype) =>
+      appState.canDeleteDoctype(doctype);
+  Future<bool> canCancelDoctype(String doctype) =>
+      appState.canCancelDoctype(doctype);
+  Future<bool> canAmendDoctype(String doctype) =>
+      appState.canAmendDoctype(doctype);
+  Future<bool> canPrintDoctype(String doctype) =>
+      appState.canPrintDoctype(doctype);
+
+  Future<void> _refreshDoctype(String doctype) async {
+    switch (doctype) {
+      case 'POS Opening Entry':
+        await refreshOpenings();
+      case 'POS Invoice':
+        await refreshInvoices();
+      case 'POS Closing Entry':
+        await refreshClosings();
+    }
+  }
+
+  Future<List<String>> fetchSelectableProfileNames() async {
+    final assigned = await _assignedPosProfileNames();
+    return fetchNames(
+      'POS Profile',
+      filters: [
+        ['disabled', '=', 0],
+        ...?_profileNameFilters(assigned),
+      ],
+    );
+  }
+
   Future<List<String>> fetchNames(
     String doctype, {
     List<List<dynamic>>? filters,
@@ -418,6 +621,51 @@ class PosState extends AppStateProxyNotifier {
       orderBy: orderBy,
       limit: 200,
     );
+  }
+
+  /// Resolve selling rate from POS price list / ERPNext pricing rules.
+  Future<({double rate, double discountAmount})> resolveItemSellingRate({
+    required String itemCode,
+    String? customer,
+    String? company,
+    String? priceList,
+    String? warehouse,
+    DateTime? postingDate,
+    double qty = 1,
+  }) async {
+    try {
+      final insight = await appState.fetchItemSalesInsight(
+        itemCode,
+        customer: customer,
+        company: company,
+        priceList: priceList,
+        warehouse: warehouse,
+        transactionDate: postingDate,
+        qty: qty,
+      );
+      final rate = insight.priceListRate > 0
+          ? insight.priceListRate
+          : insight.price;
+      return (rate: rate, discountAmount: insight.discountAmount);
+    } catch (_) {
+      final filters = <List<dynamic>>[
+        ['item_code', '=', itemCode],
+        ['selling', '=', 1],
+        if (priceList != null && priceList.trim().isNotEmpty)
+          ['price_list', '=', priceList.trim()],
+      ];
+      final rows = await fetchLinkOptions(
+        'Item Price',
+        fields: const ['name', 'price_list_rate'],
+        filters: filters,
+        orderBy: 'modified desc',
+      );
+      final rate = rows.isEmpty
+          ? 0.0
+          : (double.tryParse(rows.first['price_list_rate']?.toString() ?? '') ??
+                0);
+      return (rate: rate, discountAmount: 0.0);
+    }
   }
 
   Future<List<Map<String, dynamic>>> _fetchWithFieldFallback({
@@ -472,5 +720,75 @@ class PosState extends AppStateProxyNotifier {
     return [
       for (final field in fields) [field, 'like', '%$q%'],
     ];
+  }
+
+  List<List<dynamic>>? _profileNameFilters(Set<String>? assigned) {
+    if (assigned == null || assigned.isEmpty) return null;
+    return [
+      ['name', 'in', assigned.toList()],
+    ];
+  }
+
+  List<List<dynamic>>? _posProfileLinkFilters(Set<String>? assigned) {
+    if (assigned == null || assigned.isEmpty) return null;
+    return [
+      ['pos_profile', 'in', assigned.toList()],
+    ];
+  }
+
+  /// Null/empty = user is not assigned anywhere, so all readable POS data is shown.
+  Future<Set<String>?> _assignedPosProfileNames() {
+    final inFlight = _assignedProfilesInFlight;
+    if (inFlight != null) return inFlight;
+    final request = _loadAssignedPosProfileNames();
+    _assignedProfilesInFlight = request;
+    return request;
+  }
+
+  Future<Set<String>?> _loadAssignedPosProfileNames() async {
+    if (appState.isSampleMode) return null;
+    if (MobileRoleRegistry.isFullAccessRole(appState.userRole)) return null;
+    final user = currentUser?.trim() ?? '';
+    if (user.isEmpty) return null;
+
+    try {
+      final fromNested = await frappeService.fetchResource(
+        'POS Profile',
+        fields: const ['name'],
+        filters: [
+          ['POS Profile User', 'user', '=', user],
+        ],
+        limit: 200,
+      );
+      final nestedNames = {
+        for (final row in fromNested)
+          if ((row['name']?.toString() ?? '').trim().isNotEmpty)
+            row['name'].toString().trim(),
+      };
+      if (nestedNames.isNotEmpty) return nestedNames;
+    } catch (_) {}
+
+    try {
+      final fromChild = await frappeService.fetchResource(
+        'POS Profile User',
+        fields: const ['parent', 'user'],
+        filters: [
+          ['user', '=', user],
+        ],
+        limit: 200,
+      );
+      final names = _parentNamesFromRows(fromChild);
+      if (names.isNotEmpty) return names;
+    } catch (_) {}
+
+    return null;
+  }
+
+  Set<String> _parentNamesFromRows(List<Map<String, dynamic>> rows) {
+    return {
+      for (final row in rows)
+        if ((row['parent']?.toString() ?? '').trim().isNotEmpty)
+          row['parent'].toString().trim(),
+    };
   }
 }

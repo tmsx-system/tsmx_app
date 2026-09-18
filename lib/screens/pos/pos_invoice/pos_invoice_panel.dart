@@ -11,7 +11,9 @@ import '../../../widgets/erp/erp_document_card.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
+import '../shared/pos_document_actions.dart';
 import '../shared/pos_ui.dart';
+import 'create_pos_invoice_screen.dart';
 
 class PosInvoicePanel extends StatefulWidget {
   const PosInvoicePanel({super.key});
@@ -23,6 +25,29 @@ class PosInvoicePanel extends StatefulWidget {
 class _PosInvoicePanelState extends State<PosInvoicePanel> {
   final _searchController = TextEditingController();
   Timer? _debounce;
+  bool _didLoadPermissions = false;
+  PosDoctypeActionPermissions _permissions =
+      const PosDoctypeActionPermissions();
+
+  static const _doctype = 'POS Invoice';
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didLoadPermissions) return;
+    _didLoadPermissions = true;
+    unawaited(_loadPermissions());
+  }
+
+  Future<void> _loadPermissions() async {
+    final permissions = await PosDoctypeActionPermissions.load(
+      context.read<PosState>(),
+      _doctype,
+      includePrint: true,
+    );
+    if (!mounted) return;
+    setState(() => _permissions = permissions);
+  }
 
   @override
   void dispose() {
@@ -37,6 +62,17 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
       if (!mounted) return;
       context.read<PosState>().setInvoiceSearch(value);
     });
+  }
+
+  Future<void> _openEdit(String name) async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CreatePosInvoiceScreen(editName: name),
+      ),
+    );
+    if (updated == true && mounted) {
+      await context.read<PosState>().refreshInvoices();
+    }
   }
 
   Future<void> _openDetail(PosInvoice invoice) async {
@@ -90,6 +126,22 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
                   ),
               ],
             ),
+          Builder(
+            builder: (context) {
+              final actions = buildPosDocumentActionButtons(
+                context: context,
+                doctype: _doctype,
+                name: detail.id,
+                docStatus: detail.docStatus,
+                permissions: _permissions,
+                onChanged: () => state.refreshInvoices(),
+                onEdit: () => _openEdit(detail.id),
+                enablePrint: true,
+              );
+              if (actions.isEmpty) return const SizedBox.shrink();
+              return PosSectionCard(title: 'Aksi', children: actions);
+            },
+          ),
         ],
       );
     } catch (error) {
@@ -146,6 +198,16 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
                     value: invoice.value,
                     trailing: invoice.posProfile,
                     onTap: () => _openDetail(invoice),
+                    onEdit: _permissions.canWrite && invoice.docStatus == 0
+                        ? () => _openEdit(invoice.id)
+                        : null,
+                    onDownload: _permissions.canPrint
+                        ? () => downloadAndSharePosPdf(
+                              context,
+                              _doctype,
+                              invoice.id,
+                            )
+                        : null,
                   ),
               ],
             ),

@@ -11,7 +11,9 @@ import '../../../widgets/erp/erp_document_card.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
+import '../shared/pos_document_actions.dart';
 import '../shared/pos_ui.dart';
+import 'create_pos_opening_entry_screen.dart';
 
 class PosOpeningEntryPanel extends StatefulWidget {
   const PosOpeningEntryPanel({super.key});
@@ -23,6 +25,28 @@ class PosOpeningEntryPanel extends StatefulWidget {
 class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
   final _searchController = TextEditingController();
   Timer? _debounce;
+  bool _didLoadPermissions = false;
+  PosDoctypeActionPermissions _permissions =
+      const PosDoctypeActionPermissions();
+
+  static const _doctype = 'POS Opening Entry';
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didLoadPermissions) return;
+    _didLoadPermissions = true;
+    unawaited(_loadPermissions());
+  }
+
+  Future<void> _loadPermissions() async {
+    final permissions = await PosDoctypeActionPermissions.load(
+      context.read<PosState>(),
+      _doctype,
+    );
+    if (!mounted) return;
+    setState(() => _permissions = permissions);
+  }
 
   @override
   void dispose() {
@@ -37,6 +61,17 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
       if (!mounted) return;
       context.read<PosState>().setOpeningSearch(value);
     });
+  }
+
+  Future<void> _openEdit(String name) async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CreatePosOpeningEntryScreen(editName: name),
+      ),
+    );
+    if (updated == true && mounted) {
+      await context.read<PosState>().refreshOpenings();
+    }
   }
 
   Future<void> _openDetail(PosOpeningEntry entry) async {
@@ -54,7 +89,7 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
             children: [
               PosDetailRow(label: 'POS Profile', value: detail.posProfile),
               PosDetailRow(label: 'Company', value: detail.company),
-              PosDetailRow(label: 'User', value: detail.user),
+              PosDetailRow(label: 'Cashier', value: detail.user),
               PosDetailRow(
                 label: 'Period Start',
                 value: detail.periodStartDate,
@@ -78,6 +113,21 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
                   ),
               ],
             ),
+          Builder(
+            builder: (context) {
+              final actions = buildPosDocumentActionButtons(
+                context: context,
+                doctype: _doctype,
+                name: detail.id,
+                docStatus: detail.docStatus,
+                permissions: _permissions,
+                onChanged: () => state.refreshOpenings(),
+                onEdit: () => _openEdit(detail.id),
+              );
+              if (actions.isEmpty) return const SizedBox.shrink();
+              return PosSectionCard(title: 'Aksi', children: actions);
+            },
+          ),
         ],
       );
     } catch (error) {
@@ -138,6 +188,9 @@ class _PosOpeningEntryPanelState extends State<PosOpeningEntryPanel> {
                     value: entry.totalOpeningAmount,
                     trailing: entry.user,
                     onTap: () => _openDetail(entry),
+                    onEdit: _permissions.canWrite && entry.docStatus == 0
+                        ? () => _openEdit(entry.id)
+                        : null,
                   ),
               ],
             ),

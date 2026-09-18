@@ -8,7 +8,9 @@ import '../../../theme/app_colors.dart';
 import '../shared/pos_ui.dart';
 
 class CreatePosClosingEntryScreen extends StatefulWidget {
-  const CreatePosClosingEntryScreen({super.key});
+  final String? editName;
+
+  const CreatePosClosingEntryScreen({super.key, this.editName});
 
   @override
   State<CreatePosClosingEntryScreen> createState() =>
@@ -28,6 +30,9 @@ class _CreatePosClosingEntryScreenState
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  Map<String, dynamic>? _editingDoc;
+
+  bool get _isEditing => widget.editName?.trim().isNotEmpty == true;
 
   PosOpeningEntry? get _selectedOpening {
     if (_openingId == null) return null;
@@ -77,11 +82,43 @@ class _CreatePosClosingEntryScreenState
               opening.balanceDetails.first.openingAmount.toStringAsFixed(2);
         }
       });
+      if (_isEditing) {
+        await _loadExisting(widget.editName!.trim());
+      }
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadExisting(String name) async {
+    final state = context.read<PosState>();
+    final doc = await state.loadClosingDocument(name);
+    if (!mounted) return;
+
+    final openingId = doc['pos_opening_entry']?.toString().trim() ?? '';
+    final periodEndRaw = doc['period_end_date']?.toString() ?? '';
+    final periodEnd = DateTime.tryParse(periodEndRaw.replaceFirst(' ', 'T'));
+    final rows = doc['payment_reconciliation'];
+    String? mode;
+    String amount = '0';
+    if (rows is List && rows.isNotEmpty && rows.first is Map) {
+      final row = Map<String, dynamic>.from(rows.first as Map);
+      mode = row['mode_of_payment']?.toString();
+      amount = (row['closing_amount'] ?? 0).toString();
+    }
+
+    setState(() {
+      _editingDoc = doc;
+      if (openingId.isNotEmpty) _openingId = openingId;
+      if (periodEnd != null) _periodEnd = periodEnd;
+      if (mode != null && mode.isNotEmpty) {
+        _modeOfPayment = mode;
+        if (!_modes.contains(mode)) _modes = [mode, ..._modes];
+      }
+      _closingAmountCtrl.text = amount;
+    });
   }
 
   Future<void> _pickDateTime() async {
@@ -111,8 +148,12 @@ class _CreatePosClosingEntryScreenState
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final opening = _selectedOpening;
-    if (opening == null || _modeOfPayment == null) {
+    if (!_isEditing && (opening == null || _modeOfPayment == null)) {
       setState(() => _error = 'Pilih Opening Entry dan Mode of Payment.');
+      return;
+    }
+    if (_modeOfPayment == null) {
+      setState(() => _error = 'Pilih Mode of Payment.');
       return;
     }
 
@@ -125,27 +166,56 @@ class _CreatePosClosingEntryScreenState
       final closingAmount = double.parse(_closingAmountCtrl.text.trim());
       final periodEnd = DateFormat('yyyy-MM-dd HH:mm:ss').format(_periodEnd);
       final postingDate = DateFormat('yyyy-MM-dd').format(_periodEnd);
-      final openingAmount = opening.balanceDetails
-          .where((row) => row.modeOfPayment == _modeOfPayment)
-          .fold<double>(0, (sum, row) => sum + row.openingAmount);
 
-      await state.createClosingEntry({
-        'pos_opening_entry': opening.id,
-        'pos_profile': opening.posProfile,
-        'company': opening.company,
-        'user': state.currentUser ?? opening.user,
-        'period_start_date': opening.periodStartDate,
-        'period_end_date': periodEnd,
-        'posting_date': postingDate,
-        'payment_reconciliation': [
-          {
-            'mode_of_payment': _modeOfPayment,
-            'opening_amount': openingAmount,
-            'expected_amount': openingAmount,
-            'closing_amount': closingAmount,
-          },
-        ],
-      });
+      if (_isEditing) {
+        final source = _editingDoc ?? await state.loadClosingDocument(
+          widget.editName!.trim(),
+        );
+        final openingAmount = double.tryParse(
+              (source['payment_reconciliation'] is List &&
+                      (source['payment_reconciliation'] as List).isNotEmpty)
+                  ? (((source['payment_reconciliation'] as List).first
+                                as Map)['opening_amount'] ??
+                            0)
+                        .toString()
+                  : '0',
+            ) ??
+            0;
+        await state.updateClosingEntry(widget.editName!.trim(), {
+          'period_end_date': periodEnd,
+          'posting_date': postingDate,
+          'payment_reconciliation': [
+            {
+              'mode_of_payment': _modeOfPayment,
+              'opening_amount': openingAmount,
+              'expected_amount': openingAmount,
+              'closing_amount': closingAmount,
+            },
+          ],
+        });
+      } else {
+        final openingAmount = opening!.balanceDetails
+            .where((row) => row.modeOfPayment == _modeOfPayment)
+            .fold<double>(0, (sum, row) => sum + row.openingAmount);
+
+        await state.createClosingEntry({
+          'pos_opening_entry': opening.id,
+          'pos_profile': opening.posProfile,
+          'company': opening.company,
+          'user': state.currentUser ?? opening.user,
+          'period_start_date': opening.periodStartDate,
+          'period_end_date': periodEnd,
+          'posting_date': postingDate,
+          'payment_reconciliation': [
+            {
+              'mode_of_payment': _modeOfPayment,
+              'opening_amount': openingAmount,
+              'expected_amount': openingAmount,
+              'closing_amount': closingAmount,
+            },
+          ],
+        });
+      }
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (error) {
@@ -160,7 +230,7 @@ class _CreatePosClosingEntryScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Buat POS Closing Entry'),
+        title: Text(_isEditing ? 'Edit POS Closing Entry' : 'Buat POS Closing Entry'),
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.primary,
         elevation: 0,
@@ -178,41 +248,51 @@ class _CreatePosClosingEntryScreenState
                     Text(_error!, style: const TextStyle(color: AppColors.danger)),
                     const SizedBox(height: 12),
                   ],
-                  if (_openOpenings.isEmpty)
+                  if (!_isEditing && _openOpenings.isEmpty)
                     const Text(
                       'Tidak ada POS Opening Entry submitted. Buka sesi dulu.',
                       style: TextStyle(color: AppColors.slate),
                     )
                   else ...[
-                    DropdownButtonFormField<String>(
-                      initialValue: _openingId,
-                      decoration: posFieldDecoration('POS Opening Entry'),
-                      items: [
-                        for (final opening in _openOpenings)
-                          DropdownMenuItem(
-                            value: opening.id,
-                            child: Text(
-                              '${opening.id} • ${opening.posProfile}',
+                    if (_isEditing)
+                      InputDecorator(
+                        decoration: posFieldDecoration('POS Opening Entry'),
+                        child: Text(
+                          _openingId ?? '-',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        key: ValueKey('opening-${_openingId ?? 'none'}'),
+                        initialValue: _openingId,
+                        decoration: posFieldDecoration('POS Opening Entry'),
+                        items: [
+                          for (final opening in _openOpenings)
+                            DropdownMenuItem(
+                              value: opening.id,
+                              child: Text(
+                                '${opening.id} • ${opening.posProfile}',
+                              ),
                             ),
-                          ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _openingId = value;
-                          final opening = _selectedOpening;
-                          if (opening != null &&
-                              opening.balanceDetails.isNotEmpty) {
-                            _modeOfPayment =
-                                opening.balanceDetails.first.modeOfPayment;
-                            _closingAmountCtrl.text = opening
-                                .balanceDetails.first.openingAmount
-                                .toStringAsFixed(2);
-                          }
-                        });
-                      },
-                      validator: (value) =>
-                          value == null ? 'Opening Entry wajib' : null,
-                    ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _openingId = value;
+                            final opening = _selectedOpening;
+                            if (opening != null &&
+                                opening.balanceDetails.isNotEmpty) {
+                              _modeOfPayment =
+                                  opening.balanceDetails.first.modeOfPayment;
+                              _closingAmountCtrl.text = opening
+                                  .balanceDetails.first.openingAmount
+                                  .toStringAsFixed(2);
+                            }
+                          });
+                        },
+                        validator: (value) =>
+                            value == null ? 'Opening Entry wajib' : null,
+                      ),
                     const SizedBox(height: 12),
                     if (_selectedOpening != null)
                       Text(
@@ -234,7 +314,10 @@ class _CreatePosClosingEntryScreenState
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      initialValue: _modeOfPayment,
+                      key: ValueKey('mode-${_modeOfPayment ?? 'none'}'),
+                      initialValue: _modes.contains(_modeOfPayment)
+                          ? _modeOfPayment
+                          : null,
                       decoration: posFieldDecoration('Mode of Payment'),
                       items: [
                         for (final mode in _modes)
@@ -266,7 +349,13 @@ class _CreatePosClosingEntryScreenState
                         backgroundColor: AppColors.primary,
                         minimumSize: const Size.fromHeight(48),
                       ),
-                      child: Text(_saving ? 'Menyimpan...' : 'Simpan Closing'),
+                      child: Text(
+                        _saving
+                            ? 'Menyimpan...'
+                            : (_isEditing
+                                  ? 'Update Closing'
+                                  : 'Simpan Closing'),
+                      ),
                     ),
                   ],
                 ],

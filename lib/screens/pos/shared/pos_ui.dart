@@ -118,11 +118,17 @@ class PosSectionCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,12 +136,12 @@ class PosSectionCard extends StatelessWidget {
           Text(
             title,
             style: const TextStyle(
-              color: AppColors.navy,
+              color: AppColors.slate,
               fontSize: 13,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           ...children,
         ],
       ),
@@ -143,15 +149,34 @@ class PosSectionCard extends StatelessWidget {
   }
 }
 
-InputDecoration posFieldDecoration(String label) {
+InputDecoration posFieldDecoration(
+  String label, {
+  String? hintText,
+  Widget? prefixIcon,
+  Widget? suffixIcon,
+}) {
   return InputDecoration(
     labelText: label,
+    hintText: hintText,
+    prefixIcon: prefixIcon,
+    suffixIcon: suffixIcon,
     filled: true,
-    fillColor: AppColors.white,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+    fillColor: AppColors.background,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+    ),
     enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: const BorderSide(color: AppColors.border),
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(
+        color: AppColors.primary.withValues(alpha: 0.45),
+        width: 1.4,
+      ),
     ),
   );
 }
