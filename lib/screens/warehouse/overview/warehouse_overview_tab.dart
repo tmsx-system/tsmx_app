@@ -69,8 +69,8 @@ class WarehouseOverviewTab extends StatelessWidget {
             children: [
               Expanded(
                 child: WarehouseActionGridCard(
-                  title: 'Operasi',
-                  subtitle: 'Transfer dan stock opname',
+                  title: 'Transaksi',
+                  subtitle: 'Stock Entry dan stock opname',
                   icon: Icons.swap_horiz_rounded,
                   color: warehouseOrange,
                   onTap: () => onMenuSelected(1),

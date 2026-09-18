@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'warehouse_barcode_scanner_screen.dart';
-import 'warehouse_batch_serial_screen.dart';
-import 'warehouse_operation_history_screen.dart';
-import 'warehouse_stock_opname_screen.dart';
-import 'warehouse_stock_entry_screen.dart';
 import '../shared/warehouse_widgets.dart';
+import '../stock/stock_entry/stock_entry_kind.dart';
+import '../stock/stock_entry/stock_entry_panel.dart';
+import 'warehouse_stock_opname_screen.dart';
 
 class WarehouseOperationsTab extends StatelessWidget {
   const WarehouseOperationsTab({super.key});
@@ -13,67 +11,22 @@ class WarehouseOperationsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = [
-      _WarehouseOperationAction(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const WarehouseOperationHistoryScreen(),
-          ),
-        ),
-        icon: Icons.history_rounded,
-        title: 'Riwayat',
-        subtitle: 'Transaksi gudang terbaru',
-        color: warehouseBlue,
-      ),
-      _WarehouseOperationAction(
-        onTap: () => _openOperation(context, WarehouseOperation.transfer),
-        operation: WarehouseOperation.transfer,
-        subtitle: 'Pindahkan antar gudang',
+      _WarehouseTransactionAction(
+        onTap: () => _openStockEntry(context),
+        icon: Icons.swap_horiz_rounded,
+        title: 'Stock Entry',
+        subtitle: 'Transfer, receipt, issue, dan tipe ERPNext lain',
         color: warehouseOrange,
       ),
-      _WarehouseOperationAction(
-        onTap: () => _openOperation(context, WarehouseOperation.receive),
-        operation: WarehouseOperation.receive,
-        subtitle: 'Barang masuk gudang',
-        color: warehouseGreen,
-      ),
-      _WarehouseOperationAction(
-        onTap: () => _openOperation(context, WarehouseOperation.issue),
-        operation: WarehouseOperation.issue,
-        subtitle: 'Barang keluar gudang',
-        color: warehouseCyan,
-      ),
-      _WarehouseOperationAction(
+      _WarehouseTransactionAction(
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const WarehouseStockOpnameScreen()),
         ),
         icon: Icons.inventory_outlined,
         title: 'Stock Opname',
-        subtitle: 'Hitung stok fisik',
+        subtitle: 'Stock Reconciliation',
         color: warehousePurple,
-      ),
-      _WarehouseOperationAction(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const WarehouseBarcodeScannerScreen(),
-          ),
-        ),
-        icon: Icons.qr_code_scanner_rounded,
-        title: 'Barcode',
-        subtitle: 'Scan item dan stok',
-        color: warehouseGreen,
-      ),
-      _WarehouseOperationAction(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const WarehouseBatchSerialScreen()),
-        ),
-        icon: Icons.numbers_rounded,
-        title: 'Batch Serial',
-        subtitle: 'Tracking batch dan expiry',
-        color: warehouseBlue,
       ),
     ];
 
@@ -81,9 +34,9 @@ class WarehouseOperationsTab extends StatelessWidget {
       padding: warehousePagePaddingOf(context),
       children: [
         const WarehouseSectionHeader(
-          title: 'Operasi Gudang',
-          subtitle: 'Transfer, penerimaan, pengeluaran, dan stock opname',
-          icon: Icons.swap_horiz_rounded,
+          title: 'Transaksi Gudang',
+          subtitle: 'Mendukung transaksi Gudang',
+          icon: Icons.store_outlined,
         ),
         warehouseSectionGap,
         GridView.count(
@@ -109,30 +62,30 @@ class WarehouseOperationsTab extends StatelessWidget {
     );
   }
 
-  void _openOperation(BuildContext context, WarehouseOperation operation) {
-    Navigator.push(
+  Future<void> _openStockEntry(BuildContext context) async {
+    final kind = await showStockEntryTypePicker(context);
+    if (kind == null || !context.mounted) return;
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => WarehouseStockEntryScreen(operation: operation),
+        builder: (_) => StockEntryPanel(kind: kind),
       ),
     );
   }
 }
 
-class _WarehouseOperationAction {
+class _WarehouseTransactionAction {
   final VoidCallback onTap;
   final IconData icon;
   final String title;
   final String subtitle;
   final Color color;
 
-  _WarehouseOperationAction({
+  const _WarehouseTransactionAction({
     required this.onTap,
-    IconData? icon,
-    String? title,
+    required this.icon,
+    required this.title,
     required this.subtitle,
     required this.color,
-    WarehouseOperation? operation,
-  }) : icon = icon ?? operation!.icon,
-       title = title ?? operation!.title;
+  });
 }

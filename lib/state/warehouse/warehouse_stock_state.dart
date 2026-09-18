@@ -31,6 +31,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
   List<InventoryItem> _inventory = const [];
   List<String> _itemGroups = const [];
   List<StockEntry> _stockEntries = const [];
+  List<StockEntryType> _stockEntryTypes = const [];
   List<StockReconciliationSummary> _stockReconciliations = const [];
   bool _isInventoryLoading = false;
   bool _isMoreInventoryLoading = false;
@@ -75,6 +76,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
   List<InventoryItem> get inventory => _inventory;
   List<String> get itemGroups => _itemGroups;
   List<StockEntry> get stockEntries => _stockEntries;
+  List<StockEntryType> get stockEntryTypes => _stockEntryTypes;
   List<StockReconciliationSummary> get stockReconciliations =>
       _stockReconciliations;
   bool get isInventoryLoading => _isInventoryLoading;
@@ -656,10 +658,24 @@ class WarehouseStockState extends AppStateProxyNotifier {
     };
   }
 
-  Future<void> refreshStockEntries() async {
+  Future<void> refreshStockEntries({
+    String? stockEntryType,
+    String? company,
+    String? fromWarehouse,
+    String? toWarehouse,
+    String? name,
+  }) async {
     _isStockEntriesLoading = true;
     _stockEntriesError = null;
     notifyListeners();
+
+    final filters = _stockEntryListFilters(
+      stockEntryType: stockEntryType,
+      company: company,
+      fromWarehouse: fromWarehouse,
+      toWarehouse: toWarehouse,
+      name: name,
+    );
 
     try {
       await appState.frappeService.ensureLoggedIn();
@@ -670,15 +686,15 @@ class WarehouseStockState extends AppStateProxyNotifier {
           fields: const [
             'name',
             'stock_entry_type',
-            'status',
+            'company',
             'docstatus',
             'posting_date',
             'total_qty',
             'from_warehouse',
             'to_warehouse',
           ],
-          orderBy: 'posting_date desc',
-          filters: _companyScopeFilters(''),
+          orderBy: 'modified desc',
+          filters: filters,
           maxRows: _listLimit,
         );
       } catch (_) {
@@ -690,14 +706,16 @@ class WarehouseStockState extends AppStateProxyNotifier {
             fields: const [
               'name',
               'stock_entry_type',
-              'status',
+              'company',
               'docstatus',
               'posting_date',
+              'from_warehouse',
+              'to_warehouse',
             ],
             limit: limit,
             limitStart: start,
-            orderBy: 'posting_date desc',
-            filters: _companyScopeFilters(''),
+            orderBy: 'modified desc',
+            filters: filters,
           ),
         );
       }
@@ -709,6 +727,39 @@ class WarehouseStockState extends AppStateProxyNotifier {
       _isStockEntriesLoading = false;
       notifyListeners();
     }
+  }
+
+  List<List<dynamic>> _stockEntryListFilters({
+    String? stockEntryType,
+    String? company,
+    String? fromWarehouse,
+    String? toWarehouse,
+    String? name,
+  }) {
+    final filters = <List<dynamic>>[];
+    final type = stockEntryType?.trim() ?? '';
+    if (type.isNotEmpty) {
+      filters.add(['stock_entry_type', '=', type]);
+    }
+    final selectedCompany = company?.trim() ?? '';
+    if (selectedCompany.isNotEmpty) {
+      filters.add(['company', '=', selectedCompany]);
+    } else {
+      filters.addAll(_companyScopeFilters(''));
+    }
+    final source = fromWarehouse?.trim() ?? '';
+    if (source.isNotEmpty) {
+      filters.add(['from_warehouse', '=', source]);
+    }
+    final target = toWarehouse?.trim() ?? '';
+    if (target.isNotEmpty) {
+      filters.add(['to_warehouse', '=', target]);
+    }
+    final query = name?.trim() ?? '';
+    if (query.isNotEmpty) {
+      filters.add(['name', 'like', '%$query%']);
+    }
+    return filters;
   }
 
   String? preferredCompany(Iterable<String> options) {
@@ -772,20 +823,50 @@ class WarehouseStockState extends AppStateProxyNotifier {
     );
   }
 
+  Future<List<StockEntryType>> fetchStockEntryTypes({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _stockEntryTypes.isNotEmpty) {
+      return _stockEntryTypes;
+    }
+    await appState.frappeService.ensureLoggedIn();
+    final rows = await _fetchAllResourcePages(
+      doctype: 'Stock Entry Type',
+      fields: const ['name', 'purpose'],
+      orderBy: 'name asc',
+      maxRows: 200,
+    );
+    final types = rows
+        .map(StockEntryType.fromJson)
+        .where((row) => row.name.isNotEmpty)
+        .toList(growable: false);
+    _stockEntryTypes = types;
+    notifyListeners();
+    return types;
+  }
+
   Future<StockEntry> createStockEntry({
     required String stockEntryType,
     required List<Map<String, dynamic>> items,
     String? company,
     DateTime? postingDate,
+    String? purpose,
+    String? fromWarehouse,
+    String? toWarehouse,
   }) async {
     await appState.frappeService.ensureLoggedIn();
 
     final payload = <String, dynamic>{
       'stock_entry_type': stockEntryType,
+      'purpose': (purpose ?? stockEntryType).trim(),
       if (company?.trim().isNotEmpty == true) 'company': company!.trim(),
       'posting_date': DateRangePresets.toFrappeDate(
         postingDate ?? DateTime.now(),
       ),
+      if (fromWarehouse?.trim().isNotEmpty == true)
+        'from_warehouse': fromWarehouse!.trim(),
+      if (toWarehouse?.trim().isNotEmpty == true)
+        'to_warehouse': toWarehouse!.trim(),
       'items': items,
     };
     final created = await appState.frappeService.createDocument(
