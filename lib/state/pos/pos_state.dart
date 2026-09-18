@@ -409,6 +409,113 @@ class PosState extends AppStateProxyNotifier {
     return PosClosingEntry.fromJson(doc);
   }
 
+  /// Fetch submitted POS Invoices for a closing session (ERPNext v14+ helper).
+  Future<List<Map<String, dynamic>>> fetchPosInvoicesForClosing({
+    required String start,
+    required String end,
+    required String posProfile,
+    required String user,
+  }) async {
+    try {
+      final result = await frappeService.callMethod(
+        'erpnext.accounts.doctype.pos_closing_entry.pos_closing_entry.get_pos_invoices',
+        args: {
+          'start': start,
+          'end': end,
+          'pos_profile': posProfile,
+          'user': user,
+        },
+      );
+      if (result is List) {
+        return [
+          for (final row in result)
+            if (row is Map) Map<String, dynamic>.from(row),
+        ];
+      }
+    } catch (_) {}
+
+    // Newer ERPNext may expose get_invoices instead.
+    try {
+      final result = await frappeService.callMethod(
+        'erpnext.accounts.doctype.pos_closing_entry.pos_closing_entry.get_invoices',
+        args: {
+          'start': start,
+          'end': end,
+          'pos_profile': posProfile,
+          'user': user,
+        },
+      );
+      if (result is Map) {
+        final invoices = result['invoices'];
+        if (invoices is List) {
+          return [
+            for (final row in invoices)
+              if (row is Map)
+                {
+                  ...Map<String, dynamic>.from(row),
+                  'name': row['name'] ?? row['pos_invoice'] ?? row['sales_invoice'],
+                },
+          ];
+        }
+      }
+    } catch (_) {}
+
+    // Fallback: list POS Invoice via resource API.
+    final rows = await frappeService.fetchResource(
+      'POS Invoice',
+      fields: const [
+        'name',
+        'customer',
+        'posting_date',
+        'posting_time',
+        'grand_total',
+        'net_total',
+        'total_qty',
+        'pos_profile',
+        'owner',
+        'consolidated_invoice',
+      ],
+      filters: [
+        ['docstatus', '=', 1],
+        ['pos_profile', '=', posProfile],
+        ['owner', '=', user],
+      ],
+      orderBy: 'posting_date asc, posting_time asc',
+      limit: 200,
+    );
+
+    DateTime? parseStamp(Map<String, dynamic> row) {
+      final date = row['posting_date']?.toString() ?? '';
+      final time = row['posting_time']?.toString() ?? '00:00:00';
+      final normalizedTime = time.length == 5 ? '$time:00' : time;
+      return DateTime.tryParse('$date $normalizedTime'.replaceFirst(' ', 'T'));
+    }
+
+    final startDt = DateTime.tryParse(start.replaceFirst(' ', 'T'));
+    final endDt = DateTime.tryParse(end.replaceFirst(' ', 'T'));
+    final filtered = rows.where((row) {
+      final consolidated = row['consolidated_invoice']?.toString().trim() ?? '';
+      if (consolidated.isNotEmpty) return false;
+      final stamp = parseStamp(row);
+      if (stamp == null) return true;
+      if (startDt != null && stamp.isBefore(startDt)) return false;
+      if (endDt != null && stamp.isAfter(endDt)) return false;
+      return true;
+    }).toList();
+
+    final detailed = <Map<String, dynamic>>[];
+    for (final row in filtered) {
+      final name = row['name']?.toString() ?? '';
+      if (name.isEmpty) continue;
+      try {
+        detailed.add(await loadInvoiceDocument(name));
+      } catch (_) {
+        detailed.add(row);
+      }
+    }
+    return detailed;
+  }
+
   Future<PosOpeningEntry> createOpeningEntry(Map<String, dynamic> payload) async {
     final created = await frappeService.createDocument(
       'POS Opening Entry',
@@ -542,6 +649,8 @@ class PosState extends AppStateProxyNotifier {
 
     scrubChildren('balance_details');
     scrubChildren('payment_reconciliation');
+    scrubChildren('pos_transactions');
+    scrubChildren('pos_invoices');
     scrubChildren('payments');
     scrubChildren('items');
     scrubChildren('taxes');
