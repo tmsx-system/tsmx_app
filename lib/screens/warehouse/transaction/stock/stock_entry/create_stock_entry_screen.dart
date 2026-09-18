@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -12,8 +14,17 @@ import 'stock_entry_kind.dart';
 
 class CreateStockEntryScreen extends StatefulWidget {
   final StockEntryKind kind;
+  final String? company;
+  final String? sourceWarehouse;
+  final String? targetWarehouse;
 
-  const CreateStockEntryScreen({super.key, required this.kind});
+  const CreateStockEntryScreen({
+    super.key,
+    required this.kind,
+    this.company,
+    this.sourceWarehouse,
+    this.targetWarehouse,
+  });
 
   @override
   State<CreateStockEntryScreen> createState() => _CreateStockEntryScreenState();
@@ -36,10 +47,23 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   bool get _needsSource => widget.kind.needsSource;
   bool get _needsTarget => widget.kind.needsTarget;
 
+  String? _normalized(String? value) {
+    final trimmed = value?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
   @override
   void initState() {
     super.initState();
-    _rows.add(_StockEntryItemRow());
+    _company = _normalized(widget.company);
+    _sourceWarehouse = _normalized(widget.sourceWarehouse);
+    _targetWarehouse = _normalized(widget.targetWarehouse);
+    _rows.add(
+      _StockEntryItemRow(
+        sourceWarehouse: _sourceWarehouse,
+        targetWarehouse: _targetWarehouse,
+      ),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -66,6 +90,22 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
             ..sort((a, b) => a.name.compareTo(b.name));
       final companies = state.stockCompanies.map((entry) => entry.key);
       _company ??= state.preferredCompany(companies);
+      bool matchesCompany(WarehouseInfo row) =>
+          (_company ?? '').isEmpty || row.company == _company;
+      if (!warehouses.any(
+        (row) => row.name == _sourceWarehouse && matchesCompany(row),
+      )) {
+        _sourceWarehouse = null;
+      }
+      if (!warehouses.any(
+        (row) => row.name == _targetWarehouse && matchesCompany(row),
+      )) {
+        _targetWarehouse = null;
+      }
+      for (final row in _rows) {
+        row.sourceWarehouse ??= _sourceWarehouse;
+        row.targetWarehouse ??= _targetWarehouse;
+      }
       final options = await _fetchItems();
       if (!mounted) return;
       setState(() {
@@ -188,14 +228,54 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
     final meta = itemCode == null ? null : _itemMeta[itemCode];
     row.itemName = meta?.name ?? '';
     row.uom = meta?.uom ?? '';
-    if (meta != null &&
-        (double.tryParse(row.rateCtrl.text.trim()) ?? 0) <= 0 &&
-        meta.rate > 0) {
-      row.rateCtrl.text = meta.rate.toString();
-    }
+    row.basicRate = meta?.rate ?? 0;
     row.sourceWarehouse ??= _sourceWarehouse;
     row.targetWarehouse ??= _targetWarehouse;
     setState(() {});
+    if (itemCode != null) unawaited(_refreshRowRate(index));
+  }
+
+  Future<void> _refreshRowRate(int index) async {
+    if (index < 0 || index >= _rows.length) return;
+    final row = _rows[index];
+    final itemCode = row.itemCode;
+    if (itemCode == null || itemCode.isEmpty) return;
+    try {
+      final details = await context
+          .read<WarehouseStockState>()
+          .fetchStockEntryItemDetails(
+            itemCode: itemCode,
+            company: _company,
+            sourceWarehouse: row.sourceWarehouse ?? _sourceWarehouse,
+            targetWarehouse: row.targetWarehouse ?? _targetWarehouse,
+            postingDate: _postingDate,
+            qty: row.qty > 0 ? row.qty : 1,
+          );
+      if (!mounted || index >= _rows.length) return;
+      final current = _rows[index];
+      if (current.itemCode != itemCode) return;
+      final name = details['item_name']?.toString().trim() ?? '';
+      final uom =
+          (details['uom'] ?? details['stock_uom'])?.toString().trim() ?? '';
+      final rate = NumParse.asDouble(
+        details['basic_rate'] ?? details['valuation_rate'] ?? details['rate'],
+      );
+      setState(() {
+        if (name.isNotEmpty) current.itemName = name;
+        if (uom.isNotEmpty) current.uom = uom;
+        if (rate > 0 || details.containsKey('basic_rate')) {
+          current.basicRate = rate;
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _refreshFilledItemRates() {
+    for (var i = 0; i < _rows.length; i++) {
+      if ((_rows[i].itemCode ?? '').isNotEmpty) {
+        unawaited(_refreshRowRate(i));
+      }
+    }
   }
 
   void _setDefaultSource(String? warehouse) {
@@ -205,6 +285,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
         row.sourceWarehouse = warehouse;
       }
     });
+    _refreshFilledItemRates();
   }
 
   void _setDefaultTarget(String? warehouse) {
@@ -214,6 +295,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
         row.targetWarehouse = warehouse;
       }
     });
+    _refreshFilledItemRates();
   }
 
   Future<void> _save() async {
@@ -247,7 +329,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
             'qty': row.qty,
             'uom': row.uom,
             'conversion_factor': 1,
-            if (row.rate > 0) 'basic_rate': row.rate,
+            if (row.basicRate > 0) 'basic_rate': row.basicRate,
             if (_needsSource)
               's_warehouse': row.sourceWarehouse ?? _sourceWarehouse,
             if (_needsTarget)
@@ -390,15 +472,18 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                 for (final company in companies)
                                   ErpItemOption(id: company, label: company),
                               ],
-                              onSelected: (value) => setState(() {
-                                _company = value;
-                                _sourceWarehouse = null;
-                                _targetWarehouse = null;
-                                for (final row in _rows) {
-                                  row.sourceWarehouse = null;
-                                  row.targetWarehouse = null;
-                                }
-                              }),
+                              onSelected: (value) {
+                                setState(() {
+                                  _company = value;
+                                  _sourceWarehouse = null;
+                                  _targetWarehouse = null;
+                                  for (final row in _rows) {
+                                    row.sourceWarehouse = null;
+                                    row.targetWarehouse = null;
+                                  }
+                                });
+                                _refreshFilledItemRates();
+                              },
                               validator: (value) =>
                                   value == null || value.trim().isEmpty
                                   ? 'Company wajib dipilih'
@@ -417,6 +502,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                 );
                                 if (picked == null) return;
                                 setState(() => _postingDate = picked);
+                                _refreshFilledItemRates();
                               },
                               child: Container(
                                 decoration: BoxDecoration(
@@ -701,10 +787,10 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: TextFormField(
-                  controller: row.rateCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
+                  key: ValueKey('rate-${row.itemCode}-$index-${row.basicRate}'),
+                  initialValue: _formatRate(row.basicRate),
+                  readOnly: true,
+                  enabled: false,
                   decoration: _fieldDecoration('Basic Rate'),
                 ),
               ),
@@ -713,6 +799,10 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
         ],
       ),
     );
+  }
+
+  String _formatRate(double value) {
+    return NumberFormat('#,##0.##', 'id_ID').format(value);
   }
 
   String _friendlyError(Object error) => error
@@ -737,20 +827,18 @@ class _StockEntryItemRow {
   String uom;
   String? sourceWarehouse;
   String? targetWarehouse;
+  double basicRate;
   final TextEditingController qtyCtrl;
-  final TextEditingController rateCtrl;
 
   _StockEntryItemRow({this.sourceWarehouse, this.targetWarehouse})
     : itemName = '',
       uom = '',
-      qtyCtrl = TextEditingController(text: '1'),
-      rateCtrl = TextEditingController(text: '0');
+      basicRate = 0,
+      qtyCtrl = TextEditingController(text: '1');
 
   double get qty => double.tryParse(qtyCtrl.text.trim()) ?? 0;
-  double get rate => double.tryParse(rateCtrl.text.trim()) ?? 0;
 
   void dispose() {
     qtyCtrl.dispose();
-    rateCtrl.dispose();
   }
 }

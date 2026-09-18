@@ -150,7 +150,14 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     final kind = StockEntryKind(name: _stockEntryType, purpose: purpose);
     final created = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => CreateStockEntryScreen(kind: kind)),
+      MaterialPageRoute(
+        builder: (_) => CreateStockEntryScreen(
+          kind: kind,
+          company: _company,
+          sourceWarehouse: _fromWarehouse,
+          targetWarehouse: _toWarehouse,
+        ),
+      ),
     );
     if (created == true && mounted) await _load();
   }

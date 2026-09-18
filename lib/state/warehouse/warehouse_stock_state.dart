@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../models/inventory_item.dart';
@@ -689,11 +691,12 @@ class WarehouseStockState extends AppStateProxyNotifier {
             'company',
             'docstatus',
             'posting_date',
+            'posting_time',
             'total_qty',
             'from_warehouse',
             'to_warehouse',
           ],
-          orderBy: 'modified desc',
+          orderBy: 'posting_date desc, posting_time desc',
           filters: filters,
           maxRows: _listLimit,
         );
@@ -709,12 +712,13 @@ class WarehouseStockState extends AppStateProxyNotifier {
               'company',
               'docstatus',
               'posting_date',
+              'posting_time',
               'from_warehouse',
               'to_warehouse',
             ],
             limit: limit,
             limitStart: start,
-            orderBy: 'modified desc',
+            orderBy: 'posting_date desc, posting_time desc',
             filters: filters,
           ),
         );
@@ -845,6 +849,144 @@ class WarehouseStockState extends AppStateProxyNotifier {
     return types;
   }
 
+  Future<Map<String, dynamic>> fetchStockEntryItemDetails({
+    required String itemCode,
+    String? company,
+    String? sourceWarehouse,
+    String? targetWarehouse,
+    DateTime? postingDate,
+    double qty = 1,
+  }) async {
+    await appState.frappeService.ensureLoggedIn();
+    final code = itemCode.trim();
+    if (code.isEmpty) return const {};
+
+    final selectedSource = (sourceWarehouse ?? '').trim();
+    final selectedTarget = (targetWarehouse ?? '').trim();
+    final warehouse = selectedSource.isNotEmpty
+        ? selectedSource
+        : selectedTarget;
+    final args = <String, dynamic>{
+      'item_code': code,
+      'qty': qty,
+      'transfer_qty': qty,
+      'conversion_factor': 1,
+      'doctype': 'Stock Entry',
+      'posting_date': DateRangePresets.toFrappeDate(
+        postingDate ?? DateTime.now(),
+      ),
+      if ((company ?? '').trim().isNotEmpty) 'company': company!.trim(),
+      if (selectedSource.isNotEmpty) 's_warehouse': selectedSource,
+      if (selectedTarget.isNotEmpty) 't_warehouse': selectedTarget,
+      if (warehouse.isNotEmpty) 'warehouse': warehouse,
+    };
+
+    try {
+      final result = await appState.frappeService.callMethod(
+        'erpnext.stock.doctype.stock_entry.stock_entry.get_item_details',
+        args: {'args': jsonEncode(args)},
+      );
+      if (result is Map) {
+        return Map<String, dynamic>.from(result);
+      }
+    } catch (_) {}
+
+    try {
+      final result = await appState.frappeService.callMethod(
+        'erpnext.stock.utils.get_incoming_rate',
+        args: {'args': jsonEncode(args)},
+      );
+      if (result is num) {
+        return {'basic_rate': result};
+      }
+      if (result is Map) {
+        return Map<String, dynamic>.from(result);
+      }
+    } catch (_) {}
+
+    return _fetchStockEntryRateFallback(
+      itemCode: code,
+      company: company,
+      warehouse: sourceWarehouse ?? targetWarehouse,
+    );
+  }
+
+  Future<Map<String, dynamic>> _fetchStockEntryRateFallback({
+    required String itemCode,
+    String? company,
+    String? warehouse,
+  }) async {
+    final binFilters = <List<dynamic>>[
+      ['item_code', '=', itemCode],
+    ];
+    if ((warehouse ?? '').trim().isNotEmpty) {
+      binFilters.add(['warehouse', '=', warehouse!.trim()]);
+    } else if ((company ?? '').trim().isNotEmpty) {
+      final names = erpWarehouseNamesForCompany(company!.trim());
+      if (names.isNotEmpty) {
+        binFilters.add(['warehouse', 'in', names]);
+      }
+    }
+
+    try {
+      final bins = await appState.frappeService.fetchResource(
+        'Bin',
+        fields: const ['valuation_rate', 'actual_qty', 'warehouse'],
+        filters: binFilters,
+        orderBy: 'modified desc',
+        limit: 50,
+      );
+      Map<String, dynamic>? best;
+      for (final row in bins) {
+        final rate = NumParse.asDouble(row['valuation_rate']);
+        final qty = NumParse.asDouble(row['actual_qty']);
+        if (rate <= 0) continue;
+        best = row;
+        if (qty > 0) break;
+      }
+      if (best != null) {
+        return {
+          'basic_rate': NumParse.asDouble(best['valuation_rate']),
+          'valuation_rate': NumParse.asDouble(best['valuation_rate']),
+        };
+      }
+    } catch (_) {}
+
+    try {
+      final items = await appState.frappeService.fetchResource(
+        'Item',
+        fields: const [
+          'item_name',
+          'stock_uom',
+          'valuation_rate',
+          'standard_rate',
+          'last_purchase_rate',
+        ],
+        filters: [
+          ['name', '=', itemCode],
+        ],
+        limit: 1,
+      );
+      if (items.isNotEmpty) {
+        final row = items.first;
+        final rate = NumParse.asDouble(
+          row['last_purchase_rate'] ??
+              row['valuation_rate'] ??
+              row['standard_rate'],
+        );
+        return {
+          'item_name': row['item_name'],
+          'uom': row['stock_uom'],
+          'stock_uom': row['stock_uom'],
+          'basic_rate': rate,
+          'valuation_rate': rate,
+        };
+      }
+    } catch (_) {}
+
+    return const {};
+  }
+
   Future<StockEntry> createStockEntry({
     required String stockEntryType,
     required List<Map<String, dynamic>> items,
@@ -962,7 +1104,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
           'expense_account',
           'cost_center',
         ],
-        orderBy: 'modified desc',
+        orderBy: 'posting_date desc, posting_time desc',
         filters: filters,
         maxRows: _listLimit,
       );
@@ -976,7 +1118,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
           'docstatus',
           'difference_amount',
         ],
-        orderBy: 'modified desc',
+        orderBy: 'posting_date desc, name desc',
         filters: filters
             .where(
               (filter) =>

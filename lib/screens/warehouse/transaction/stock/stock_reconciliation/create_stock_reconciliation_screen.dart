@@ -43,7 +43,8 @@ class _CreateStockReconciliationScreenState
   @override
   void initState() {
     super.initState();
-    _company = widget.company;
+    final company = widget.company?.trim() ?? '';
+    _company = company.isEmpty ? null : company;
     _rows.add(_RecoItemRow());
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
