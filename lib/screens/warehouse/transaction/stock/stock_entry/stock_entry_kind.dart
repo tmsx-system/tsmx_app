@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../../models/stock_entry.dart';
-import '../../../../state/warehouse/warehouse_stock_state.dart';
-import '../../../../theme/app_colors.dart';
-import '../../shared/warehouse_widgets.dart';
+import '../../../../../models/stock_entry.dart';
+import '../../../../../state/warehouse/warehouse_stock_state.dart';
+import '../../../../../theme/app_colors.dart';
+import '../../../shared/warehouse_widgets.dart';
 
 class StockEntryKind {
   final String name;

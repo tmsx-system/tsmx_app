@@ -882,53 +882,112 @@ class WarehouseStockState extends AppStateProxyNotifier {
 
   Future<Map<String, dynamic>> createStockReconciliation({
     required String company,
-    required String warehouse,
     required List<Map<String, dynamic>> items,
+    String purpose = 'Stock Reconciliation',
+    String? warehouse,
+    String? expenseAccount,
+    String? costCenter,
     DateTime? postingDate,
+    String? postingTime,
+    String? namingSeries,
   }) async {
     await appState.frappeService.ensureLoggedIn();
     if (company.trim().isEmpty) {
-      throw Exception('Company gudang belum tersedia.');
-    }
-    if (warehouse.trim().isEmpty) {
-      throw Exception('Warehouse wajib dipilih.');
+      throw Exception('Company wajib dipilih.');
     }
     if (items.isEmpty) {
-      throw Exception('Tambahkan minimal satu item stock opname.');
+      throw Exception('Tambahkan minimal satu item.');
     }
 
     final created = await appState.frappeService.createDocument(
       'Stock Reconciliation',
       {
         'company': company.trim(),
-        'purpose': 'Stock Reconciliation',
+        'purpose': purpose.trim().isEmpty ? 'Stock Reconciliation' : purpose.trim(),
+        if (namingSeries?.trim().isNotEmpty == true)
+          'naming_series': namingSeries!.trim(),
         'posting_date': DateRangePresets.toFrappeDate(
           postingDate ?? DateTime.now(),
         ),
-        'items': [
-          for (final item in items) {...item, 'warehouse': warehouse.trim()},
-        ],
+        if ((postingTime ?? '').trim().isNotEmpty)
+          'posting_time': postingTime!.trim(),
+        if (warehouse?.trim().isNotEmpty == true)
+          'set_warehouse': warehouse!.trim(),
+        if (expenseAccount?.trim().isNotEmpty == true)
+          'expense_account': expenseAccount!.trim(),
+        if (costCenter?.trim().isNotEmpty == true)
+          'cost_center': costCenter!.trim(),
+        'items': items,
       },
     );
-    await refreshStockReconciliations();
+    await refreshStockReconciliations(company: company);
     return created;
   }
 
-  Future<void> refreshStockReconciliations() async {
+  Future<void> refreshStockReconciliations({
+    String? company,
+    String? expenseAccount,
+    String? costCenter,
+    String? name,
+  }) async {
     await appState.frappeService.ensureLoggedIn();
-    final rows = await _fetchAllResourcePages(
-      doctype: 'Stock Reconciliation',
-      fields: const [
-        'name',
-        'company',
-        'posting_date',
-        'status',
-        'docstatus',
-        'difference_amount',
-      ],
-      orderBy: 'posting_date desc, name desc',
-      maxRows: _listLimit,
-    );
+    final filters = <List<dynamic>>[];
+    final selectedCompany = company?.trim() ?? '';
+    if (selectedCompany.isNotEmpty) {
+      filters.add(['company', '=', selectedCompany]);
+    } else {
+      filters.addAll(_companyScopeFilters(''));
+    }
+    if ((expenseAccount ?? '').trim().isNotEmpty) {
+      filters.add(['expense_account', '=', expenseAccount!.trim()]);
+    }
+    if ((costCenter ?? '').trim().isNotEmpty) {
+      filters.add(['cost_center', '=', costCenter!.trim()]);
+    }
+    if ((name ?? '').trim().isNotEmpty) {
+      filters.add(['name', 'like', '%${name!.trim()}%']);
+    }
+
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await _fetchAllResourcePages(
+        doctype: 'Stock Reconciliation',
+        fields: const [
+          'name',
+          'company',
+          'posting_date',
+          'posting_time',
+          'docstatus',
+          'difference_amount',
+          'expense_account',
+          'cost_center',
+        ],
+        orderBy: 'modified desc',
+        filters: filters,
+        maxRows: _listLimit,
+      );
+    } catch (_) {
+      rows = await _fetchAllResourcePages(
+        doctype: 'Stock Reconciliation',
+        fields: const [
+          'name',
+          'company',
+          'posting_date',
+          'docstatus',
+          'difference_amount',
+        ],
+        orderBy: 'modified desc',
+        filters: filters
+            .where(
+              (filter) =>
+                  filter.isNotEmpty &&
+                  filter.first != 'expense_account' &&
+                  filter.first != 'cost_center',
+            )
+            .toList(),
+        maxRows: _listLimit,
+      );
+    }
     _stockReconciliations = rows
         .map(StockReconciliationSummary.fromJson)
         .toList();

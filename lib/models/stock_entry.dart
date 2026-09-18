@@ -63,17 +63,23 @@ class StockReconciliationSummary {
   final String id;
   final String company;
   final String date;
+  final String postingTime;
   final String statusText;
   final int docStatus;
   final double differenceAmount;
+  final String expenseAccount;
+  final String costCenter;
 
   const StockReconciliationSummary({
     required this.id,
     required this.company,
     required this.date,
+    this.postingTime = '',
     required this.statusText,
     required this.docStatus,
     required this.differenceAmount,
+    this.expenseAccount = '',
+    this.costCenter = '',
   });
 
   factory StockReconciliationSummary.fromJson(Map<String, dynamic> json) {
@@ -82,12 +88,15 @@ class StockReconciliationSummary {
       id: json['name']?.toString() ?? '',
       company: json['company']?.toString() ?? '',
       date: json['posting_date']?.toString() ?? '',
+      postingTime: json['posting_time']?.toString() ?? '',
       statusText: normalizeStatusText(
         json['status']?.toString(),
         docstatus: docstatus,
       ),
       docStatus: docstatus,
       differenceAmount: NumParse.asDouble(json['difference_amount']),
+      expenseAccount: json['expense_account']?.toString() ?? '',
+      costCenter: json['cost_center']?.toString() ?? '',
     );
   }
 }
