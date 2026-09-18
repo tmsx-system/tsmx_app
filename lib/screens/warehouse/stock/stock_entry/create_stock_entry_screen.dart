@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../theme/app_colors.dart';
-import '../../../state/warehouse/warehouse_stock_state.dart';
-import '../../../models/warehouse_info.dart';
-import '../../../widgets/erp/erp_item_autocomplete_field.dart';
+import '../../../../theme/app_colors.dart';
+import '../../../../state/warehouse/warehouse_stock_state.dart';
+import '../../../../models/warehouse_info.dart';
+import '../../../../widgets/erp/erp_item_autocomplete_field.dart';
 
 class CreateStockEntryScreen extends StatefulWidget {
   const CreateStockEntryScreen({super.key});

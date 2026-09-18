@@ -15,8 +15,8 @@ import '../../../widgets/erp/erp_status_badge.dart';
 import '../../../widgets/erp/erp_status_chip_bar.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
-import '../../purchase/material_request/create_material_request_screen.dart';
-import '../../purchase/purchase_order/create_purchase_order_screen.dart';
+import 'create_material_request_screen.dart';
+import '../purchase_order/create_purchase_order_screen.dart';
 import '../shared/buying_document_detail_sheet.dart';
 import '../shared/purchase_ui.dart';
 

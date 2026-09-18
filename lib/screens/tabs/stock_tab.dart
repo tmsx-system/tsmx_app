@@ -6,7 +6,7 @@ import '../../state/warehouse/warehouse_stock_state.dart';
 import '../../theme/app_colors.dart';
 import '../../models/inventory_item.dart';
 import '../../models/stock_area_option.dart';
-import '../stock/item_stock_detail_screen.dart';
+import '../warehouse/stock/item_stock_detail_screen.dart';
 
 enum _StockStatusFilter { all, urgent, lowStock, inStock }
 

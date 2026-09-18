@@ -11,7 +11,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/erp/erp_empty_state.dart';
 import '../../widgets/erp/erp_error_box.dart';
 import '../../widgets/erp/erp_section_widgets.dart';
-import '../sales/shared/sales_ui.dart';
+import '../selling/shared/sales_ui.dart';
 
 const Color _visitGreen = Color(0xFF16A34A);
 const Color _visitTeal = Color(0xFF14B8A6);

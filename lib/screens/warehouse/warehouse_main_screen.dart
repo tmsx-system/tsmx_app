@@ -6,7 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/responsive/responsive_layout.dart';
 import '../shared/role_main_screen.dart';
 import 'inventory/warehouse_inventory_tab.dart';
-import 'operation/warehouse_operations_tab.dart';
+import 'transaction/warehouse_operations_tab.dart';
 import 'overview/warehouse_overview_tab.dart';
 import 'quality/warehouse_quality_tab.dart';
 
@@ -125,7 +125,7 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
           destination: NavigationDestination(
             icon: Icon(Icons.swap_horiz_outlined),
             selectedIcon: Icon(Icons.swap_horiz_rounded),
-            label: 'Operasi',
+            label: 'Transaksi',
           ),
           builder: _operationsTab,
         ),

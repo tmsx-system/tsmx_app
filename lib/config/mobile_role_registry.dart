@@ -478,6 +478,11 @@ class MobileRoleRegistry {
       final granted = rule.readDoctypes.any(readableSet.contains);
       if (granted) enabled.add(rule.module);
     }
+    // Stock and QC stay inside Warehouse; dashboard only shows Gudang.
+    if (enabled.contains(MobileModule.stock) ||
+        enabled.contains(MobileModule.qualityControl)) {
+      enabled.add(MobileModule.warehouse);
+    }
     return enabled;
   }
 

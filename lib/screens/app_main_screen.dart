@@ -25,12 +25,12 @@ import 'profile/profile_screen.dart';
 import 'shared/module_screen_registry.dart';
 
 import 'tabs/dashboard_tab.dart';
-import 'purchase/purchase_order/create_purchase_order_screen.dart';
-import 'purchase/purchase_invoice/create_purchase_invoice_screen.dart';
-import 'purchase/purchase_receipt/create_purchase_receipt_screen.dart';
-import 'purchase/material_request/create_material_request_screen.dart';
-import 'stock/stock_entry/create_stock_entry_screen.dart';
-import 'sales/sales_order/create_sales_order_screen.dart';
+import 'buying/purchase_order/create_purchase_order_screen.dart';
+import 'buying/purchase_invoice/create_purchase_invoice_screen.dart';
+import 'buying/purchase_receipt/create_purchase_receipt_screen.dart';
+import 'buying/material_request/create_material_request_screen.dart';
+import 'warehouse/stock/stock_entry/create_stock_entry_screen.dart';
+import 'selling/sales_order/create_sales_order_screen.dart';
 import 'spg/daily_activity/create_spg_daily_activity_screen.dart';
 import 'spg/daily_report/create_spg_daily_report_screen.dart';
 import 'todo/todo_list.dart';

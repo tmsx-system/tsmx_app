@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../state/auth/auth_state.dart';
 import '../../state/selling/selling_filter_state.dart';
 import '../../theme/app_colors.dart';
-import '../sales/collection/sales_collection_tab.dart';
+import '../selling/collection/sales_collection_tab.dart';
 import '../shared/role_main_screen.dart';
 
 class CollectionMainScreen extends StatefulWidget {

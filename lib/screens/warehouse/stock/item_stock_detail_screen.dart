@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../models/inventory_item.dart';
-import '../../models/stock_ledger_movement.dart';
-import '../../state/warehouse/warehouse_stock_state.dart';
-import '../../theme/app_colors.dart';
-import '../../utils/date_range_presets.dart';
+import '../../../models/inventory_item.dart';
+import '../../../models/stock_ledger_movement.dart';
+import '../../../state/warehouse/warehouse_stock_state.dart';
+import '../../../theme/app_colors.dart';
+import '../../../utils/date_range_presets.dart';
 
 class ItemStockDetailScreen extends StatefulWidget {
   final InventoryItem item;

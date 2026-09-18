@@ -6,10 +6,10 @@ import '../../state/selling/sales_order_state.dart';
 import '../../state/selling/selling_filter_state.dart';
 import '../../state/selling/selling_summary_state.dart';
 import '../../theme/app_colors.dart';
-import '../sales/shared/sales_ui.dart';
-import '../sales/delivery_note/delivery_note_panel.dart';
-import '../sales/sales_invoice/sales_invoice_panel.dart';
-import '../sales/sales_order/sales_order_panel.dart';
+import '../selling/shared/sales_ui.dart';
+import '../selling/delivery_note/delivery_note_panel.dart';
+import '../selling/sales_invoice/sales_invoice_panel.dart';
+import '../selling/sales_order/sales_order_panel.dart';
 
 const _defaultSellingSegmentIds = ['so', 'dn', 'si'];
 
