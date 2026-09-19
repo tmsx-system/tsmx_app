@@ -17,6 +17,7 @@ String normalizeStatusText(String? status, {int? docstatus}) {
   final trimmed = status?.trim() ?? '';
   if (trimmed.isNotEmpty) return trimmed;
   if (docstatus == 0) return 'Draft';
+  if (docstatus == 1) return 'Submitted';
   if (docstatus == 2) return 'Cancelled';
   return 'Unknown';
 }
@@ -34,6 +35,13 @@ FrappeStatusStyle styleForStatusText(String statusText) {
       label: 'DRAFT',
       color: AppColors.slate,
       icon: Icons.edit_rounded,
+    );
+  }
+  if (_contains(s, 'submit')) {
+    return const FrappeStatusStyle(
+      label: 'SUBMITTED',
+      color: Color(0xFF2563EB),
+      icon: Icons.check_circle_outline_rounded,
     );
   }
   if (_contains(s, 'on hold')) {

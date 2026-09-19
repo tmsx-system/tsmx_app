@@ -995,6 +995,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     String? purpose,
     String? fromWarehouse,
     String? toWarehouse,
+    String? namingSeries,
   }) async {
     await appState.frappeService.ensureLoggedIn();
 
@@ -1009,6 +1010,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
         'from_warehouse': fromWarehouse!.trim(),
       if (toWarehouse?.trim().isNotEmpty == true)
         'to_warehouse': toWarehouse!.trim(),
+      if (namingSeries?.trim().isNotEmpty == true)
+        'naming_series': namingSeries!.trim(),
       'items': items,
     };
     final created = await appState.frappeService.createDocument(

@@ -39,6 +39,8 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   String? _company;
   String? _sourceWarehouse;
   String? _targetWarehouse;
+  String? _series;
+  List<String> _seriesOptions = const [];
   DateTime _postingDate = DateTime.now();
   bool _loading = true;
   bool _saving = false;
@@ -107,10 +109,13 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
         row.targetWarehouse ??= _targetWarehouse;
       }
       final options = await _fetchItems();
+      final series = await state.appState.fetchNamingSeries('Stock Entry');
       if (!mounted) return;
       setState(() {
         _warehouses = warehouses;
         _itemOptions = options;
+        _seriesOptions = series;
+        _series ??= series.isEmpty ? null : series.first;
       });
     } catch (error) {
       if (mounted) setState(() => _error = _friendlyError(error));
@@ -343,6 +348,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
         postingDate: _postingDate,
         fromWarehouse: _needsSource ? _sourceWarehouse : null,
         toWarehouse: _needsTarget ? _targetWarehouse : null,
+        namingSeries: _series,
         items: payload,
       );
       if (!mounted) return;
@@ -449,6 +455,26 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
+                            if (_seriesOptions.isNotEmpty) ...[
+                              ErpItemAutocompleteField(
+                                label: 'Series',
+                                selectedId: _seriesOptions.contains(_series)
+                                    ? _series
+                                    : null,
+                                decoration: _fieldDecoration('Series'),
+                                options: [
+                                  for (final series in _seriesOptions)
+                                    ErpItemOption(id: series, label: series),
+                                ],
+                                onSelected: (value) =>
+                                    setState(() => _series = value),
+                                validator: (value) =>
+                                    value == null || value.trim().isEmpty
+                                    ? 'Series wajib dipilih'
+                                    : null,
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             TextFormField(
                               initialValue: widget.kind.title,
                               readOnly: true,
