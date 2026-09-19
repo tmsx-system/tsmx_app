@@ -170,20 +170,6 @@ class _StockEntryTypePickerSheetState extends State<_StockEntryTypePickerSheet> 
                 ],
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Daftar diambil dari doctype Stock Entry Type.',
-                  style: TextStyle(
-                    color: AppColors.slate,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
             if (_loading)
               const Padding(
                 padding: EdgeInsets.fromLTRB(20, 12, 20, 28),

@@ -101,7 +101,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
             )
             .toList();
       } else {
-        nextCustomers = await state.fetchSalesCustomers();
+        nextCustomers = await state.fetchSalesCustomers(forceRefresh: true);
       }
     } catch (e) {
       if (widget.shouldShowCheckIn) {

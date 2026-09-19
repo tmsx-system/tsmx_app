@@ -17,6 +17,7 @@ class CreateStockEntryScreen extends StatefulWidget {
   final String? company;
   final String? sourceWarehouse;
   final String? targetWarehouse;
+  final String? existingName;
 
   const CreateStockEntryScreen({
     super.key,
@@ -24,6 +25,7 @@ class CreateStockEntryScreen extends StatefulWidget {
     this.company,
     this.sourceWarehouse,
     this.targetWarehouse,
+    this.existingName,
   });
 
   @override
@@ -48,6 +50,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
 
   bool get _needsSource => widget.kind.needsSource;
   bool get _needsTarget => widget.kind.needsTarget;
+  bool get _isEdit => (widget.existingName ?? '').trim().isNotEmpty;
 
   String? _normalized(String? value) {
     final trimmed = value?.trim() ?? '';
@@ -60,12 +63,14 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
     _company = _normalized(widget.company);
     _sourceWarehouse = _normalized(widget.sourceWarehouse);
     _targetWarehouse = _normalized(widget.targetWarehouse);
-    _rows.add(
-      _StockEntryItemRow(
-        sourceWarehouse: _sourceWarehouse,
-        targetWarehouse: _targetWarehouse,
-      ),
-    );
+    if (!_isEdit) {
+      _rows.add(
+        _StockEntryItemRow(
+          sourceWarehouse: _sourceWarehouse,
+          targetWarehouse: _targetWarehouse,
+        ),
+      );
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -91,6 +96,9 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
               .toList()
             ..sort((a, b) => a.name.compareTo(b.name));
       final companies = state.stockCompanies.map((entry) => entry.key);
+      if (_isEdit) {
+        await _applyExisting(state);
+      }
       _company ??= state.preferredCompany(companies);
       bool matchesCompany(WarehouseInfo row) =>
           (_company ?? '').isEmpty || row.company == _company;
@@ -111,9 +119,19 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
       final options = await _fetchItems();
       final series = await state.appState.fetchNamingSeries('Stock Entry');
       if (!mounted) return;
+      final mergedOptions = [...options];
+      for (final row in _rows) {
+        final code = row.itemCode?.trim() ?? '';
+        if (code.isEmpty) continue;
+        if (mergedOptions.any((option) => option.id == code)) continue;
+        final label = row.itemName.trim().isEmpty
+            ? code
+            : '${row.itemName} - $code';
+        mergedOptions.insert(0, ErpItemOption(id: code, label: label));
+      }
       setState(() {
         _warehouses = warehouses;
-        _itemOptions = options;
+        _itemOptions = mergedOptions;
         _seriesOptions = series;
         _series ??= series.isEmpty ? null : series.first;
       });
@@ -121,6 +139,56 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
       if (mounted) setState(() => _error = _friendlyError(error));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _applyExisting(WarehouseStockState state) async {
+    final name = widget.existingName?.trim() ?? '';
+    if (name.isEmpty) return;
+    final detail = await state.fetchStockEntryDetail(name);
+    _company = _normalized(detail.company) ?? _company;
+    _sourceWarehouse = _normalized(detail.fromWarehouse) ?? _sourceWarehouse;
+    _targetWarehouse = _normalized(detail.toWarehouse) ?? _targetWarehouse;
+    _series = _normalized(detail.namingSeries) ?? _series;
+    final parsedDate = DateTime.tryParse(detail.postingDate);
+    if (parsedDate != null) {
+      _postingDate = parsedDate;
+    }
+    for (final row in _rows) {
+      row.dispose();
+    }
+    _rows
+      ..clear()
+      ..addAll([
+        for (final item in detail.items)
+          _StockEntryItemRow(
+            itemCode: _normalized(item.itemCode),
+            itemName: item.itemName,
+            uom: item.uom,
+            sourceWarehouse: _normalized(item.sourceWarehouse),
+            targetWarehouse: _normalized(item.targetWarehouse),
+            basicRate: item.basicRate,
+            qtyText: item.qty == item.qty.roundToDouble()
+                ? item.qty.toInt().toString()
+                : item.qty.toString(),
+          ),
+      ]);
+    if (_rows.isEmpty) {
+      _rows.add(
+        _StockEntryItemRow(
+          sourceWarehouse: _sourceWarehouse,
+          targetWarehouse: _targetWarehouse,
+        ),
+      );
+    }
+    for (final row in _rows) {
+      final code = row.itemCode;
+      if (code == null || code.isEmpty) continue;
+      _itemMeta[code] = _ItemMeta(
+        name: row.itemName,
+        uom: row.uom,
+        rate: row.basicRate,
+      );
     }
   }
 
@@ -341,20 +409,38 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
               't_warehouse': row.targetWarehouse ?? _targetWarehouse,
           },
       ];
-      await context.read<WarehouseStockState>().createStockEntry(
-        stockEntryType: widget.kind.stockEntryType,
-        purpose: widget.kind.purpose,
-        company: _company,
-        postingDate: _postingDate,
-        fromWarehouse: _needsSource ? _sourceWarehouse : null,
-        toWarehouse: _needsTarget ? _targetWarehouse : null,
-        namingSeries: _series,
-        items: payload,
-      );
+      final stockState = context.read<WarehouseStockState>();
+      if (_isEdit) {
+        await stockState.updateStockEntry(
+          name: widget.existingName!.trim(),
+          stockEntryType: widget.kind.stockEntryType,
+          purpose: widget.kind.purpose,
+          company: _company,
+          postingDate: _postingDate,
+          fromWarehouse: _needsSource ? _sourceWarehouse : null,
+          toWarehouse: _needsTarget ? _targetWarehouse : null,
+          items: payload,
+        );
+      } else {
+        await stockState.createStockEntry(
+          stockEntryType: widget.kind.stockEntryType,
+          purpose: widget.kind.purpose,
+          company: _company,
+          postingDate: _postingDate,
+          fromWarehouse: _needsSource ? _sourceWarehouse : null,
+          toWarehouse: _needsTarget ? _targetWarehouse : null,
+          namingSeries: _series,
+          items: payload,
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${widget.kind.title} berhasil dibuat sebagai draft.'),
+          content: Text(
+            _isEdit
+                ? '${widget.kind.title} berhasil diupdate.'
+                : '${widget.kind.title} berhasil dibuat sebagai draft.',
+          ),
           backgroundColor: AppColors.primary,
         ),
       );
@@ -417,9 +503,9 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
         shadowColor: Colors.black.withValues(alpha: 0.08),
         centerTitle: false,
         titleSpacing: 16,
-        title: const Text(
-          'New Stock Entry',
-          style: TextStyle(
+        title: Text(
+          _isEdit ? 'Edit Stock Entry' : 'New Stock Entry',
+          style: const TextStyle(
             color: AppColors.primary,
             fontSize: 18,
             fontWeight: FontWeight.w900,
@@ -455,7 +541,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            if (_seriesOptions.isNotEmpty) ...[
+                            if (!_isEdit && _seriesOptions.isNotEmpty) ...[
                               ErpItemAutocompleteField(
                                 label: 'Series',
                                 selectedId: _seriesOptions.contains(_series)
@@ -680,7 +766,11 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                           ),
                         ),
                         child: Text(
-                          _saving ? 'Menyimpan...' : 'Save Stock Entry',
+                          _saving
+                              ? 'Menyimpan...'
+                              : (_isEdit
+                                    ? 'Update Stock Entry'
+                                    : 'Save Stock Entry'),
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
@@ -856,11 +946,15 @@ class _StockEntryItemRow {
   double basicRate;
   final TextEditingController qtyCtrl;
 
-  _StockEntryItemRow({this.sourceWarehouse, this.targetWarehouse})
-    : itemName = '',
-      uom = '',
-      basicRate = 0,
-      qtyCtrl = TextEditingController(text: '1');
+  _StockEntryItemRow({
+    this.itemCode,
+    this.itemName = '',
+    this.uom = '',
+    this.sourceWarehouse,
+    this.targetWarehouse,
+    this.basicRate = 0,
+    String qtyText = '1',
+  }) : qtyCtrl = TextEditingController(text: qtyText);
 
   double get qty => double.tryParse(qtyCtrl.text.trim()) ?? 0;
 

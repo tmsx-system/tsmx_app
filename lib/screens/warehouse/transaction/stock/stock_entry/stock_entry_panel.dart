@@ -1,16 +1,22 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../../models/stock_entry.dart';
 import '../../../../../models/warehouse_info.dart';
 import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
+import '../../../../../utils/erp_doc_utils.dart';
 import '../../../../../widgets/erp/erp_empty_state.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
+import '../../../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../shared/warehouse_widgets.dart';
 import 'create_stock_entry_screen.dart';
+import 'stock_entry_detail_screen.dart';
 import 'stock_entry_kind.dart';
 
 class StockEntryPanel extends StatefulWidget {
@@ -27,11 +33,16 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
   Timer? _debounce;
   bool _loading = true;
   bool _canCreate = false;
+  bool _canWrite = false;
+  bool _canSubmit = false;
+  bool _canPrint = false;
+  bool _actionBusy = false;
   String? _error;
   late String _stockEntryType;
   String? _company;
   String? _fromWarehouse;
   String? _toWarehouse;
+  bool _isOpeningDetail = false;
 
   @override
   void initState() {
@@ -66,18 +77,27 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     _company ??= state.preferredCompany(
       state.stockCompanies.map((entry) => entry.key),
     );
-    await _load(includeCreatePermission: true);
+    await _load(includePermissions: true);
   }
 
-  Future<void> _load({bool includeCreatePermission = false}) async {
+  Future<void> _load({bool includePermissions = false}) async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final state = context.read<WarehouseStockState>();
-      if (includeCreatePermission) {
-        _canCreate = await state.canCreateDoctype('Stock Entry');
+      if (includePermissions) {
+        final permissions = await Future.wait([
+          state.canCreateDoctype('Stock Entry'),
+          state.canWriteDoctype('Stock Entry'),
+          state.canSubmitDoctype('Stock Entry'),
+          state.canPrintDoctype('Stock Entry'),
+        ]);
+        _canCreate = permissions[0];
+        _canWrite = permissions[1];
+        _canSubmit = permissions[2];
+        _canPrint = permissions[3];
       }
       await state.refreshStockEntries(
         stockEntryType: _stockEntryType,
@@ -141,6 +161,24 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     await _load();
   }
 
+  Future<void> _openDetail(StockEntry row) async {
+    if (_isOpeningDetail) return;
+    _isOpeningDetail = true;
+    setState(() {});
+    try {
+      if (!mounted) return;
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => StockEntryDetailScreen(stockEntryId: row.id),
+        ),
+      );
+    } finally {
+      _isOpeningDetail = false;
+      if (mounted) setState(() {});
+    }
+  }
+
   Future<void> _create() async {
     final state = context.read<WarehouseStockState>();
     final matched = state.stockEntryTypes.where(
@@ -161,6 +199,161 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     );
     if (created == true && mounted) await _load();
   }
+
+  bool _canEditRow(StockEntry row) => _canWrite && isDocDraft(row.docStatus);
+
+  bool _canSubmitRow(StockEntry row) => _canSubmit && isDocDraft(row.docStatus);
+
+  bool _hasRowActions(StockEntry row) =>
+      _canPrint || _canEditRow(row) || _canSubmitRow(row);
+
+  StockEntryKind _kindFor(StockEntry row) {
+    final state = context.read<WarehouseStockState>();
+    final matched = state.stockEntryTypes.where(
+      (type) => type.name == row.stockEntryType,
+    );
+    if (matched.isNotEmpty) {
+      return StockEntryKind.fromType(matched.first);
+    }
+    if (row.stockEntryType == widget.kind.name) return widget.kind;
+    return StockEntryKind(
+      name: row.stockEntryType.isEmpty ? widget.kind.name : row.stockEntryType,
+      purpose: widget.kind.purpose,
+    );
+  }
+
+  Future<void> _runRowAction(Future<void> Function() action) async {
+    if (_actionBusy) return;
+    setState(() => _actionBusy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<File> _writePdf(String name) async {
+    final bytes = await context
+        .read<WarehouseStockState>()
+        .downloadStockEntryPdf(name);
+    final directory = await getApplicationDocumentsDirectory();
+    final folder = Directory('${directory.path}/stock_entry_pdf');
+    if (!await folder.exists()) {
+      await folder.create(recursive: true);
+    }
+    final safeName = name
+        .trim()
+        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '-')
+        .replaceAll(RegExp(r'\s+'), '_');
+    final file = File('${folder.path}/$safeName.pdf');
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
+  }
+
+  Future<void> _sharePdf(File file, String subject) {
+    return SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path, mimeType: 'application/pdf')],
+        subject: subject,
+        text: subject,
+      ),
+    );
+  }
+
+  Future<void> _downloadPdf(StockEntry row) async {
+    await _runRowAction(() async {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Mengunduh PDF Stock Entry ${row.id}...')),
+      );
+      try {
+        final file = await _writePdf(row.id);
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('PDF tersimpan: ${file.uri.pathSegments.last}')),
+        );
+        await _sharePdf(file, 'Stock Entry ${row.id}');
+      } catch (error) {
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('Gagal download PDF: $error')),
+        );
+      }
+    });
+  }
+
+  Future<void> _printPdf(StockEntry row) async {
+    await _runRowAction(() async {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Menyiapkan print Stock Entry ${row.id}...')),
+      );
+      try {
+        final file = await _writePdf(row.id);
+        if (!mounted) return;
+        await _sharePdf(file, 'Print Stock Entry ${row.id}');
+      } catch (error) {
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('Gagal print PDF: $error')),
+        );
+      }
+    });
+  }
+
+  Future<void> _editRow(StockEntry row) async {
+    if (!_canEditRow(row) || _actionBusy) return;
+    await _runRowAction(() async {
+      final saved = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CreateStockEntryScreen(
+            kind: _kindFor(row),
+            company: row.company,
+            sourceWarehouse: row.fromWarehouse,
+            targetWarehouse: row.toWarehouse,
+            existingName: row.id,
+          ),
+        ),
+      );
+      if (saved == true && mounted) await _load();
+    });
+  }
+
+  Future<void> _submitRow(StockEntry row) async {
+    if (!_canSubmitRow(row) || _actionBusy) return;
+    final confirmed = await confirmErpAction(
+      context,
+      title: 'Submit Stock Entry?',
+      message: 'Submit ${row.id} ke ERPNext?',
+    );
+    if (!confirmed || !mounted) return;
+    await _runRowAction(() async {
+      final ok = await runErpWorkflowAction(
+        context,
+        action: () => context.read<WarehouseStockState>().submitDocument(
+          'Stock Entry',
+          row.id,
+        ),
+        successMessage: 'Stock Entry ${row.id} berhasil di-submit.',
+      );
+      if (ok && mounted) await _load();
+    });
+  }
+
+  void _onRowMenuSelected(StockEntry row, String value) {
+    switch (value) {
+      case 'download':
+        unawaited(_downloadPdf(row));
+      case 'print':
+        unawaited(_printPdf(row));
+      case 'edit':
+        unawaited(_editRow(row));
+      case 'submit':
+        unawaited(_submitRow(row));
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -262,48 +455,139 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
 
   Widget _stockEntryCard(StockEntry row) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
-    child: WarehouseModernCard(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            backgroundColor: widget.kind.color.withValues(alpha: 0.12),
-            foregroundColor: widget.kind.color,
-            child: Icon(widget.kind.icon),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  row.id,
-                  style: const TextStyle(
-                    color: AppColors.navy,
-                    fontWeight: FontWeight.w900,
-                  ),
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: _isOpeningDetail ? null : () => unawaited(_openDetail(row)),
+        child: WarehouseModernCard(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: widget.kind.color.withValues(alpha: 0.12),
+                foregroundColor: widget.kind.color,
+                child: Icon(widget.kind.icon),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      row.id,
+                      style: const TextStyle(
+                        color: AppColors.navy,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        row.stockEntryType,
+                        if (row.company.isNotEmpty) row.company,
+                        row.date,
+                        _warehouseRoute(row),
+                      ].where((part) => part.trim().isNotEmpty).join('\n'),
+                      style: const TextStyle(
+                        color: AppColors.slate,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  [
-                    row.stockEntryType,
-                    if (row.company.isNotEmpty) row.company,
-                    row.date,
-                    _warehouseRoute(row),
-                  ].where((part) => part.trim().isNotEmpty).join('\n'),
-                  style: const TextStyle(
-                    color: AppColors.slate,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  ErpStatusBadge(statusText: row.statusText),
+                  if (_hasRowActions(row)) ...[
+                    const SizedBox(height: 4),
+                    SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: PopupMenuButton<String>(
+                        tooltip: 'Actions',
+                        padding: EdgeInsets.zero,
+                        enabled: !_actionBusy,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        color: AppColors.white,
+                        icon: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.more_vert_rounded,
+                            color: AppColors.slate,
+                            size: 19,
+                          ),
+                        ),
+                        onSelected: (value) => _onRowMenuSelected(row, value),
+                        itemBuilder: (context) => [
+                          if (_canPrint)
+                            const PopupMenuItem(
+                              value: 'download',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.picture_as_pdf_outlined, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Download PDF'),
+                                ],
+                              ),
+                            ),
+                          if (_canPrint)
+                            const PopupMenuItem(
+                              value: 'print',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.print_outlined, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Print'),
+                                ],
+                              ),
+                            ),
+                          if (_canEditRow(row))
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit_outlined, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Edit'),
+                                ],
+                              ),
+                            ),
+                          if (_canSubmitRow(row))
+                            const PopupMenuItem(
+                              value: 'submit',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle_outline_rounded,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text('Submit'),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          ErpStatusBadge(statusText: row.statusText),
-        ],
+        ),
       ),
     ),
   );

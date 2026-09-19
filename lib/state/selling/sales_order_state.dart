@@ -521,8 +521,10 @@ class SalesOrderState extends AppStateProxyNotifier {
     );
   }
 
-  Future<List<SalesCustomerOption>> fetchSalesCustomers() {
-    return appState.fetchSalesCustomers();
+  Future<List<SalesCustomerOption>> fetchSalesCustomers({
+    bool forceRefresh = false,
+  }) {
+    return appState.fetchSalesCustomers(forceRefresh: forceRefresh);
   }
 
   Future<SalesOrder> createSalesOrder({

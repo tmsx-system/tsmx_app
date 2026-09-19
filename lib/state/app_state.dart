@@ -1943,7 +1943,9 @@ class AppState with ChangeNotifier {
     }
   }
 
-  Future<List<SalesCustomerOption>> fetchSalesCustomers() async {
+  Future<List<SalesCustomerOption>> fetchSalesCustomers({
+    bool forceRefresh = false,
+  }) async {
     if (_isSampleMode) {
       return const [
         SalesCustomerOption(
@@ -1978,21 +1980,31 @@ class AppState with ChangeNotifier {
     final cacheKey = _salesCustomersCacheKey(
       salesPerson: _shouldScopeSalesData ? _currentSalesPerson : null,
     );
-    final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
-    if (cachedCustomers != null) return cachedCustomers;
-
-    final customers = await _customerService.fetchSalesCustomers(
-      salesPerson: _shouldScopeSalesData ? _currentSalesPerson : null,
-    );
-    if (!_shouldScopeSalesData || customers.isNotEmpty) {
-      await _writeSalesCustomersToDb(cacheKey, customers);
-      return customers;
+    if (!forceRefresh) {
+      final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
+      if (cachedCustomers != null) return cachedCustomers;
     }
-    final fallbackCustomers = await _fetchSalesCustomersFromSalesDocuments(
-      _currentSalesPerson!.trim(),
-    );
-    await _writeSalesCustomersToDb(cacheKey, fallbackCustomers);
-    return fallbackCustomers;
+
+    try {
+      final customers = await _customerService.fetchSalesCustomers(
+        salesPerson: _shouldScopeSalesData ? _currentSalesPerson : null,
+      );
+      if (!_shouldScopeSalesData || customers.isNotEmpty) {
+        await _writeSalesCustomersToDb(cacheKey, customers);
+        return customers;
+      }
+      final fallbackCustomers = await _fetchSalesCustomersFromSalesDocuments(
+        _currentSalesPerson!.trim(),
+      );
+      await _writeSalesCustomersToDb(cacheKey, fallbackCustomers);
+      return fallbackCustomers;
+    } catch (error) {
+      if (forceRefresh) {
+        final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
+        if (cachedCustomers != null) return cachedCustomers;
+      }
+      rethrow;
+    }
   }
 
   Future<List<SalesCustomerOption>?> _readSalesCustomersFromDb(

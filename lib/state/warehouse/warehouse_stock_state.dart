@@ -118,6 +118,25 @@ class WarehouseStockState extends AppStateProxyNotifier {
     return appState.canCreateDoctype(doctype);
   }
 
+  Future<bool> canWriteDoctype(String doctype) {
+    return appState.canWriteDoctype(doctype);
+  }
+
+  Future<bool> canSubmitDoctype(String doctype) {
+    return appState.canSubmitDoctype(doctype);
+  }
+
+  Future<bool> canPrintDoctype(String doctype) {
+    return appState.canPrintDoctype(doctype);
+  }
+
+  Future<List<int>> downloadStockEntryPdf(String name) {
+    return appState.frappeService.downloadPrintPdf(
+      doctype: 'Stock Entry',
+      name: name,
+    );
+  }
+
   @override
   void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
     if (didAuthScopeChange(
@@ -1023,6 +1042,51 @@ class WarehouseStockState extends AppStateProxyNotifier {
     notifyListeners();
     await refreshStockEntries();
     return entry;
+  }
+
+  Future<void> updateStockEntry({
+    required String name,
+    required String stockEntryType,
+    required List<Map<String, dynamic>> items,
+    String? company,
+    DateTime? postingDate,
+    String? purpose,
+    String? fromWarehouse,
+    String? toWarehouse,
+  }) async {
+    await appState.frappeService.ensureLoggedIn();
+    final id = name.trim();
+    if (id.isEmpty) {
+      throw Exception('Stock Entry tidak valid.');
+    }
+    await appState.frappeService.updateDocument('Stock Entry', id, {
+      'stock_entry_type': stockEntryType,
+      'purpose': (purpose ?? stockEntryType).trim(),
+      if (company?.trim().isNotEmpty == true) 'company': company!.trim(),
+      'posting_date': DateRangePresets.toFrappeDate(
+        postingDate ?? DateTime.now(),
+      ),
+      if (fromWarehouse?.trim().isNotEmpty == true)
+        'from_warehouse': fromWarehouse!.trim()
+      else
+        'from_warehouse': '',
+      if (toWarehouse?.trim().isNotEmpty == true)
+        'to_warehouse': toWarehouse!.trim()
+      else
+        'to_warehouse': '',
+      'items': items,
+    });
+    await refreshStockEntries();
+  }
+
+  Future<StockEntryDetail> fetchStockEntryDetail(String name) async {
+    await appState.frappeService.ensureLoggedIn();
+    final id = name.trim();
+    if (id.isEmpty) {
+      throw Exception('Stock Entry tidak valid.');
+    }
+    final doc = await appState.frappeService.fetchDocument('Stock Entry', id);
+    return StockEntryDetail.fromJson(doc);
   }
 
   Future<Map<String, dynamic>> createStockReconciliation({

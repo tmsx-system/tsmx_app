@@ -2323,7 +2323,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
           .catchError((_) => <String, dynamic>{});
       final salesCustomersFuture = _loadSelector<List<SalesCustomerOption>>(
         label: 'Customer / Sales Team',
-        load: appState.fetchSalesCustomers,
+        load: () => appState.fetchSalesCustomers(forceRefresh: true),
         fallback: const [],
         errors: selectorErrors,
       );

@@ -61,7 +61,7 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
     try {
       final customers = await context
           .read<CustomerState>()
-          .fetchSalesCustomers();
+          .fetchSalesCustomers(forceRefresh: true);
       if (!mounted) return;
       setState(() {
         _customers = customers;

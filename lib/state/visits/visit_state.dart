@@ -24,8 +24,10 @@ class VisitState extends AppStateProxyNotifier {
   SalesVisit? get activeSpgVisit => appState.activeSpgVisit;
   VisitLocationPoint? get latestVisitLocation => appState.latestVisitLocation;
 
-  Future<List<SalesCustomerOption>> fetchSalesCustomers() {
-    return appState.fetchSalesCustomers();
+  Future<List<SalesCustomerOption>> fetchSalesCustomers({
+    bool forceRefresh = false,
+  }) {
+    return appState.fetchSalesCustomers(forceRefresh: forceRefresh);
   }
 
   Future<List<SpgCustomerOption>> fetchScheduledSpgCustomers({
