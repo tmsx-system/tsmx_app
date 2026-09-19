@@ -3,23 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../../state/logistics/logistics_delivery_state.dart';
 import '../../state/logistics/logistics_overview_state.dart';
-import '../../state/logistics/logistics_tracking_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/responsive/responsive_layout.dart';
 import '../shared/role_main_screen.dart';
-import 'logistics_delivery_tab.dart';
+import 'logistics_operations_tab.dart';
 import 'logistics_overview_tab.dart';
-import 'logistics_tracking_tab.dart';
 
 class LogisticsMainScreen extends StatefulWidget {
-  final bool trackingOnly;
-  final bool deliveryOnly;
-
-  const LogisticsMainScreen({
-    super.key,
-    this.trackingOnly = false,
-    this.deliveryOnly = false,
-  });
+  const LogisticsMainScreen({super.key});
 
   @override
   State<LogisticsMainScreen> createState() => _LogisticsMainScreenState();
@@ -75,27 +66,22 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
     String key,
     _LogisticsDoctypePermissions permissions,
   ) async {
-    if (!permissions.canReadDeliveryNote || !_loadedTabs.add(key)) return;
-    switch (key) {
-      case 'home':
-        await context.read<LogisticsOverviewState>().refreshDeliveryNotes();
-        break;
-      case 'tracking':
-        await context.read<LogisticsTrackingState>().refreshDeliveryNotes();
-        break;
-      case 'delivery':
-        await context.read<LogisticsDeliveryState>().refreshDeliveryNotes();
-        break;
+    if (!_loadedTabs.add(key)) return;
+    if (key == 'home' && permissions.canReadDeliveryNote) {
+      if (!context.mounted) return;
+      await context.read<LogisticsOverviewState>().refreshDeliveryNotes();
+    }
+    if (key == 'ops' && permissions.canReadDeliveryNote) {
+      if (!context.mounted) return;
+      await context.read<LogisticsDeliveryState>().refreshDeliveryNotes();
     }
   }
 
   List<_LogisticsMenuEntry> _buildMenuEntries(
     _LogisticsDoctypePermissions permissions,
   ) {
-    if (!permissions.canReadDeliveryNote) return const [];
-
     final entries = <_LogisticsMenuEntry>[];
-    if (!widget.trackingOnly && !widget.deliveryOnly) {
+    if (permissions.canReadDeliveryNote) {
       entries.add(
         _LogisticsMenuEntry(
           key: 'home',
@@ -104,34 +90,20 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
             selectedIcon: Icon(Icons.home_rounded),
             label: 'Beranda',
           ),
-          builder: (onMenuSelected) =>
-              LogisticsOverviewTab(onMenuSelected: onMenuSelected),
+          builder: (_) => const LogisticsOverviewTab(),
         ),
       );
     }
-    if (!widget.deliveryOnly) {
+    if (permissions.canUseOps) {
       entries.add(
         const _LogisticsMenuEntry(
-          key: 'tracking',
+          key: 'ops',
           destination: NavigationDestination(
-            icon: Icon(Icons.route_outlined),
-            selectedIcon: Icon(Icons.route_rounded),
-            label: 'Armada',
+            icon: Icon(Icons.local_shipping_outlined),
+            selectedIcon: Icon(Icons.local_shipping_rounded),
+            label: 'Transaksi',
           ),
-          builder: _trackingTab,
-        ),
-      );
-    }
-    if (!widget.trackingOnly) {
-      entries.add(
-        const _LogisticsMenuEntry(
-          key: 'delivery',
-          destination: NavigationDestination(
-            icon: Icon(Icons.assignment_turned_in_outlined),
-            selectedIcon: Icon(Icons.assignment_turned_in_rounded),
-            label: 'Delivery',
-          ),
-          builder: _deliveryTab,
+          builder: _operationsTab,
         ),
       );
     }
@@ -142,37 +114,39 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
     final state = context.read<LogisticsOverviewState>();
     final results = await Future.wait([
       state.canReadDoctype('Delivery Note'),
-      state.canWriteDoctype('Delivery Note'),
-      state.canReadDoctype('File'),
-      state.canCreateDoctype('File'),
+      state.canReadDoctype('Delivery Trip'),
+      state.canReadDoctype('Driver'),
+      state.canReadDoctype('Vehicle'),
     ]);
-    final permissions = _LogisticsDoctypePermissions(
+    return _LogisticsDoctypePermissions(
       canReadDeliveryNote: results[0],
-      canWriteDeliveryNote: results[1],
-      canReadFile: results[2],
-      canCreateFile: results[3],
+      canReadDeliveryTrip: results[1],
+      canReadDriver: results[2],
+      canReadVehicle: results[3],
     );
-    return permissions;
   }
 }
 
-Widget _trackingTab(ValueChanged<int> _) => const LogisticsTrackingTab();
-Widget _deliveryTab(ValueChanged<int> _) => const LogisticsDeliveryTab();
+Widget _operationsTab(ValueChanged<int> _) => const LogisticsOperationsTab();
 
 class _LogisticsDoctypePermissions {
   final bool canReadDeliveryNote;
-  final bool canWriteDeliveryNote;
-  final bool canReadFile;
-  final bool canCreateFile;
+  final bool canReadDeliveryTrip;
+  final bool canReadDriver;
+  final bool canReadVehicle;
 
   const _LogisticsDoctypePermissions({
     required this.canReadDeliveryNote,
-    required this.canWriteDeliveryNote,
-    required this.canReadFile,
-    required this.canCreateFile,
+    required this.canReadDeliveryTrip,
+    required this.canReadDriver,
+    required this.canReadVehicle,
   });
 
-  bool get hasAnyAccess => canReadDeliveryNote;
+  bool get canUseOps =>
+      canReadDeliveryNote ||
+      canReadDeliveryTrip ||
+      canReadDriver ||
+      canReadVehicle;
 }
 
 class _LogisticsMenuEntry {

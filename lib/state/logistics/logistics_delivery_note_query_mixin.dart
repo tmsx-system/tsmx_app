@@ -52,6 +52,42 @@ mixin LogisticsDeliveryNoteQueryMixin on AppStateProxyNotifier {
     return DeliveryNote.fromJson(doc);
   }
 
+  Future<List<Map<String, dynamic>>> fetchLogisticsDocuments({
+    required String doctype,
+    required List<String> fields,
+    String? search,
+  }) async {
+    await appState.frappeService.ensureLoggedIn();
+    final filters = <List<dynamic>>[
+      ..._companyScopeFilters(appState.sellingCompanyFilter),
+    ];
+    final query = search?.trim() ?? '';
+    if (query.isNotEmpty) {
+      filters.add(['name', 'like', '%$query%']);
+    }
+
+    try {
+      return await _fetchResourceWithFieldFallback(
+        doctype: doctype,
+        fields: fields,
+        limit: documentPageSize,
+        orderBy: 'modified desc',
+        filters: filters,
+      );
+    } catch (_) {
+      final withoutCompany = filters
+          .where((filter) => filter.isEmpty || filter.first != 'company')
+          .toList();
+      return _fetchResourceWithFieldFallback(
+        doctype: doctype,
+        fields: fields,
+        limit: documentPageSize,
+        orderBy: 'modified desc',
+        filters: withoutCompany,
+      );
+    }
+  }
+
   List<List<dynamic>> _sellingPeriodFilters(String dateField) {
     return [
       [

@@ -5,12 +5,11 @@ import '../../models/delivery_note.dart';
 import '../../state/logistics/logistics_overview_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_format.dart';
+import 'logistics_operations_tab.dart';
 import 'logistics_widgets.dart';
 
 class LogisticsOverviewTab extends StatelessWidget {
-  final ValueChanged<int> onMenuSelected;
-
-  const LogisticsOverviewTab({super.key, required this.onMenuSelected});
+  const LogisticsOverviewTab({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +72,10 @@ class LogisticsOverviewTab extends StatelessWidget {
                 compact: true,
               ),
             ],
-            onTap: () => onMenuSelected(2),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DeliveryNoteListScreen()),
+            ),
           ),
           logisticsSectionGap,
           LogisticsMetricGrid(

@@ -231,7 +231,6 @@ class _DashboardModuleLauncherState extends State<DashboardModuleLauncher> {
       case MobileModule.warehouse:
         return _countLabel(stockState.warehouses.length, 'gudang');
       case MobileModule.logistics:
-      case 'logistics.delivery':
         final outstanding = logisticsState.deliveryNotes.where((doc) {
           return doc.statusKey != DeliveryNoteStatusKey.completed &&
               doc.statusKey != DeliveryNoteStatusKey.cancelled &&
@@ -401,10 +400,6 @@ class _ModuleEntryTile extends StatelessWidget {
       return (background: const Color(0xFF0EA5E9), foreground: Colors.white);
     case MobileModule.logistics:
       return (background: const Color(0xFFEA580C), foreground: Colors.white);
-    case 'logistics.tracking':
-      return (background: const Color(0xFFF59E0B), foreground: Colors.white);
-    case 'logistics.delivery':
-      return (background: const Color(0xFF16A34A), foreground: Colors.white);
     case MobileModule.finance:
       return (background: const Color(0xFF2563EB), foreground: Colors.white);
     case MobileModule.accounting:

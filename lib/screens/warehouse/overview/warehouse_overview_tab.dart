@@ -55,47 +55,6 @@ class WarehouseOverviewTab extends StatelessWidget {
               ),
             ],
           ),
-          warehouseSectionGap,
-          const Text(
-            'Menu Gudang',
-            style: TextStyle(
-              color: AppColors.navy,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: WarehouseActionGridCard(
-                  title: 'Transaksi',
-                  subtitle: 'Stock Entry dan stock opname',
-                  icon: Icons.swap_horiz_rounded,
-                  color: warehouseOrange,
-                  onTap: () => onMenuSelected(1),
-                ),
-              ),
-              Expanded(
-                child: WarehouseActionGridCard(
-                  title: 'Stok',
-                  subtitle: 'Realtime, valuasi, aging',
-                  icon: Icons.inventory_2_rounded,
-                  color: warehouseGreen,
-                  onTap: () => onMenuSelected(2),
-                ),
-              ),
-              Expanded(
-                child: WarehouseActionGridCard(
-                  title: 'QC',
-                  subtitle: 'Inspection dan approval',
-                  icon: Icons.fact_check_rounded,
-                  color: warehouseBlue,
-                  onTap: () => onMenuSelected(3),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
