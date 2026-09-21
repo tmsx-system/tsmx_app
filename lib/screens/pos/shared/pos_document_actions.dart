@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../state/pos/pos_state.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
+import '../../../widgets/print/erp_bluetooth_print.dart';
 
 class PosDoctypeActionPermissions {
   final bool canWrite;
@@ -110,6 +111,17 @@ List<Widget> buildPosDocumentActionButtons({
           successMessage: '$doctype $name berhasil di-submit.',
           action: () =>
               context.read<PosState>().submitPosDocument(doctype, name),
+        ),
+      ),
+    if (canPrint)
+      erpActionButton(
+        label: 'Print',
+        icon: Icons.print_outlined,
+        onPressed: () => printErpPdfViaBluetooth(
+          context,
+          downloadPdf: () =>
+              context.read<PosState>().downloadPosPdf(doctype, name),
+          title: '$doctype $name',
         ),
       ),
     if (canPrint)

@@ -14,6 +14,7 @@ class ErpDocumentCard extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDuplicate;
   final VoidCallback? onDownload;
+  final VoidCallback? onPrint;
   final VoidCallback? onDelete;
 
   const ErpDocumentCard({
@@ -28,6 +29,7 @@ class ErpDocumentCard extends StatelessWidget {
     this.onEdit,
     this.onDuplicate,
     this.onDownload,
+    this.onPrint,
     this.onDelete,
   });
 
@@ -112,6 +114,7 @@ class ErpDocumentCard extends StatelessWidget {
                       ErpStatusBadge(statusText: statusText),
                       if (onEdit != null ||
                           onDuplicate != null ||
+                          onPrint != null ||
                           onDownload != null ||
                           onDelete != null) ...[
                         const SizedBox(height: 4),
@@ -141,6 +144,7 @@ class ErpDocumentCard extends StatelessWidget {
                             onSelected: (value) {
                               if (value == 'edit') onEdit?.call();
                               if (value == 'duplicate') onDuplicate?.call();
+                              if (value == 'print') onPrint?.call();
                               if (value == 'download') onDownload?.call();
                               if (value == 'delete') onDelete?.call();
                             },
@@ -164,6 +168,17 @@ class ErpDocumentCard extends StatelessWidget {
                                       Icon(Icons.copy_rounded, size: 18),
                                       SizedBox(width: 8),
                                       Text('Duplicate'),
+                                    ],
+                                  ),
+                                ),
+                              if (onPrint != null)
+                                const PopupMenuItem(
+                                  value: 'print',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.print_outlined, size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Print'),
                                     ],
                                   ),
                                 ),

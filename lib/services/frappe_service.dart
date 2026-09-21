@@ -368,10 +368,38 @@ class FrappeService {
     );
     if (!header.startsWith('%PDF')) {
       throw Exception(
-        'ERPNext tidak mengembalikan PDF. Pastikan Print Format Sales Order tersedia.',
+        'ERPNext tidak mengembalikan PDF. Pastikan Print Format tersedia.',
       );
     }
     return response.bodyBytes;
+  }
+
+  Future<String?> resolvePrintFormat(
+    String doctype, {
+    String? preferred,
+  }) async {
+    final wanted = preferred?.trim();
+    try {
+      final rows = await fetchResource(
+        'Print Format',
+        fields: const ['name'],
+        filters: [
+          ['doc_type', '=', doctype],
+          ['disabled', '=', 0],
+        ],
+        limit: 50,
+      );
+      final names = [
+        for (final row in rows)
+          if ((row['name']?.toString().trim() ?? '').isNotEmpty)
+            row['name'].toString().trim(),
+      ];
+      if (wanted != null && names.contains(wanted)) return wanted;
+      for (final name in names) {
+        if (name.toLowerCase().contains('struk')) return name;
+      }
+    } catch (_) {}
+    return wanted;
   }
 
   Future<void> updateDocument(

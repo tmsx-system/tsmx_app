@@ -15,6 +15,7 @@ import '../../../../../widgets/erp/erp_empty_state.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
 import '../../../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../shared/warehouse_widgets.dart';
+import '../../../../../widgets/print/erp_bluetooth_print.dart';
 import 'create_stock_entry_screen.dart';
 import 'stock_entry_detail_screen.dart';
 import 'stock_entry_kind.dart';
@@ -284,20 +285,13 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
 
   Future<void> _printPdf(StockEntry row) async {
     await _runRowAction(() async {
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
-        SnackBar(content: Text('Menyiapkan print Stock Entry ${row.id}...')),
+      await printErpPdfViaBluetooth(
+        context,
+        downloadPdf: () => context
+            .read<WarehouseStockState>()
+            .downloadStockEntryPdf(row.id),
+        title: 'Stock Entry ${row.id}',
       );
-      try {
-        final file = await _writePdf(row.id);
-        if (!mounted) return;
-        await _sharePdf(file, 'Print Stock Entry ${row.id}');
-      } catch (error) {
-        if (!mounted) return;
-        messenger.showSnackBar(
-          SnackBar(content: Text('Gagal print PDF: $error')),
-        );
-      }
     });
   }
 

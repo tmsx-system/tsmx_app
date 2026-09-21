@@ -7,6 +7,7 @@ import '../../state/profile/profile_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/responsive/responsive_layout.dart';
 import '../auth/login_screen.dart';
+import '../settings/bluetooth_printer_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool showBackButton;
@@ -368,6 +369,32 @@ class _ProfileScreenState extends State<ProfileScreen>
             const SizedBox(height: 14),
             _buildSalesMappingCard(appState),
           ],
+          const SizedBox(height: 14),
+          _SectionCard(
+            title: 'Printer Bluetooth',
+            subtitle: 'Panda TM / thermal printer untuk tombol Print',
+            icon: Icons.print_outlined,
+            accent: _accentSky,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.print_rounded, color: AppColors.primary),
+                title: const Text(
+                  'Pilih printer HP',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text(
+                  'Pair di Settings Bluetooth, lalu pilih di sini',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const BluetoothPrinterScreen(),
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: _openAppUpdate,

@@ -13,6 +13,7 @@ import '../../../../../utils/erp_format.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
 import '../../../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../shared/warehouse_widgets.dart';
+import '../../../../../widgets/print/erp_bluetooth_print.dart';
 import 'create_stock_entry_screen.dart';
 import 'stock_entry_kind.dart';
 
@@ -155,25 +156,11 @@ class _StockEntryDetailScreenState extends State<StockEntryDetailScreen> {
 
   Future<void> _printPdf() async {
     await _runBusy(() async {
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Menyiapkan print Stock Entry ${widget.stockEntryId}...'),
-        ),
+      await printErpPdfViaBluetooth(
+        context,
+        downloadPdf: _downloadPdfBytes,
+        title: 'Stock Entry ${widget.stockEntryId}',
       );
-      try {
-        final file = await _writePdfFile(await _downloadPdfBytes());
-        if (!mounted) return;
-        await _sharePdf(
-          file,
-          subject: 'Print Stock Entry ${widget.stockEntryId}',
-        );
-      } catch (error) {
-        if (!mounted) return;
-        messenger.showSnackBar(
-          SnackBar(content: Text('Gagal print PDF: $error')),
-        );
-      }
     });
   }
 

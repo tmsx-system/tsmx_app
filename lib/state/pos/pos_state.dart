@@ -775,8 +775,25 @@ class PosState extends AppStateProxyNotifier {
     return created['name']?.toString() ?? '';
   }
 
-  Future<List<int>> downloadPosPdf(String doctype, String name) {
-    return frappeService.downloadPrintPdf(doctype: doctype, name: name);
+  Future<List<int>> downloadPosPdf(String doctype, String name) async {
+    final format = await frappeService.resolvePrintFormat(
+      doctype,
+      preferred: doctype == 'POS Invoice' ? 'Struk POS' : null,
+    );
+    try {
+      return await frappeService.downloadPrintPdf(
+        doctype: doctype,
+        name: name,
+        printFormat: format,
+        noLetterhead: true,
+      );
+    } catch (_) {
+      return frappeService.downloadPrintPdf(
+        doctype: doctype,
+        name: name,
+        noLetterhead: true,
+      );
+    }
   }
 
   Future<bool> canWriteDoctype(String doctype) =>

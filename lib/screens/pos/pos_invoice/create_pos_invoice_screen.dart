@@ -7,7 +7,7 @@ import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
-import '../shared/pos_document_actions.dart';
+import '../../../widgets/print/erp_bluetooth_print.dart';
 import '../shared/pos_ui.dart';
 
 class CreatePosInvoiceScreen extends StatefulWidget {
@@ -848,7 +848,12 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       );
       return;
     }
-    await downloadAndSharePosPdf(context, 'POS Invoice', name);
+    await printErpPdfViaBluetooth(
+      context,
+      downloadPdf: () =>
+          context.read<PosState>().downloadPosPdf('POS Invoice', name),
+      title: 'POS Invoice $name',
+    );
   }
 
   Future<void> _save({bool andPrint = false}) async {

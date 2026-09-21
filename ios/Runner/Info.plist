@@ -8,6 +8,10 @@
 		<string>Digunakan untuk memilih foto order atau customer.</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>Digunakan untuk validasi lokasi dan check-in kunjungan customer.</string>
+		<key>NSBluetoothAlwaysUsageDescription</key>
+		<string>Digunakan untuk mencetak dokumen ke printer Bluetooth thermal.</string>
+		<key>NSBluetoothPeripheralUsageDescription</key>
+		<string>Digunakan untuk mencetak dokumen ke printer Bluetooth thermal.</string>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>CFBundleDevelopmentRegion</key>

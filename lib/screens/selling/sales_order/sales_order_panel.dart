@@ -16,6 +16,7 @@ import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../../../widgets/erp/erp_status_chip_bar.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
+import '../../../widgets/print/erp_bluetooth_print.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import 'create_sales_order_screen.dart';
 import '../shared/selling_document_detail_sheet.dart';
@@ -413,6 +414,18 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
               icon: Icons.copy_rounded,
               onPressed: () => _duplicateSo(detail, closeSheet: true),
             ),
+            if (_canPrintSalesOrder)
+              erpActionButton(
+                label: 'Print',
+                icon: Icons.print_outlined,
+                onPressed: () => printErpPdfViaBluetooth(
+                  context,
+                  downloadPdf: () => context
+                      .read<SalesOrderState>()
+                      .downloadSalesOrderPdf(detail.id),
+                  title: 'Sales Order ${detail.id}',
+                ),
+              ),
             if (_canPrintSalesOrder)
               erpActionButton(
                 label: 'Download PDF / Share',

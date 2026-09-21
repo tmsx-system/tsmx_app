@@ -12,6 +12,7 @@ import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/pos_document_actions.dart';
+import '../../../widgets/print/erp_bluetooth_print.dart';
 import '../shared/pos_list_filters.dart';
 import '../shared/pos_ui.dart';
 import 'create_pos_invoice_screen.dart';
@@ -246,6 +247,15 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
                               context,
                               _doctype,
                               invoice.id,
+                            )
+                        : null,
+                    onPrint: _permissions.canPrint
+                        ? () => printErpPdfViaBluetooth(
+                              context,
+                              downloadPdf: () => context
+                                  .read<PosState>()
+                                  .downloadPosPdf(_doctype, invoice.id),
+                              title: 'POS Invoice ${invoice.id}',
                             )
                         : null,
                   ),
