@@ -49,16 +49,22 @@ class MobileAccess {
   }
 
   Set<String> get enabledModules {
+    Set<String> modules;
     if (MobileRoleRegistry.isFullAccessRole(normalizedRole)) {
-      return MobileRoleRegistry.fullAccessModules();
+      modules = MobileRoleRegistry.fullAccessModules();
+    } else if (permissionModules != null) {
+      modules = {...permissionModules!, MobileModule.dashboard};
+    } else {
+      modules = {MobileModule.dashboard};
     }
 
-    final fromPermissions = permissionModules;
-    if (fromPermissions != null) {
-      return {...fromPermissions, MobileModule.dashboard};
+    const locked = {MobileModule.finance, MobileModule.accounting};
+    if (MobileRoleRegistry.canUseFinanceAccounting(normalizedRole)) {
+      modules = {...modules, ...locked};
+    } else {
+      modules = modules.difference(locked);
     }
-
-    return {MobileModule.dashboard};
+    return modules;
   }
 
   @override

@@ -77,6 +77,9 @@ class MobileRole {
   static const unassigned = 'Unassigned';
 
   static const fullAccessRoles = {administrator};
+
+  /// Temporary: Finance/Accounting app modules are admin/developer only.
+  static const financeAccountingRoles = {administrator, developer};
 }
 
 class MobileModuleMeta {
@@ -309,14 +312,6 @@ class MobileRoleRegistry {
       module: MobileModule.approvals,
       readDoctypes: ['ToDo'],
     ),
-    MobileModuleAccessRule(
-      module: MobileModule.finance,
-      readDoctypes: ['Payment Entry', 'Sales Invoice', 'Purchase Invoice'],
-    ),
-    MobileModuleAccessRule(
-      module: MobileModule.accounting,
-      readDoctypes: ['GL Entry', 'Journal Entry', 'Account'],
-    ),
   ];
 
   static const _frappeRoleAliases = <String, String>{
@@ -495,6 +490,12 @@ class MobileRoleRegistry {
 
   static bool isFullAccessRole(String role) {
     return MobileRole.fullAccessRoles.contains(normalizeRoleProfile(role));
+  }
+
+  static bool canUseFinanceAccounting(String role) {
+    return MobileRole.financeAccountingRoles.contains(
+      normalizeRoleProfile(role),
+    );
   }
 
   static MobileModuleMeta? metaFor(String module) {
