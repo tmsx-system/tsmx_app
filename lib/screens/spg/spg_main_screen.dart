@@ -4,7 +4,6 @@ import '../shared/role_main_screen.dart';
 import 'daily_activity/spg_daily_activity_tab.dart';
 import 'daily_report/spg_daily_report_tab.dart';
 import 'overview/spg_overview_tab.dart';
-import 'visit/spg_visit_tab.dart';
 
 class SpgMainScreen extends StatelessWidget {
   const SpgMainScreen({super.key});
@@ -21,11 +20,6 @@ class SpgMainScreen extends StatelessWidget {
           label: 'Beranda',
         ),
         NavigationDestination(
-          icon: Icon(Icons.location_on_outlined),
-          selectedIcon: Icon(Icons.location_on_rounded),
-          label: 'Absensi',
-        ),
-        NavigationDestination(
           icon: Icon(Icons.photo_camera_outlined),
           selectedIcon: Icon(Icons.photo_camera_rounded),
           label: 'Foto',
@@ -38,7 +32,6 @@ class SpgMainScreen extends StatelessWidget {
       ],
       screensBuilder: (onMenuSelected) => [
         SpgOverviewTab(onMenuSelected: onMenuSelected),
-        const SpgVisitTab(showCheckIn: false),
         const SpgDailyActivityTab(),
         const SpgDailyReportTab(),
       ],

@@ -12,7 +12,6 @@ import '../tabs/stock_tab.dart';
 import 'sales_order/create_sales_order_screen.dart';
 import 'customer/customer_request_tab.dart';
 import 'overview/sales_overview_tab.dart';
-import 'visit/sales_visit_tab.dart';
 import '../spg/spg_main_screen.dart';
 
 class SalesMainScreen extends StatefulWidget {
@@ -175,19 +174,6 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
         ),
       );
     }
-    if (permissions.canUseSalesVisit) {
-      entries.add(
-        _SalesMenuEntry(
-          key: 'visit',
-          destination: const NavigationDestination(
-            icon: Icon(Icons.location_on_outlined),
-            selectedIcon: Icon(Icons.location_on_rounded),
-            label: 'Absensi',
-          ),
-          builder: (_) => const SalesVisitTab(showCheckIn: false),
-        ),
-      );
-    }
     return entries;
   }
 
@@ -199,10 +185,6 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       state.canReadDoctype('Delivery Note'),
       state.canReadDoctype('Sales Invoice'),
       state.canReadDoctype('Customer'),
-      state.canReadDoctype('Sales Visit'),
-      state.canCreateDoctype('Sales Visit'),
-      state.canReadDoctype('Employee Checkin'),
-      state.canCreateDoctype('Employee Checkin'),
       state.canReadDoctype('Bin'),
     ]);
     return _SalesDoctypePermissions(
@@ -211,11 +193,7 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       canReadDeliveryNote: results[2],
       canReadSalesInvoice: results[3],
       canReadCustomer: results[4],
-      canReadSalesVisit: results[5],
-      canCreateSalesVisit: results[6],
-      canReadEmployeeCheckin: results[7],
-      canCreateEmployeeCheckin: results[8],
-      canReadStock: results[9],
+      canReadStock: results[5],
     );
   }
 
@@ -270,10 +248,6 @@ class _SalesDoctypePermissions {
   final bool canReadDeliveryNote;
   final bool canReadSalesInvoice;
   final bool canReadCustomer;
-  final bool canReadSalesVisit;
-  final bool canCreateSalesVisit;
-  final bool canReadEmployeeCheckin;
-  final bool canCreateEmployeeCheckin;
   final bool canReadStock;
 
   const _SalesDoctypePermissions({
@@ -282,10 +256,6 @@ class _SalesDoctypePermissions {
     required this.canReadDeliveryNote,
     required this.canReadSalesInvoice,
     required this.canReadCustomer,
-    required this.canReadSalesVisit,
-    required this.canCreateSalesVisit,
-    required this.canReadEmployeeCheckin,
-    required this.canCreateEmployeeCheckin,
     required this.canReadStock,
   });
 
@@ -295,19 +265,12 @@ class _SalesDoctypePermissions {
     if (canReadSalesInvoice) 'si',
   ];
 
-  bool get canUseSalesVisit =>
-      canReadSalesVisit ||
-      canCreateSalesVisit ||
-      canReadEmployeeCheckin ||
-      canCreateEmployeeCheckin;
-
   bool get hasAnyAccess =>
       canReadSalesOrder ||
       canReadDeliveryNote ||
       canReadSalesInvoice ||
       canReadCustomer ||
-      canReadStock ||
-      canUseSalesVisit;
+      canReadStock;
 }
 
 class _SalesMenuEntry {
@@ -333,7 +296,6 @@ class _SalesMenuRouter {
       1 => 'order',
       2 => 'stock',
       3 => 'customer',
-      4 => 'visit',
       _ => 'home',
     };
     final index = entries.indexWhere((entry) => entry.key == key);

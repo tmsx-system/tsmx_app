@@ -16,7 +16,6 @@ import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
 import '../collection/collection_widgets.dart';
 import '../shared/sales_ui.dart';
-import '../visit/sales_visit_tab.dart';
 
 enum _DailySalesDocType { salesOrder, deliveryNote, salesInvoice }
 
@@ -57,12 +56,9 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
   List<CollectionRanking> _ranking = const [];
   bool _topCustomersLoading = true;
   bool _rankingLoading = true;
-  bool _visitLoading = true;
   int _rankingRequestVersion = 0;
   String? _topCustomersError;
   String? _rankingError;
-  String? _visitError;
-  String? _profileImageUrl;
 
   @override
   void initState() {
@@ -140,8 +136,6 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
 
   void _startInitialLoads() {
     _loadDailyReport();
-    _loadVisitSnapshot();
-    _loadProfileImage();
     _startDeferredRankingLoad();
   }
 
@@ -425,115 +419,9 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     }
   }
 
-  Future<void> _reloadReports({
-    bool forceRemote = false,
-    bool includeVisitSnapshot = false,
-  }) async {
-    await Future.wait([
-      _loadDailyReport(forceRemote: forceRemote),
-      if (includeVisitSnapshot) _loadVisitSnapshot(forceRefresh: forceRemote),
-    ]);
+  Future<void> _reloadReports({bool forceRemote = false}) async {
+    await _loadDailyReport(forceRemote: forceRemote);
     _startDeferredRankingLoad(forceRemote: forceRemote);
-  }
-
-  Future<void> _loadVisitSnapshot({bool forceRefresh = false}) async {
-    final state = context.read<SalesOverviewState>();
-    if (!state.canUseSales) {
-      if (mounted) {
-        setState(() {
-          _visitLoading = false;
-          _visitError = null;
-        });
-      }
-      return;
-    }
-    setState(() {
-      _visitLoading = true;
-      _visitError = null;
-    });
-    try {
-      await state.fetchSalesVisits(forceRefresh: forceRefresh);
-      if (!mounted) return;
-      setState(() => _visitError = null);
-    } catch (error) {
-      if (!mounted) return;
-      if (_isSalesVisitPermissionError(error)) {
-        setState(() {
-          _visitError = null;
-        });
-      } else {
-        setState(() => _visitError = error.toString());
-      }
-    } finally {
-      if (mounted) setState(() => _visitLoading = false);
-    }
-  }
-
-  Future<void> _loadProfileImage() async {
-    final state = context.read<SalesOverviewState>();
-    try {
-      final profile = await state.fetchCurrentUserProfile();
-      final image = profile['user_image']?.toString().trim() ?? '';
-      if (!mounted || image.isEmpty) return;
-      final imageUrl =
-          image.startsWith('http://') || image.startsWith('https://')
-          ? image
-          : Uri.parse(state.frappeService.baseUrl).resolve(image).toString();
-      setState(() => _profileImageUrl = imageUrl);
-    } catch (_) {
-      if (mounted) setState(() => _profileImageUrl = null);
-    }
-  }
-
-  bool _isSalesVisitPermissionError(Object error) {
-    final message = error.toString().toLowerCase();
-    return message.contains('akses erpnext tidak diizinkan') ||
-        message.contains('permissionerror') ||
-        message.contains('not permitted') ||
-        message.contains('insufficient permission');
-  }
-
-  Future<void> _openVisitCheckIn() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const SalesVisitCheckInScreen()));
-    if (!mounted) return;
-    await _loadVisitSnapshot();
-  }
-
-  Future<void> _checkOutActiveVisit(SalesVisit visit) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Selesaikan absensi?'),
-        content: Text('Checkout dari ${visit.customer}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Kembali'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Check-out'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() {
-      _visitLoading = true;
-      _visitError = null;
-    });
-    try {
-      await context.read<SalesOverviewState>().checkOutSalesVisit(visit.id);
-      await _loadVisitSnapshot();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _visitError = error.toString();
-        _visitLoading = false;
-      });
-    }
   }
 
   Future<DailySalesReport?> _readDailyReport(String key) async {
@@ -914,26 +802,11 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     return RefreshIndicator(
       onRefresh: () async {
         await state.refreshDataForCurrentRole();
-        await _reloadReports(forceRemote: true, includeVisitSnapshot: true);
+        await _reloadReports(forceRemote: true);
       },
       child: ListView(
         padding: SalesUi.screenPaddingOf(context),
         children: [
-          if (state.canUseSales) ...[
-            _SalesVisitActionCard(
-              active: state.activeSalesVisit,
-              profileImageUrl: _profileImageUrl,
-              loading: _visitLoading,
-              error: _visitError,
-              onCheckIn: _openVisitCheckIn,
-              onCheckOut: state.activeSalesVisit == null
-                  ? null
-                  : () => _checkOutActiveVisit(state.activeSalesVisit!),
-              onOpenHistory: () => widget.onMenuSelected(4),
-            ),
-            SalesUi.gap(18),
-          ],
-
           _SalesOverviewFilterCard(
             date: _filterDate,
             selectedCompany: _selectedCompany,
@@ -1033,214 +906,6 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
               ),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SalesVisitActionCard extends StatelessWidget {
-  const _SalesVisitActionCard({
-    required this.active,
-    required this.profileImageUrl,
-    required this.loading,
-    required this.error,
-    required this.onCheckIn,
-    required this.onCheckOut,
-    required this.onOpenHistory,
-  });
-
-  final SalesVisit? active;
-  final String? profileImageUrl;
-  final bool loading;
-  final String? error;
-  final VoidCallback onCheckIn;
-  final VoidCallback? onCheckOut;
-  final VoidCallback onOpenHistory;
-
-  @override
-  Widget build(BuildContext context) {
-    final activeVisit = active;
-    final now = DateTime.now();
-    final greeting = now.hour < 11
-        ? 'Good Morning,'
-        : now.hour < 15
-        ? 'Good Afternoon,'
-        : 'Good Evening,';
-    final title = activeVisit?.customer.trim().isNotEmpty == true
-        ? activeVisit!.customer
-        : 'Sales Team!';
-    final statusText = activeVisit == null
-        ? 'You are not Check-in yet Today.'
-        : 'You are checked in today.';
-    final timeText = activeVisit == null
-        ? ''
-        : (activeVisit.checkInTime.isEmpty ? '-' : activeVisit.checkInTime);
-    return SalesInfoCard(
-      padding: const EdgeInsets.all(12),
-      accent: _salesGreen,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Stack(
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          greeting,
-                          style: const TextStyle(
-                            color: AppColors.slate,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.navy,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          statusText,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.slate,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (timeText.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            timeText,
-                            style: const TextStyle(
-                              color: _salesBlue,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: onOpenHistory,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          clipBehavior: Clip.antiAlias,
-                          decoration: BoxDecoration(
-                            color: AppColors.softGreen,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: AppColors.white,
-                              width: 2,
-                            ),
-                          ),
-                          child: profileImageUrl == null
-                              ? const Icon(
-                                  Icons.person_rounded,
-                                  color: _salesGreen,
-                                  size: 24,
-                                )
-                              : Image.network(
-                                  profileImageUrl!,
-                                  cacheWidth: 96,
-                                  cacheHeight: 96,
-                                  filterQuality: FilterQuality.medium,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => const Icon(
-                                    Icons.person_rounded,
-                                    color: _salesGreen,
-                                    size: 24,
-                                  ),
-                                ),
-                        ),
-                        Positioned(
-                          right: -2,
-                          bottom: -2,
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            decoration: BoxDecoration(
-                              color: AppColors.softGreen,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppColors.white,
-                                width: 2,
-                              ),
-                            ),
-                            child: Icon(
-                              activeVisit == null
-                                  ? Icons.location_on_outlined
-                                  : Icons.near_me_rounded,
-                              color: _salesGreen,
-                              size: 11,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (loading)
-                const Positioned(
-                  right: 0,
-                  top: 0,
-                  child: SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: activeVisit == null ? onCheckIn : onCheckOut,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _salesGreen,
-                side: BorderSide(color: _salesGreen.withValues(alpha: 0.45)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 11),
-              ),
-              icon: Icon(
-                activeVisit == null
-                    ? Icons.login_rounded
-                    : Icons.logout_rounded,
-                size: 17,
-              ),
-              label: Text(
-                activeVisit == null ? 'Check In' : 'Check Out',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );

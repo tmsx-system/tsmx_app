@@ -10,6 +10,7 @@ import '../models/sales_order_approval.dart';
 import '../models/purchase_order.dart';
 import '../models/delivery_note.dart';
 import '../models/delivery_activity_log.dart';
+import '../models/employee_attendance.dart';
 import '../models/erp_approval_todo.dart';
 import '../models/sales_invoice.dart';
 import '../models/purchase_receipt.dart';
@@ -4017,6 +4018,125 @@ class AppState with ChangeNotifier {
       );
     }
     return created;
+  }
+
+  Future<EmployeeAttendanceSnapshot> fetchTodayEmployeeAttendance() async {
+    if (_isSampleMode) {
+      return EmployeeAttendanceSnapshot(
+        employee: _currentEmployee ?? 'EMP-SAMPLE-001',
+        employeeName:
+            _currentEmployeeProfile['employee_name']?.toString() ?? 'Sample',
+        lastLogType: _sampleAttendanceLogType,
+        lastInTime: _sampleAttendanceInTime,
+        lastOutTime: _sampleAttendanceOutTime,
+      );
+    }
+
+    Map<String, dynamic> profile;
+    try {
+      profile = await _ensureCurrentEmployee();
+    } catch (_) {
+      return const EmployeeAttendanceSnapshot();
+    }
+    final employee = _currentEmployee?.trim() ?? '';
+    if (employee.isEmpty) {
+      return const EmployeeAttendanceSnapshot();
+    }
+
+    final start = '${_formatFrappeDate(DateTime.now())} 00:00:00';
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await _frappeService.fetchResource(
+        'Employee Checkin',
+        fields: const ['name', 'time', 'log_type', 'employee'],
+        filters: [
+          ['employee', '=', employee],
+          ['time', '>=', start],
+        ],
+        orderBy: 'time desc',
+        limit: 50,
+      );
+    } catch (_) {
+      rows = await _frappeService.fetchResource(
+        'Employee Checkin',
+        fields: const ['name', 'time', 'log_type'],
+        filters: [
+          ['employee', '=', employee],
+          ['time', '>=', start],
+        ],
+        orderBy: 'time desc',
+        limit: 50,
+      );
+    }
+
+    String lastLogType = '';
+    String lastInTime = '';
+    String lastOutTime = '';
+    for (final row in rows) {
+      final logType = row['log_type']?.toString().trim().toUpperCase() ?? '';
+      final time = row['time']?.toString() ?? '';
+      if (lastLogType.isEmpty && (logType == 'IN' || logType == 'OUT')) {
+        lastLogType = logType;
+      }
+      if (logType == 'IN' && lastInTime.isEmpty) lastInTime = time;
+      if (logType == 'OUT' && lastOutTime.isEmpty) lastOutTime = time;
+      if (lastInTime.isNotEmpty && lastOutTime.isNotEmpty && lastLogType.isNotEmpty) {
+        break;
+      }
+    }
+
+    return EmployeeAttendanceSnapshot(
+      employee: employee,
+      employeeName: profile['employee_name']?.toString() ?? '',
+      lastLogType: lastLogType,
+      lastInTime: lastInTime,
+      lastOutTime: lastOutTime,
+    );
+  }
+
+  String _sampleAttendanceLogType = '';
+  String _sampleAttendanceInTime = '';
+  String _sampleAttendanceOutTime = '';
+
+  Future<EmployeeAttendanceSnapshot> punchEmployeeAttendance({
+    required String logType,
+  }) async {
+    final type = logType.trim().toUpperCase();
+    if (type != 'IN' && type != 'OUT') {
+      throw Exception('Tipe absensi tidak valid.');
+    }
+
+    if (_isSampleMode) {
+      final now = _formatFrappeDateTime(DateTime.now());
+      _sampleAttendanceLogType = type;
+      if (type == 'IN') {
+        _sampleAttendanceInTime = now;
+      } else {
+        _sampleAttendanceOutTime = now;
+      }
+      notifyListeners();
+      return fetchTodayEmployeeAttendance();
+    }
+
+    await _ensureCurrentEmployee();
+    final employee = _currentEmployee?.trim() ?? '';
+    if (employee.isEmpty) {
+      throw Exception(
+        'User belum terhubung ke Employee. Isi Employee.user_id di ERPNext.',
+      );
+    }
+
+    final point = await getCurrentVisitLocation();
+    await _createEmployeeCheckin(
+      employee: employee,
+      logType: type,
+      time: _formatFrappeDateTime(DateTime.now()),
+      point: point,
+      target: null,
+      distance: null,
+    );
+    notifyListeners();
+    return fetchTodayEmployeeAttendance();
   }
 
   String _formatFrappeDateTime(DateTime value) {

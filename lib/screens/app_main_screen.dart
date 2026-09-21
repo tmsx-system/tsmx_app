@@ -35,7 +35,6 @@ import 'selling/sales_order/create_sales_order_screen.dart';
 import 'spg/daily_activity/create_spg_daily_activity_screen.dart';
 import 'spg/daily_report/create_spg_daily_report_screen.dart';
 import 'todo/todo_list.dart';
-import 'visits/attendance_tab.dart';
 
 class AppMainScreen extends StatefulWidget {
   const AppMainScreen({super.key});
@@ -324,8 +323,6 @@ class _AppMainScreenState extends State<AppMainScreen> {
     final canCreateSalesInvoice = await authState.canCreateDoctype(
       'Sales Invoice',
     );
-    final canCreateSalesVisit = await authState.canCreateDoctype('Sales Visit');
-    final canCreateSpgVisit = await authState.canCreateDoctype('SPG Visit');
     final canCreateSpgDailyActivity = await authState.canCreateDoctype(
       'SPG Daily Activity',
     );
@@ -356,15 +353,6 @@ class _AppMainScreenState extends State<AppMainScreen> {
           icon: Icons.point_of_sale_rounded,
           onTap: () => _openSalesOrderCreate(context),
         ),
-      if (canCreateSalesVisit)
-        _QuickCreateAction(
-          title: 'Check-in Sales',
-          subtitle: 'Absensi customer sales',
-          icon: Icons.add_location_alt_rounded,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const AttendanceCheckInScreen()),
-          ),
-        ),
       if (canCreateDeliveryNote)
         _QuickCreateAction(
           title: 'Delivery Note',
@@ -383,22 +371,10 @@ class _AppMainScreenState extends State<AppMainScreen> {
 
     final canUseSpgCreateFallback =
         authState.canUseSpg &&
-        !canCreateSpgVisit &&
         !canCreateSpgDailyActivity &&
         !canCreateSpgDailyReport;
 
     final spgActions = <_QuickCreateAction>[
-      if (canCreateSpgVisit || canUseSpgCreateFallback)
-        _QuickCreateAction(
-          title: 'Check-in SPG',
-          subtitle: 'Absensi customer sesuai schedule',
-          icon: Icons.add_location_alt_rounded,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const AttendanceCheckInScreen(spgMode: true),
-            ),
-          ),
-        ),
       if (canCreateSpgDailyActivity || canUseSpgCreateFallback)
         _QuickCreateAction(
           title: 'Report Foto',

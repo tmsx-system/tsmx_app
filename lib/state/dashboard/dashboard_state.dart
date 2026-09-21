@@ -1,3 +1,4 @@
+import '../../models/employee_attendance.dart';
 import '../../models/mobile_boot.dart';
 import '../../services/frappe_service.dart';
 import '../../utils/mobile_access.dart';
@@ -8,6 +9,16 @@ class DashboardState extends AppStateProxyNotifier {
     startWatchingAppState();
   }
 
+  EmployeeAttendanceSnapshot _attendance = const EmployeeAttendanceSnapshot();
+  bool _attendanceLoading = false;
+  bool _attendancePunching = false;
+  String? _attendanceError;
+
+  EmployeeAttendanceSnapshot get attendance => _attendance;
+  bool get attendanceLoading => _attendanceLoading;
+  bool get attendancePunching => _attendancePunching;
+  String? get attendanceError => _attendanceError;
+
   @override
   List<Object?> get watchFields => [
     appState.isAuthenticated,
@@ -16,6 +27,7 @@ class DashboardState extends AppStateProxyNotifier {
     appState.mobileBoot,
     appState.selectedSiteBaseUrl,
     appState.currentUser,
+    appState.currentEmployee,
     appState.mobileAccess.enabledModules.join(','),
   ];
 
@@ -33,4 +45,44 @@ class DashboardState extends AppStateProxyNotifier {
   bool get canUseWarehouse => appState.canUseWarehouse;
   bool get canUseLogistics => appState.canUseLogistics;
   bool get canUseApprovals => appState.canUseApprovals;
+
+  Future<void> refreshAttendance() async {
+    _attendanceLoading = true;
+    _attendanceError = null;
+    notifyListeners();
+    try {
+      _attendance = await appState.fetchTodayEmployeeAttendance();
+    } catch (error) {
+      _attendanceError = error
+          .toString()
+          .replaceFirst(RegExp(r'^Exception:\s*'), '')
+          .replaceAll(RegExp(r'<[^>]*>'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    } finally {
+      _attendanceLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> punchAttendance(String logType) async {
+    if (_attendancePunching) return;
+    _attendancePunching = true;
+    _attendanceError = null;
+    notifyListeners();
+    try {
+      _attendance = await appState.punchEmployeeAttendance(logType: logType);
+    } catch (error) {
+      _attendanceError = error
+          .toString()
+          .replaceFirst(RegExp(r'^Exception:\s*'), '')
+          .replaceAll(RegExp(r'<[^>]*>'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      rethrow;
+    } finally {
+      _attendancePunching = false;
+      notifyListeners();
+    }
+  }
 }
