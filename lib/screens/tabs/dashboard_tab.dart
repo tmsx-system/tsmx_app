@@ -69,213 +69,274 @@ class _DashboardTabState extends State<DashboardTab> {
   }
 }
 
-class _DashboardGreetingCard extends StatelessWidget {
+class _DashboardGreetingCard extends StatefulWidget {
   final DashboardState appState;
 
   const _DashboardGreetingCard({required this.appState});
 
   @override
+  State<_DashboardGreetingCard> createState() => _DashboardGreetingCardState();
+}
+
+class _DashboardGreetingCardState extends State<_DashboardGreetingCard> {
+  Timer? _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clock?.cancel();
+    super.dispose();
+  }
+
+  DashboardState get appState => widget.appState;
+
+  @override
   Widget build(BuildContext context) {
-    final rawName = appState.mobileBoot?.fullName.trim();
-    final fallback = appState.currentUser?.split('@').first.trim() ?? 'User';
-    final name = rawName?.isNotEmpty == true ? rawName! : fallback;
-    final site = appState.selectedSiteName.trim().isNotEmpty
-        ? appState.selectedSiteName.trim()
-        : 'Workspace';
+    final fullName = appState.userFullName.trim();
     final attendance = appState.attendance;
-    final reminder = _reminderText();
+    final checkedIn = attendance.needsCheckOut;
+    final timeLabel = checkedIn
+        ? _toAmPm(attendance.lastInDisplay)
+        : _nowAmPm();
+    final imageUrl = appState.userImageUrl;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(22, 22, 18, 20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 18, 18),
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.08),
-            blurRadius: 26,
-            offset: const Offset(0, 12),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppColors.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Hello,',
-                      style: TextStyle(
-                        color: AppColors.slate.withValues(alpha: 0.95),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      _greetingWord(),
                       style: const TextStyle(
                         color: AppColors.navy,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    InkWell(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ProfileScreen(),
+                    if (fullName.isNotEmpty)
+                      Text(
+                        '$fullName!',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          height: 1.2,
                         ),
                       ),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          site,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.slate,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
+                    const SizedBox(height: 10),
+                    if (appState.attendanceLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: LinearProgressIndicator(minHeight: 3),
+                      )
+                    else if (appState.attendanceError != null)
+                      Text(
+                        appState.attendanceError!,
+                        style: const TextStyle(
+                          color: AppColors.danger,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
+                        ),
+                      )
+                    else ...[
+                      Text(
+                        checkedIn
+                            ? 'You started your day at.'
+                            : 'Ready to start your day?',
+                        style: const TextStyle(
+                          color: AppColors.slate,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      Text(
+                        timeLabel,
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          height: 1.15,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: 16),
-              Transform.rotate(
-                angle: 0.18,
-                child: Container(
-                  width: 88,
-                  height: 88,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF9FE9E6),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF14B8A6).withValues(alpha: 0.18),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.inventory_2_rounded,
-                    color: AppColors.white,
-                    size: 42,
-                  ),
+              const SizedBox(width: 12),
+              InkWell(
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                  );
+                  if (!mounted) return;
+                  await appState.refreshAttendance();
+                },
+                customBorder: const CircleBorder(),
+                child: CircleAvatar(
+                  radius: 34,
+                  backgroundColor: AppColors.softGreen,
+                  child: imageUrl == null
+                      ? Text(
+                          fullName.isEmpty ? '?' : fullName[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        )
+                      : ClipOval(
+                          child: Image.network(
+                            imageUrl,
+                            width: 68,
+                            height: 68,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Text(
+                              fullName.isEmpty
+                                  ? '?'
+                                  : fullName[0].toUpperCase(),
+                              style: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Pengingat absensi',
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (appState.attendanceLoading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: LinearProgressIndicator(minHeight: 3),
-                  )
-                else
-                  Text(
-                    appState.attendanceError ?? reminder,
-                    style: TextStyle(
-                      color: appState.attendanceError == null
-                          ? AppColors.slate
-                          : AppColors.danger,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      height: 1.35,
-                    ),
-                  ),
-                if (attendance.hasEmployee &&
-                    appState.attendanceError == null) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
+          if (attendance.hasEmployee && appState.attendanceError == null) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: checkedIn
+                  ? OutlinedButton(
                       onPressed: appState.attendancePunching
                           ? null
-                          : () => _punch(
-                              context,
-                              attendance.needsCheckOut ? 'OUT' : 'IN',
+                          : () => _punch(context, 'OUT'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: const BorderSide(
+                          color: AppColors.primary,
+                          width: 1.4,
+                        ),
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            appState.attendancePunching
+                                ? 'Saving...'
+                                : 'Check Out',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.sentiment_satisfied_alt_rounded,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    )
+                  : FilledButton(
+                      onPressed: appState.attendancePunching
+                          ? null
+                          : () => _punch(context, 'IN'),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: AppColors.white,
-                        minimumSize: const Size.fromHeight(44),
+                        minimumSize: const Size.fromHeight(48),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(999),
                         ),
                       ),
-                      icon: Icon(
-                        attendance.needsCheckOut
-                            ? Icons.logout_rounded
-                            : Icons.login_rounded,
-                        size: 18,
-                      ),
-                      label: Text(
-                        appState.attendancePunching
-                            ? 'Menyimpan...'
-                            : (attendance.needsCheckOut
-                                  ? 'Check-out'
-                                  : 'Check-in'),
-                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            appState.attendancePunching
+                                ? 'Saving...'
+                                : 'Check In',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.sentiment_satisfied_alt_rounded,
+                            size: 20,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ],
             ),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  String _reminderText() {
-    final attendance = appState.attendance;
-    if (!attendance.hasEmployee) {
-      return 'User login belum terhubung ke Employee. Hubungkan User ID di ERPNext untuk absensi.';
-    }
-    if (attendance.needsCheckOut) {
-      final time = attendance.lastInDisplay;
-      return time.isEmpty
-          ? 'Anda sudah check-in. Jangan lupa check-out.'
-          : 'Check-in pukul $time. Pengingat: lakukan check-out saat selesai.';
-    }
-    if (attendance.lastOutDisplay.isNotEmpty) {
-      return 'Check-out pukul ${attendance.lastOutDisplay}. Check-in lagi jika shift berikutnya dimulai.';
-    }
-    return 'Belum check-in hari ini. Lakukan check-in untuk memulai absensi.';
+  String _greetingWord() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning,';
+    if (hour < 17) return 'Good Afternoon,';
+    return 'Good Evening,';
+  }
+
+  String _nowAmPm() => _formatAmPm(DateTime.now());
+
+  String _toAmPm(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return _nowAmPm();
+    final parts = value.split(':');
+    if (parts.length < 2) return value;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return value;
+    return _formatAmPm(DateTime(2000, 1, 1, hour, minute));
+  }
+
+  String _formatAmPm(DateTime value) {
+    final suffix = value.hour >= 12 ? 'PM' : 'AM';
+    final hour12 = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour12:$minute $suffix';
   }
 
   Future<void> _punch(BuildContext context, String logType) async {

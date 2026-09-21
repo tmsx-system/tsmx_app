@@ -13,11 +13,15 @@ class DashboardState extends AppStateProxyNotifier {
   bool _attendanceLoading = false;
   bool _attendancePunching = false;
   String? _attendanceError;
+  String _userFullName = '';
+  String? _userImageUrl;
 
   EmployeeAttendanceSnapshot get attendance => _attendance;
   bool get attendanceLoading => _attendanceLoading;
   bool get attendancePunching => _attendancePunching;
   String? get attendanceError => _attendanceError;
+  String get userFullName => _userFullName;
+  String? get userImageUrl => _userImageUrl;
 
   @override
   List<Object?> get watchFields => [
@@ -51,7 +55,12 @@ class DashboardState extends AppStateProxyNotifier {
     _attendanceError = null;
     notifyListeners();
     try {
-      _attendance = await appState.fetchTodayEmployeeAttendance();
+      await Future.wait([
+        _loadUserIdentity(),
+        appState.fetchTodayEmployeeAttendance().then((value) {
+          _attendance = value;
+        }),
+      ]);
     } catch (error) {
       _attendanceError = error
           .toString()
@@ -63,6 +72,26 @@ class DashboardState extends AppStateProxyNotifier {
       _attendanceLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _loadUserIdentity() async {
+    try {
+      final profile = await appState.fetchCurrentUserProfile();
+      _userFullName = profile['full_name']?.toString().trim() ?? '';
+      _userImageUrl = _absoluteImageUrl(
+        profile['user_image']?.toString().trim() ?? '',
+      );
+    } catch (_) {}
+  }
+
+  String? _absoluteImageUrl(String image) {
+    if (image.isEmpty) return null;
+    if (image.startsWith('http://') || image.startsWith('https://')) {
+      return image;
+    }
+    final base = appState.selectedSiteBaseUrl.trim();
+    if (base.isEmpty) return image;
+    return Uri.parse(base).resolve(image).toString();
   }
 
   Future<void> punchAttendance(String logType) async {
