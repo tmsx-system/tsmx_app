@@ -299,6 +299,7 @@ class FrappeService {
     required String filePath,
     required String doctype,
     required String documentName,
+    String? fieldname,
   }) async {
     await ensureLoggedIn();
     final request = http.MultipartRequest(
@@ -313,6 +314,8 @@ class FrappeService {
       'doctype': doctype,
       'docname': documentName,
       'is_private': '0',
+      if (fieldname != null && fieldname.trim().isNotEmpty)
+        'fieldname': fieldname.trim(),
     });
     request.files.add(await http.MultipartFile.fromPath('file', filePath));
 

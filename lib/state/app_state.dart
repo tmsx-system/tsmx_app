@@ -4040,12 +4040,23 @@ class AppState with ChangeNotifier {
       created = await _frappeService.createDocument('Employee Checkin', payload);
     }
     final name = created['name']?.toString() ?? '';
-    if (name.isNotEmpty && photoPath?.trim().isNotEmpty == true) {
-      await uploadAttachment(
-        doctype: 'Employee Checkin',
-        documentName: name,
-        filePath: photoPath!,
-      );
+    if (name.isEmpty || photoPath?.trim().isEmpty == true) {
+      return created;
+    }
+    final uploaded = await _frappeService.uploadFile(
+      filePath: photoPath!,
+      doctype: 'Employee Checkin',
+      documentName: name,
+      fieldname: 'attendance_image',
+    );
+    final fileUrl = uploaded['file_url']?.toString().trim() ?? '';
+    if (fileUrl.isEmpty) return created;
+    try {
+      await _frappeService.updateDocument('Employee Checkin', name, {
+        'attendance_image': fileUrl,
+      });
+    } catch (_) {
+      // File already attached; fieldname may differ on some sites.
     }
     return created;
   }
