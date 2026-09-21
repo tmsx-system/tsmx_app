@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -17,15 +16,8 @@ class PairedPrinter {
   const PairedPrinter({required this.name, required this.mac});
 }
 
-class ReceiptPage {
-  final Uint8List previewPng;
-  final Uint8List printPng;
-
-  const ReceiptPage({required this.previewPng, required this.printPng});
-}
-
-List<Uint8List>? _fitReceiptIsolate(Uint8List png) {
-  return BluetoothPrinterService.fitReceiptPng(png, PaperSize.mm58.width);
+Uint8List? _fitPrintIsolate(Uint8List png) {
+  return BluetoothPrinterService.fitPrintPng(png, PaperSize.mm58.width);
 }
 
 class BluetoothPrinterService {
@@ -34,7 +26,6 @@ class BluetoothPrinterService {
   static const _macKey = 'tmsx_bt_printer_mac';
   static const _nameKey = 'tmsx_bt_printer_name';
   static const _maxBtWrite = 12 * 1024;
-  static const _previewWidth = 720;
 
   static Future<PairedPrinter?> savedPrinter() async {
     final prefs = await SharedPreferences.getInstance();
@@ -115,31 +106,29 @@ class BluetoothPrinterService {
     }
   }
 
-  static Future<List<ReceiptPage>> prepareReceiptImages(List<int> pdfBytes) async {
-    final pages = <ReceiptPage>[];
+  static Future<List<Uint8List>> preparePrintImages(List<int> pdfBytes) async {
+    final pages = <Uint8List>[];
     await for (final page in Printing.raster(
       Uint8List.fromList(pdfBytes),
-      dpi: 140.0,
+      dpi: 200.0,
     )) {
       final png = await page.toPng();
-      final pair = await compute(_fitReceiptIsolate, png);
-      if (pair != null && pair.length == 2) {
-        pages.add(ReceiptPage(previewPng: pair[0], printPng: pair[1]));
-      }
+      final prepared = await compute(_fitPrintIsolate, png);
+      if (prepared != null) pages.add(prepared);
     }
     if (pages.isEmpty) {
-      throw Exception('PDF dari ERPNext tidak bisa diubah menjadi preview struk.');
+      throw Exception('PDF dari ERPNext tidak bisa diubah menjadi data cetak.');
     }
     return pages;
   }
 
-  static Future<void> printReceiptImages(List<ReceiptPage> pages) async {
+  static Future<void> printReceiptImages(List<Uint8List> pages) async {
     final printer = await savedPrinter();
     if (printer == null) {
       throw Exception('Printer Bluetooth belum dipilih.');
     }
     if (pages.isEmpty) {
-      throw Exception('Preview struk kosong.');
+      throw Exception('Data cetak kosong.');
     }
     await connect(printer.mac);
 
@@ -153,7 +142,7 @@ class BluetoothPrinterService {
 
     for (var i = 0; i < pages.length; i++) {
       if (i > 0) await _writeCommand(generator.feed(1));
-      final strips = _escPosImageStrips(pages[i].printPng, paper.width);
+      final strips = _escPosImageStrips(pages[i], paper.width);
       for (final strip in strips) {
         await _writeCommand(strip, settleMs: 220);
       }
@@ -166,47 +155,27 @@ class BluetoothPrinterService {
   }
 
   static Future<void> printPdfBytes(List<int> pdfBytes) async {
-    final pages = await prepareReceiptImages(pdfBytes);
+    final pages = await preparePrintImages(pdfBytes);
     await printReceiptImages(pages);
   }
 
-  static List<Uint8List>? fitReceiptPng(Uint8List png, int targetWidth) {
+  static Uint8List? fitPrintPng(Uint8List png, int targetWidth) {
     final decoded = img.decodeImage(png);
     if (decoded == null) return null;
     var work = decoded.numChannels == 4 ? _flattenWhite(decoded) : decoded;
-    if (work.width > _previewWidth) {
+    work = _trimWhitespace(work);
+
+    final width = targetWidth - (targetWidth % 8);
+    if (work.width != width) {
       work = img.copyResize(
         work,
-        width: _previewWidth,
-        interpolation: img.Interpolation.linear,
+        width: width,
+        interpolation: img.Interpolation.cubic,
       );
     }
     work = img.grayscale(work);
-    work = _trimWhitespace(work);
-
-    final preview = work.width > _previewWidth
-        ? img.copyResize(
-            work,
-            width: _previewWidth,
-            interpolation: img.Interpolation.linear,
-          )
-        : work;
-
-    final width = targetWidth - (targetWidth % 8);
-    var printImage = work;
-    if (printImage.width != width) {
-      printImage = img.copyResize(
-        printImage,
-        width: width,
-        interpolation: img.Interpolation.linear,
-      );
-    }
-    printImage = img.luminanceThreshold(printImage, threshold: 0.72);
-
-    return [
-      Uint8List.fromList(img.encodeJpg(preview, quality: 88)),
-      Uint8List.fromList(img.encodePng(printImage)),
-    ];
+    work = img.luminanceThreshold(work, threshold: 0.62);
+    return Uint8List.fromList(img.encodePng(work));
   }
 
   static img.Image _flattenWhite(img.Image source) {
@@ -221,14 +190,13 @@ class BluetoothPrinterService {
   }
 
   static img.Image _trimWhitespace(img.Image source) {
-    const threshold = 210;
-    const step = 2;
+    const threshold = 236;
     var minX = source.width;
     var minY = source.height;
     var maxX = -1;
     var maxY = -1;
-    for (var y = 0; y < source.height; y += step) {
-      for (var x = 0; x < source.width; x += step) {
+    for (var y = 0; y < source.height; y++) {
+      for (var x = 0; x < source.width; x++) {
         final pixel = source.getPixel(x, y);
         if ((pixel.r + pixel.g + pixel.b) / 3 >= threshold) continue;
         if (x < minX) minX = x;
@@ -238,7 +206,7 @@ class BluetoothPrinterService {
       }
     }
     if (maxX < minX || maxY < minY) return source;
-    const pad = 10;
+    const pad = 16;
     minX = math.max(0, minX - pad);
     minY = math.max(0, minY - pad);
     maxX = math.min(source.width - 1, maxX + pad);
@@ -261,7 +229,7 @@ class BluetoothPrinterService {
       work = img.copyResize(
         work,
         width: width,
-        interpolation: img.Interpolation.linear,
+        interpolation: img.Interpolation.cubic,
       );
     }
 

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../screens/settings/bluetooth_printer_screen.dart';
@@ -22,46 +24,34 @@ Future<void> printErpPdfViaBluetooth(
     }
 
     if (!context.mounted) return;
-    final status = ValueNotifier<String>('Mengunduh PDF...');
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        content: ValueListenableBuilder<String>(
-          valueListenable: status,
-          builder: (_, message, __) => Row(
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  message,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'Mengunduh print format...',
+                style: TextStyle(fontWeight: FontWeight.w700),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
-    await Future<void>.delayed(const Duration(milliseconds: 60));
 
     try {
-      final pdfBytes = await downloadPdf();
-      status.value = 'Merender struk...';
-      final pages = await BluetoothPrinterService.prepareReceiptImages(pdfBytes);
-      if (!context.mounted) {
-        status.dispose();
-        return;
-      }
+      final pdfBytes = Uint8List.fromList(await downloadPdf());
+      if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
-      await Future<void>.delayed(Duration.zero);
-      status.dispose();
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => PrintPreviewScreen(
             title: title,
-            pages: pages,
+            pdfBytes: pdfBytes,
             printerName: printer!.name,
           ),
         ),
@@ -69,9 +59,7 @@ Future<void> printErpPdfViaBluetooth(
     } catch (error) {
       if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
-        await Future<void>.delayed(Duration.zero);
       }
-      status.dispose();
       rethrow;
     }
   } catch (error) {

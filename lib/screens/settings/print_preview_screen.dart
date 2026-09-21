@@ -1,6 +1,7 @@
-import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 
 import '../../services/bluetooth_printer_service.dart';
 import '../../theme/app_colors.dart';
@@ -8,13 +9,13 @@ import 'bluetooth_printer_screen.dart';
 
 class PrintPreviewScreen extends StatefulWidget {
   final String title;
-  final List<ReceiptPage> pages;
+  final Uint8List pdfBytes;
   final String printerName;
 
   const PrintPreviewScreen({
     super.key,
     required this.title,
-    required this.pages,
+    required this.pdfBytes,
     required this.printerName,
   });
 
@@ -24,19 +25,42 @@ class PrintPreviewScreen extends StatefulWidget {
 
 class _PrintPreviewScreenState extends State<PrintPreviewScreen> {
   bool _printing = false;
-  final _transform = TransformationController();
+  List<Uint8List>? _printPages;
+  Object? _prepError;
 
   @override
-  void dispose() {
-    _transform.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _preparePrintData();
+  }
+
+  Future<void> _preparePrintData() async {
+    try {
+      final pages = await BluetoothPrinterService.preparePrintImages(
+        widget.pdfBytes,
+      );
+      if (!mounted) return;
+      setState(() {
+        _printPages = pages;
+        _prepError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _prepError = error);
+    }
   }
 
   Future<void> _print() async {
     if (_printing) return;
     setState(() => _printing = true);
     try {
-      await BluetoothPrinterService.printReceiptImages(widget.pages);
+      var pages = _printPages;
+      pages ??= await BluetoothPrinterService.preparePrintImages(
+        widget.pdfBytes,
+      );
+      if (!mounted) return;
+      _printPages = pages;
+      await BluetoothPrinterService.printReceiptImages(pages);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${widget.title} berhasil dicetak.')),
@@ -68,6 +92,7 @@ class _PrintPreviewScreenState extends State<PrintPreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final preparing = _printPages == null && _prepError == null;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -80,20 +105,13 @@ class _PrintPreviewScreenState extends State<PrintPreviewScreen> {
             fontWeight: FontWeight.w900,
           ),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Reset zoom',
-            onPressed: () => _transform.value = Matrix4.identity(),
-            icon: const Icon(Icons.fit_screen_rounded),
-          ),
-        ],
       ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Text(
-              'Cubit untuk zoom. Tampilan preview memakai resolusi tinggi; cetak tetap 58 mm.',
+              'Tampilan print format ERPNext. Ketuk dua kali untuk zoom, cubit untuk perbesar.',
               style: TextStyle(
                 color: AppColors.slate.withValues(alpha: 0.95),
                 fontWeight: FontWeight.w700,
@@ -102,44 +120,26 @@ class _PrintPreviewScreenState extends State<PrintPreviewScreen> {
             ),
           ),
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return InteractiveViewer(
-                  transformationController: _transform,
-                  constrained: false,
-                  minScale: 0.6,
-                  maxScale: 6,
-                  boundaryMargin: const EdgeInsets.all(120),
-                  child: SizedBox(
-                    width: constraints.maxWidth,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final page in widget.pages)
-                            Container(
-                              width: math.min(380, constraints.maxWidth - 32),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: AppColors.cardShadow,
-                              ),
-                              child: Image.memory(
-                                page.previewPng,
-                                fit: BoxFit.fitWidth,
-                                filterQuality: FilterQuality.high,
-                                gaplessPlayback: true,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
+            child: PdfPreview(
+              build: (_) async => widget.pdfBytes,
+              maxPageWidth: 420,
+              useActions: false,
+              allowPrinting: false,
+              allowSharing: false,
+              canChangePageFormat: false,
+              canChangeOrientation: false,
+              canDebug: false,
+              dynamicLayout: false,
+              padding: EdgeInsets.zero,
+              scrollViewDecoration: const BoxDecoration(
+                color: AppColors.background,
+              ),
+              pdfPreviewPageDecoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: AppColors.cardShadow,
+              ),
+              loadingWidget: const Center(child: CircularProgressIndicator()),
             ),
           ),
           SafeArea(
@@ -149,7 +149,9 @@ class _PrintPreviewScreenState extends State<PrintPreviewScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Printer: ${widget.printerName}',
+                    preparing
+                        ? 'Menyiapkan data cetak 58 mm...'
+                        : 'Printer: ${widget.printerName}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: AppColors.slate,
