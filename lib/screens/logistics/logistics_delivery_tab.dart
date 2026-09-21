@@ -7,7 +7,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/delivery_note.dart';
-import '../../services/sales_visit_location_service.dart';
 import '../../state/logistics/logistics_delivery_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_doc_utils.dart';
@@ -502,9 +501,7 @@ class _LogisticsDeliveryDetailScreen extends StatefulWidget {
 class _LogisticsDeliveryDetailScreenState
     extends State<_LogisticsDeliveryDetailScreen> {
   var _busy = false;
-  var _trackingBusy = false;
   var _proofRefresh = 0;
-  String? _trackingError;
 
   Future<void> _run(Future<void> Function(DeliveryNote row) action) async {
     if (_busy) return;
@@ -517,95 +514,9 @@ class _LogisticsDeliveryDetailScreenState
     }
   }
 
-  Future<void> _startTracking() async {
-    if (_trackingBusy) return;
-    setState(() {
-      _trackingBusy = true;
-      _trackingError = null;
-    });
-    try {
-      final point = await context
-          .read<LogisticsDeliveryState>()
-          .startDeliveryDriverTracking(widget.row);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Tracking driver dimulai. Akurasi ${point.accuracy.toStringAsFixed(0)} m.',
-          ),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } catch (error) {
-      if (mounted) setState(() => _trackingError = _friendlyError(error));
-    } finally {
-      if (mounted) setState(() => _trackingBusy = false);
-    }
-  }
-
-  Future<void> _updateLocation() async {
-    if (_trackingBusy) return;
-    setState(() {
-      _trackingBusy = true;
-      _trackingError = null;
-    });
-    try {
-      final point = await context
-          .read<LogisticsDeliveryState>()
-          .recordDeliveryDriverLocation(widget.row);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Lokasi driver tersimpan. Akurasi ${point.accuracy.toStringAsFixed(0)} m.',
-          ),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } catch (error) {
-      if (mounted) setState(() => _trackingError = _friendlyError(error));
-    } finally {
-      if (mounted) setState(() => _trackingBusy = false);
-    }
-  }
-
-  Future<void> _stopTracking() async {
-    if (_trackingBusy) return;
-    setState(() {
-      _trackingBusy = true;
-      _trackingError = null;
-    });
-    try {
-      await context.read<LogisticsDeliveryState>().stopDeliveryDriverTracking();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Tracking driver dihentikan.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } catch (error) {
-      if (mounted) setState(() => _trackingError = _friendlyError(error));
-    } finally {
-      if (mounted) setState(() => _trackingBusy = false);
-    }
-  }
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    final appState = context.watch<LogisticsDeliveryState>();
-    final trackingThisNote = appState.activeDeliveryTrackingNote == row.id;
-    final latestPoint = appState.latestDeliveryTrackingNote == row.id
-        ? appState.latestDeliveryDriverLocation
-        : null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -753,16 +664,6 @@ class _LogisticsDeliveryDetailScreenState
               ],
             ),
             const SizedBox(height: 16),
-            _DriverTrackingCard(
-              active: trackingThisNote,
-              busy: _trackingBusy,
-              latestPoint: latestPoint,
-              error: _trackingError,
-              onStart: _startTracking,
-              onUpdate: _updateLocation,
-              onStop: _stopTracking,
-            ),
-            const SizedBox(height: 16),
             _DeliveryProofSection(
               key: ValueKey('${row.id}-$_proofRefresh'),
               deliveryNoteId: row.id,
@@ -774,195 +675,6 @@ class _LogisticsDeliveryDetailScreenState
       ),
     );
   }
-}
-
-class _DriverTrackingCard extends StatelessWidget {
-  final bool active;
-  final bool busy;
-  final VisitLocationPoint? latestPoint;
-  final String? error;
-  final VoidCallback onStart;
-  final VoidCallback onUpdate;
-  final VoidCallback onStop;
-
-  const _DriverTrackingCard({
-    required this.active,
-    required this.busy,
-    required this.latestPoint,
-    required this.error,
-    required this.onStart,
-    required this.onUpdate,
-    required this.onStop,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final point = latestPoint;
-    final capturedAt = point == null
-        ? '-'
-        : '${point.capturedAt.year.toString().padLeft(4, '0')}-'
-              '${point.capturedAt.month.toString().padLeft(2, '0')}-'
-              '${point.capturedAt.day.toString().padLeft(2, '0')} '
-              '${point.capturedAt.hour.toString().padLeft(2, '0')}:'
-              '${point.capturedAt.minute.toString().padLeft(2, '0')}';
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: active
-              ? AppColors.primary.withValues(alpha: 0.22)
-              : AppColors.border,
-        ),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: AppColors.softGreen,
-                foregroundColor: AppColors.primary,
-                child: Icon(
-                  active
-                      ? Icons.location_searching_rounded
-                      : Icons.location_on_outlined,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'GPS Tracking Driver',
-                      style: TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      active
-                          ? 'Aktif, lokasi dikirim tiap 5 menit'
-                          : 'Mulai tracking saat driver berangkat',
-                      style: const TextStyle(
-                        color: AppColors.slate,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              LogisticsStatusChip(
-                label: active ? 'Aktif' : 'Standby',
-                color: active ? AppColors.success : AppColors.slate,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              children: [
-                _trackingRow('Update terakhir', capturedAt),
-                const SizedBox(height: 8),
-                _trackingRow(
-                  'Koordinat',
-                  point == null
-                      ? '-'
-                      : '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}',
-                ),
-                const SizedBox(height: 8),
-                _trackingRow(
-                  'Akurasi',
-                  point == null
-                      ? '-'
-                      : '${point.accuracy.toStringAsFixed(0)} m',
-                ),
-              ],
-            ),
-          ),
-          if (error?.isNotEmpty == true) ...[
-            const SizedBox(height: 10),
-            Text(
-              error!,
-              style: const TextStyle(
-                color: AppColors.danger,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: busy ? null : (active ? onStop : onStart),
-                  icon: busy
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          active
-                              ? Icons.stop_rounded
-                              : Icons.play_arrow_rounded,
-                        ),
-                  label: Text(active ? 'Stop' : 'Mulai'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: busy ? null : onUpdate,
-                  icon: const Icon(Icons.my_location_rounded),
-                  label: const Text('Update'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _trackingRow(String label, String value) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      SizedBox(
-        width: 105,
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: AppColors.slate,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-      Expanded(
-        child: Text(
-          value,
-          textAlign: TextAlign.right,
-          style: const TextStyle(
-            color: AppColors.navy,
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-    ],
-  );
 }
 
 class _DetailMetricPill extends StatelessWidget {

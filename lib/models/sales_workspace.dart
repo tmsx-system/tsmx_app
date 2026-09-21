@@ -376,10 +376,18 @@ class SalesVisit {
     final customer = json['customer']?.toString() ?? '';
     final employeeCheckinIn = json['employee_checkin_in']?.toString() ?? '';
     final employeeCheckinOut = json['employee_checkin_out']?.toString() ?? '';
+    final checkInTime =
+        json['check_in_time']?.toString() ??
+        json['employee_checkin_in_time']?.toString() ??
+        '';
+    final checkOutTime =
+        json['check_out_time']?.toString() ??
+        json['employee_checkin_out_time']?.toString() ??
+        '';
     final rawStatus = json['status']?.toString().trim() ?? '';
-    final inferredStatus = employeeCheckinIn.isEmpty
+    final inferredStatus = checkInTime.isEmpty && employeeCheckinIn.isEmpty
         ? 'Draft'
-        : employeeCheckinOut.isEmpty
+        : (checkOutTime.isEmpty && employeeCheckinOut.isEmpty)
         ? 'Checked In'
         : 'Checked Out';
     return SalesVisit(
@@ -390,14 +398,8 @@ class SalesVisit {
       employee: json['employee']?.toString() ?? '',
       employeeCheckinIn: employeeCheckinIn,
       employeeCheckinOut: employeeCheckinOut,
-      checkInTime:
-          json['check_in_time']?.toString() ??
-          json['employee_checkin_in_time']?.toString() ??
-          '',
-      checkOutTime:
-          json['check_out_time']?.toString() ??
-          json['employee_checkin_out_time']?.toString() ??
-          '',
+      checkInTime: checkInTime,
+      checkOutTime: checkOutTime,
       status: rawStatus.isEmpty ? inferredStatus : rawStatus,
       notes: json['notes']?.toString() ?? '',
       journeyStartTime: json['journey_start_time']?.toString() ?? '',
@@ -423,6 +425,9 @@ class SalesVisit {
   }
 
   bool get isActive {
+    if (checkInTime.trim().isNotEmpty) {
+      return checkOutTime.trim().isEmpty;
+    }
     if (employeeCheckinIn.isNotEmpty) return employeeCheckinOut.isEmpty;
     return status.trim().toLowerCase() == 'checked in';
   }

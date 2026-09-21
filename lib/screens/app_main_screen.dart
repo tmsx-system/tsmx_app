@@ -25,6 +25,7 @@ import 'profile/profile_screen.dart';
 import 'shared/module_screen_registry.dart';
 
 import 'tabs/dashboard_tab.dart';
+import 'tabs/employee_attendance_tab.dart';
 import 'buying/purchase_order/create_purchase_order_screen.dart';
 import 'buying/purchase_invoice/create_purchase_invoice_screen.dart';
 import 'buying/purchase_receipt/create_purchase_receipt_screen.dart';
@@ -45,9 +46,13 @@ class AppMainScreen extends StatefulWidget {
 
 class _AppMainScreenState extends State<AppMainScreen> {
   static const _profileTabKey = 'profile';
+  static const _attendanceTabKey = 'attendance';
 
   int _currentIndex = 0;
   bool _pendingOpenApprovalTodo = false;
+  bool _createMenuOpen = false;
+  bool _createMenuLoading = false;
+  List<_QuickCreateGroup> _createGroups = const [];
   StreamSubscription<Map<String, dynamic>>? _notificationTapSub;
 
   @override
@@ -92,42 +97,54 @@ class _AppMainScreenState extends State<AppMainScreen> {
         destination: NavigationDestination(
           icon: const Icon(Icons.home_outlined),
           selectedIcon: const Icon(Icons.home_rounded),
-          label: _moduleLabel(state, MobileModule.dashboard, 'Beranda'),
+          label: _moduleLabel(state, MobileModule.dashboard, 'Home'),
         ),
         navIcon: Icons.home_outlined,
         selectedNavIcon: Icons.home_rounded,
       ),
     ];
 
-    if (state.canUseApprovals) {
-      final todoCount = _totalTodoCount(todoState);
-      tabs.add(
-        _MainTabItem(
-          keyName: MobileModule.approvals,
-          child: const SalesOrderApprovalScreen(
-            embedded: true,
-            title: 'Approval Dokumen',
-          ),
-          destination: NavigationDestination(
-            icon: _todoIcon(Icons.checklist_outlined, todoCount),
-            selectedIcon: _todoIcon(Icons.checklist_rounded, todoCount),
-            label: _moduleLabel(state, MobileModule.approvals, 'Todo'),
-          ),
-          navIcon: Icons.checklist_outlined,
-          selectedNavIcon: Icons.checklist_rounded,
-          badgeCount: todoCount,
-        ),
-      );
-    }
-
+    final todoCount = _totalTodoCount(todoState);
     tabs.add(
       _MainTabItem(
+        keyName: MobileModule.approvals,
+        child: const SalesOrderApprovalScreen(
+          embedded: true,
+          title: 'Approval Dokumen',
+        ),
+        destination: NavigationDestination(
+          icon: _todoIcon(Icons.assignment_outlined, todoCount),
+          selectedIcon: _todoIcon(Icons.assignment_rounded, todoCount),
+          label: _moduleLabel(state, MobileModule.approvals, 'Todo'),
+        ),
+        navIcon: Icons.assignment_outlined,
+        selectedNavIcon: Icons.assignment_rounded,
+        badgeCount: todoCount,
+      ),
+    );
+
+    tabs.add(
+      const _MainTabItem(
+        keyName: _attendanceTabKey,
+        child: EmployeeAttendanceTab(),
+        destination: NavigationDestination(
+          icon: Icon(Icons.fingerprint_outlined),
+          selectedIcon: Icon(Icons.fingerprint_rounded),
+          label: 'Absensi',
+        ),
+        navIcon: Icons.fingerprint_outlined,
+        selectedNavIcon: Icons.fingerprint_rounded,
+      ),
+    );
+
+    tabs.add(
+      const _MainTabItem(
         keyName: _profileTabKey,
-        child: const ProfileScreen(showBackButton: false),
-        destination: const NavigationDestination(
+        child: ProfileScreen(showBackButton: false),
+        destination: NavigationDestination(
           icon: Icon(Icons.person_outline_rounded),
           selectedIcon: Icon(Icons.person_rounded),
-          label: 'Profil',
+          label: 'Profile',
         ),
         navIcon: Icons.person_outline_rounded,
         selectedNavIcon: Icons.person_rounded,
@@ -151,7 +168,50 @@ class _AppMainScreenState extends State<AppMainScreen> {
   void _changeTab(int index) {
     setState(() {
       _currentIndex = index;
+      _createMenuOpen = false;
     });
+  }
+
+  void _closeCreateMenu() {
+    if (!_createMenuOpen) return;
+    setState(() => _createMenuOpen = false);
+  }
+
+  Future<void> _toggleCreateMenu() async {
+    if (_createMenuOpen) {
+      _closeCreateMenu();
+      return;
+    }
+    setState(() {
+      _createMenuOpen = true;
+      _createMenuLoading = true;
+    });
+    try {
+      final groups = await _loadQuickCreateGroups(context);
+      if (!mounted || !_createMenuOpen) return;
+      if (groups.isEmpty) {
+        setState(() => _createMenuOpen = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tidak ada aksi create untuk role ini.'),
+          ),
+        );
+        return;
+      }
+      setState(() {
+        _createGroups = groups;
+        _createMenuLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _createMenuOpen = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
   }
 
   void _handleNotificationTap(Map<String, dynamic> payload) {
@@ -205,11 +265,6 @@ class _AppMainScreenState extends State<AppMainScreen> {
 
     final tabs = _tabs(dashboardState, todoState);
     final selectedIndex = _currentIndex.clamp(0, tabs.length - 1);
-    final workspaceEntries = _workspaceEntries(dashboardState);
-    final singleWorkspace =
-        selectedIndex == 0 &&
-        workspaceEntries.length == 1 &&
-        !dashboardState.canUseApprovals;
     if (_pendingOpenApprovalTodo &&
         tabs.any((tab) => tab.keyName == MobileModule.approvals)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -222,21 +277,17 @@ class _AppMainScreenState extends State<AppMainScreen> {
       });
     }
     final selectedTab = tabs[selectedIndex];
-    if (singleWorkspace) {
-      return KeyedSubtree(
-        key: ValueKey(selectedTab.keyName),
-        child: selectedTab.child,
-      );
-    }
-    final showShellAppBar =
-        selectedTab.keyName != _profileTabKey && !singleWorkspace;
-    final showCreateFab =
-        selectedTab.keyName == MobileModule.dashboard && !singleWorkspace;
+    final showShellAppBar = selectedTab.keyName != _profileTabKey;
 
     return PopScope(
-      canPop: selectedIndex == 0,
+      canPop: selectedIndex == 0 && !_createMenuOpen,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && selectedIndex != 0) {
+        if (didPop) return;
+        if (_createMenuOpen) {
+          _closeCreateMenu();
+          return;
+        }
+        if (selectedIndex != 0) {
           _changeTab(0);
         }
       },
@@ -282,21 +333,41 @@ class _AppMainScreenState extends State<AppMainScreen> {
                   ),
                 ),
               ),
+            if (_createMenuOpen) ...[
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: _closeCreateMenu,
+                  child: ColoredBox(
+                    color: Colors.black.withValues(alpha: 0.28),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 8,
+                child: _QuickCreateMenuCard(
+                  loading: _createMenuLoading,
+                  groups: _createGroups,
+                  onActionTap: (action) async {
+                    _closeCreateMenu();
+                    await Future<void>.delayed(
+                      const Duration(milliseconds: 80),
+                    );
+                    if (!context.mounted) return;
+                    await action.onTap();
+                  },
+                ),
+              ),
+            ],
           ],
         ),
-        floatingActionButton: showCreateFab
-            ? Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _CreateButton(
-                  onTap: () => _showQuickCreateSheet(context, authState),
-                ),
-              )
-            : null,
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         bottomNavigationBar: _TmsxBottomNav(
           tabs: tabs,
           selectedIndex: selectedIndex,
+          createOpen: _createMenuOpen,
           onSelected: _changeTab,
+          onCreateTap: _toggleCreateMenu,
         ),
       ),
     );
@@ -312,10 +383,10 @@ class _AppMainScreenState extends State<AppMainScreen> {
     );
   }
 
-  Future<void> _showQuickCreateSheet(
+  Future<List<_QuickCreateGroup>> _loadQuickCreateGroups(
     BuildContext context,
-    AuthState authState,
   ) async {
+    final authState = context.read<AuthState>();
     final canCreateSalesOrder = await authState.canCreateDoctype('Sales Order');
     final canCreateDeliveryNote = await authState.canCreateDoctype(
       'Delivery Note',
@@ -359,7 +430,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
       }
     }
 
-    if (!context.mounted) return;
+    if (!context.mounted) return const [];
 
     final salesActions = <_QuickCreateAction>[
       if (canCreateSalesOrder)
@@ -487,96 +558,8 @@ class _AppMainScreenState extends State<AppMainScreen> {
       (total, group) => total + group.actions.length,
     );
 
-    if (actionsCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tidak ada aksi create untuk role ini.')),
-      );
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return SafeArea(
-          top: false,
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(26),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primaryDark.withValues(alpha: 0.18),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
-                ),
-              ],
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.78,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 42,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Create Document',
-                          style: TextStyle(
-                            color: AppColors.navy,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Tutup',
-                        onPressed: () => Navigator.pop(sheetContext),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                  Flexible(
-                    child: ListView(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.zero,
-                      children: [
-                        for (final group in groups)
-                          _QuickCreateSection(
-                            group: group,
-                            onActionTap: (action) async {
-                              Navigator.pop(sheetContext);
-                              await Future<void>.delayed(
-                                const Duration(milliseconds: 120),
-                              );
-                              if (!context.mounted) return;
-                              await action.onTap();
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
+    if (actionsCount == 0) return const [];
+    return groups;
   }
 
   Future<void> _openSalesOrderCreate(BuildContext context) async {
@@ -1251,116 +1234,224 @@ class _TopBarActionButton extends StatelessWidget {
   }
 }
 
-class _TmsxBottomNav extends StatelessWidget {
-  final List<_MainTabItem> tabs;
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
+class _QuickCreateMenuCard extends StatelessWidget {
+  final bool loading;
+  final List<_QuickCreateGroup> groups;
+  final ValueChanged<_QuickCreateAction> onActionTap;
 
-  const _TmsxBottomNav({
-    required this.tabs,
-    required this.selectedIndex,
-    required this.onSelected,
+  const _QuickCreateMenuCard({
+    required this.loading,
+    required this.groups,
+    required this.onActionTap,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.background.withValues(alpha: 0),
-            AppColors.background,
-          ],
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        minimum: EdgeInsets.fromLTRB(18, 4, 18, bottomPadding > 0 ? 8 : 14),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          heightFactor: 1,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: SizedBox(
-              width: double.infinity,
-              child: Container(
-                height: 62,
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.white.withValues(alpha: 0.96),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.white),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primaryDark.withValues(alpha: 0.11),
-                      blurRadius: 24,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    for (var index = 0; index < tabs.length; index++)
-                      Expanded(
-                        child: _TmsxBottomNavItem(
-                          tab: tabs[index],
-                          selected: index == selectedIndex,
-                          compact: tabs.length >= 4,
-                          onTap: () => onSelected(index),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CreateButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _CreateButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.white,
+      elevation: 18,
+      shadowColor: AppColors.primaryDark.withValues(alpha: 0.22),
+      borderRadius: BorderRadius.circular(22),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.52,
+        ),
+        child: loading
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 28),
+                child: Center(
+                  child: SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  ),
+                ),
+              )
+            : ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                children: [
+                  for (final group in groups)
+                    _QuickCreateSection(
+                      group: group,
+                      onActionTap: onActionTap,
+                    ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _TmsxBottomNav extends StatelessWidget {
+  final List<_MainTabItem> tabs;
+  final int selectedIndex;
+  final bool createOpen;
+  final ValueChanged<int> onSelected;
+  final VoidCallback onCreateTap;
+
+  const _TmsxBottomNav({
+    required this.tabs,
+    required this.selectedIndex,
+    required this.createOpen,
+    required this.onSelected,
+    required this.onCreateTap,
+  });
+
+  static const _fabSize = 58.0;
+  static const _barHeight = 64.0;
+  static const _notchMargin = 7.0;
+  static const _topRadius = 26.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final split = (tabs.length / 2).ceil().clamp(1, tabs.length);
+    final fabLift = _fabSize / 2;
+    return SizedBox(
+      height: _barHeight + fabLift + bottomInset,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: PhysicalShape(
+              color: AppColors.white,
+              elevation: 16,
+              shadowColor: Colors.black.withValues(alpha: 0.22),
+              clipper: _DockFabNotchClipper(
+                fabRadius: _fabSize / 2,
+                notchMargin: _notchMargin,
+                topRadius: _topRadius,
+              ),
+              child: SizedBox(
+                height: _barHeight + bottomInset,
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: bottomInset),
+                  child: Row(
+                    children: [
+                      for (var index = 0; index < split; index++)
+                        Expanded(
+                          child: _TmsxBottomNavItem(
+                            tab: tabs[index],
+                            selected: index == selectedIndex,
+                            onTap: () => onSelected(index),
+                          ),
+                        ),
+                      const SizedBox(width: _fabSize + _notchMargin * 2 + 8),
+                      for (var index = split; index < tabs.length; index++)
+                        Expanded(
+                          child: _TmsxBottomNavItem(
+                            tab: tabs[index],
+                            selected: index == selectedIndex,
+                            onTap: () => onSelected(index),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: _CreateButton(
+                open: createOpen,
+                size: _fabSize,
+                onTap: onCreateTap,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DockFabNotchClipper extends CustomClipper<Path> {
+  final double fabRadius;
+  final double notchMargin;
+  final double topRadius;
+
+  const _DockFabNotchClipper({
+    required this.fabRadius,
+    required this.notchMargin,
+    required this.topRadius,
+  });
+
+  @override
+  Path getClip(Size size) {
+    final host = Rect.fromLTWH(0, 0, size.width, size.height);
+    final guest = Rect.fromCircle(
+      center: Offset(size.width / 2, 0),
+      radius: fabRadius,
+    );
+    final notched = const CircularNotchedRectangle().getOuterPath(
+      host,
+      guest.inflate(notchMargin),
+    );
+    final rounded = Path()
+      ..addRRect(
+        RRect.fromRectAndCorners(
+          host,
+          topLeft: Radius.circular(topRadius),
+          topRight: Radius.circular(topRadius),
+        ),
+      );
+    return Path.combine(PathOperation.intersect, notched, rounded);
+  }
+
+  @override
+  bool shouldReclip(covariant _DockFabNotchClipper oldClipper) {
+    return fabRadius != oldClipper.fabRadius ||
+        notchMargin != oldClipper.notchMargin ||
+        topRadius != oldClipper.topRadius;
+  }
+}
+
+class _CreateButton extends StatelessWidget {
+  final bool open;
+  final double size;
+  final VoidCallback onTap;
+
+  const _CreateButton({
+    required this.open,
+    required this.onTap,
+    this.size = 62,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = open ? AppColors.danger : AppColors.primary;
+    return Material(
+      color: Colors.transparent,
       shape: const CircleBorder(),
-      elevation: 0,
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: Container(
-          width: 50,
-          height: 50,
-          padding: const EdgeInsets.all(5),
+          width: size,
+          height: size,
           decoration: BoxDecoration(
+            color: color,
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.16),
-                blurRadius: 11,
-                offset: const Offset(0, 5),
+                color: color.withValues(alpha: 0.32),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.add_rounded,
-              color: AppColors.white,
-              size: 26,
-            ),
+          child: Icon(
+            open ? Icons.close_rounded : Icons.add_rounded,
+            color: AppColors.white,
+            size: 30,
           ),
         ),
       ),
@@ -1371,79 +1462,46 @@ class _CreateButton extends StatelessWidget {
 class _TmsxBottomNavItem extends StatelessWidget {
   final _MainTabItem tab;
   final bool selected;
-  final bool compact;
   final VoidCallback onTap;
 
   const _TmsxBottomNavItem({
     required this.tab,
     required this.selected,
-    required this.compact,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final label = tab.destination.label;
-    final color = selected ? AppColors.primary : AppColors.slate;
+    final color = selected ? AppColors.primary : const Color(0xFF94A3B8);
     final icon = selected ? tab.selectedNavIcon : tab.navIcon;
     return Tooltip(
       message: label,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          height: double.infinity,
-          margin: EdgeInsets.symmetric(horizontal: compact ? 1 : 2),
-          padding: EdgeInsets.symmetric(horizontal: compact ? 3 : 7),
-          decoration: const BoxDecoration(color: Colors.transparent),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: selected ? 34 : 30,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.softGreen : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: _BottomNavIcon(
-                  icon: icon,
-                  color: color,
-                  count: tab.badgeCount,
-                  size: selected ? 20 : 21,
-                ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _BottomNavIcon(
+              icon: icon,
+              color: color,
+              count: tab.badgeCount,
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                height: 1.1,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
               ),
-              const SizedBox(height: 2),
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: compact ? 9.5 : 10.5,
-                    fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 2),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: selected ? 18 : 4,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

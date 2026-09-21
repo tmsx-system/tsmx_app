@@ -1,6 +1,6 @@
 import '../../models/sales_workspace.dart';
 import '../../models/spg_workspace.dart';
-import '../../services/sales_visit_location_service.dart';
+import '../../services/employee_checkin_location_service.dart';
 import '../app_state_proxy_notifier.dart';
 
 class VisitState extends AppStateProxyNotifier {
@@ -17,12 +17,12 @@ class VisitState extends AppStateProxyNotifier {
     appState.currentSalesPerson,
     appState.activeSalesVisit,
     appState.activeSpgVisit,
-    appState.latestVisitLocation,
+    appState.latestEmployeeCheckinLocation,
   ];
 
   SalesVisit? get activeSalesVisit => appState.activeSalesVisit;
   SalesVisit? get activeSpgVisit => appState.activeSpgVisit;
-  VisitLocationPoint? get latestVisitLocation => appState.latestVisitLocation;
+  EmployeeCheckinLocation? get latestEmployeeCheckinLocation => appState.latestEmployeeCheckinLocation;
 
   Future<List<SalesCustomerOption>> fetchSalesCustomers({
     bool forceRefresh = false,
@@ -56,15 +56,15 @@ class VisitState extends AppStateProxyNotifier {
     return appState.fetchCustomerVisitLocation(customer);
   }
 
-  Future<VisitLocationPoint> getCurrentVisitLocation() async {
-    final point = await appState.getCurrentVisitLocation();
+  Future<EmployeeCheckinLocation> getCurrentEmployeeCheckinLocation() async {
+    final point = await appState.getCurrentEmployeeCheckinLocation();
     notifyListeners();
     return point;
   }
 
   double visitDistanceTo(
     CustomerVisitLocation target,
-    VisitLocationPoint from,
+    EmployeeCheckinLocation from,
   ) {
     return appState.visitDistanceTo(target, from);
   }

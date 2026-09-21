@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/sales_workspace.dart';
-import '../../services/sales_visit_location_service.dart';
+import '../../services/employee_checkin_location_service.dart';
 import '../../state/visits/visit_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/erp/erp_empty_state.dart';
@@ -45,7 +45,7 @@ class AttendanceCheckInScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(spgMode ? 'Check-in SPG' : 'Absensi'),
+        title: Text(spgMode ? 'Visit SPG' : 'Visit'),
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.navy,
       ),
@@ -222,7 +222,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
     final active = widget.spgMode
         ? state.activeSpgVisit
         : state.activeSalesVisit;
-    final point = state.latestVisitLocation;
+    final point = state.latestEmployeeCheckinLocation;
     final selectedDistance = target == null || point == null
         ? null
         : state.visitDistanceTo(target!, point);
@@ -253,10 +253,10 @@ class _AttendanceTabState extends State<AttendanceTab> {
         children: [
           if (widget.shouldShowCheckIn) ...[
             SalesHeroCard(
-              title: 'Absensi',
+              title: 'Visit',
               subtitle: widget.spgMode
-                  ? 'Pilih customer schedule, validasi radius, foto, lalu check-in'
-                  : 'Validasi lokasi, ambil foto, lalu check-in customer',
+                  ? 'Pilih customer schedule, validasi radius, foto, lalu check-in visit'
+                  : 'Validasi lokasi, ambil foto, lalu check-in visit customer',
               icon: Icons.location_on_rounded,
               accent: _visitGreen,
             ),
@@ -286,10 +286,10 @@ class _AttendanceTabState extends State<AttendanceTab> {
             if (widget.shouldShowCheckIn) const SizedBox(height: 18),
             CollectionSectionHeader(
               title: widget.shouldShowCheckIn
-                  ? 'Riwayat Absensi'
+                  ? 'Riwayat Visit'
                   : widget.spgMode
-                  ? 'Data Absensi'
-                  : 'Data Absensi',
+                  ? 'Data Visit'
+                  : 'Data Visit',
               subtitle: widget.shouldShowCheckIn
                   ? 'Aktivitas check-in yang selesai terakhir'
                   : 'Ketuk baris untuk melihat detail waktu dan lokasi',
@@ -303,11 +303,11 @@ class _AttendanceTabState extends State<AttendanceTab> {
             if (history.isEmpty)
               ErpEmptyState(
                 title: widget.spgMode
-                    ? 'Belum ada riwayat check-in'
-                    : 'Belum ada absensi',
+                    ? 'Belum ada riwayat visit'
+                    : 'Belum ada visit',
                 message: widget.spgMode
                     ? 'Pull down to refresh or adjust filters.'
-                    : 'Tekan tombol Absensi untuk mulai check-in.',
+                    : 'Tekan tombol Visit untuk mulai check-in.',
                 icon: Icons.assignment_turned_in_outlined,
               )
             else
@@ -339,7 +339,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
             elevation: 12,
             onPressed: _openCreateVisit,
             icon: const Icon(Icons.add_location_alt_rounded),
-            label: const Text('+ Absensi'),
+            label: const Text('+ Visit'),
           ),
         ),
       ],
@@ -357,7 +357,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
 
   Widget _checkInForm({
     required VisitState state,
-    required VisitLocationPoint? point,
+    required EmployeeCheckinLocation? point,
     required double? distance,
     required bool canCheckIn,
   }) {
@@ -401,7 +401,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
             onPressed: loading
                 ? null
                 : () => _runAction(
-                    () => context.read<VisitState>().getCurrentVisitLocation(),
+                    () => context.read<VisitState>().getCurrentEmployeeCheckinLocation(),
                   ),
             icon: const Icon(Icons.my_location_rounded),
             label: const Text('Ambil Lokasi Sekarang'),
@@ -493,7 +493,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
 
   Widget _activeCheckInCard(
     SalesVisit visit,
-    VisitLocationPoint? point,
+    EmployeeCheckinLocation? point,
     double? distance,
   ) {
     return SalesInfoCard(
@@ -560,8 +560,8 @@ class _AttendanceTabState extends State<AttendanceTab> {
               const SizedBox(height: 3),
               Text(
                 widget.spgMode
-                    ? 'Absensi aktif. Selesaikan dari dashboard.'
-                    : 'Absensi aktif. Selesaikan dari dashboard Sales.',
+                    ? 'Visit aktif. Selesaikan check-out di sini.'
+                    : 'Visit aktif. Selesaikan check-out di sini.',
                 style: const TextStyle(
                   color: AppColors.slate,
                   fontSize: 12,
@@ -790,16 +790,8 @@ class _AttendanceTabState extends State<AttendanceTab> {
                         if (!widget.spgMode)
                           _detailRow('Sales Person', visit.salesPerson),
                         _detailRow('Employee', visit.employee),
-                        _detailRow(
-                          'Employee Checkin IN',
-                          visit.employeeCheckinIn,
-                        ),
-                        _detailRow(
-                          'Employee Checkin OUT',
-                          visit.employeeCheckinOut,
-                        ),
-                        _detailRow('Check-in', visit.checkInTime),
-                        _detailRow('Check-out', visit.checkOutTime),
+                        _detailRow('Visit Check-in', visit.checkInTime),
+                        _detailRow('Visit Check-out', visit.checkOutTime),
                         _detailRow('Alamat', visit.address),
                         _detailRow(
                           'Jarak Check-in',
@@ -873,7 +865,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
   }
 
   Widget _stepPanel(SalesVisit? active) {
-    final step = active == null || active.employeeCheckinIn.trim().isEmpty
+    final step = active == null || active.checkInTime.trim().isEmpty
         ? 1
         : 2;
     return SalesInfoCard(
@@ -927,7 +919,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
   }
 
   String _checkInHint({
-    required VisitLocationPoint? point,
+    required EmployeeCheckinLocation? point,
     required double? distance,
     required double allowedRadius,
   }) {
@@ -1020,7 +1012,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
   double? _distanceToVisit(
     VisitState state,
     SalesVisit visit,
-    VisitLocationPoint point,
+    EmployeeCheckinLocation point,
   ) {
     if (visit.targetLatitude == 0 && visit.targetLongitude == 0) return null;
     return state.visitDistanceTo(

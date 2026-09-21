@@ -1,7 +1,7 @@
 import '../../models/sales_workspace.dart';
 import '../../models/spg_workspace.dart';
 import '../../services/frappe_service.dart';
-import '../../services/sales_visit_location_service.dart';
+import '../../services/employee_checkin_location_service.dart';
 import '../../utils/mobile_access.dart';
 import '../app_state_proxy_notifier.dart';
 
@@ -35,13 +35,13 @@ class SpgState extends AppStateProxyNotifier {
     return appState.fetchCustomerVisitLocation(customer);
   }
 
-  Future<VisitLocationPoint> getCurrentVisitLocation() {
-    return appState.getCurrentVisitLocation();
+  Future<EmployeeCheckinLocation> getCurrentEmployeeCheckinLocation() {
+    return appState.getCurrentEmployeeCheckinLocation();
   }
 
   double visitDistanceTo(
     CustomerVisitLocation target,
-    VisitLocationPoint from,
+    EmployeeCheckinLocation from,
   ) {
     return appState.visitDistanceTo(target, from);
   }

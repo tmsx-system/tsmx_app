@@ -1,6 +1,5 @@
 import '../../models/delivery_note.dart';
 import '../../services/frappe_service.dart';
-import '../../services/sales_visit_location_service.dart';
 import '../app_state_proxy_notifier.dart';
 import 'logistics_delivery_note_query_mixin.dart';
 
@@ -30,10 +29,6 @@ class LogisticsDeliveryState extends AppStateProxyNotifier
     appState.sellingCompanyFilter,
     appState.sellingCustomerTypeFilter,
     appState.currentSalesPerson,
-    appState.activeDeliveryTrackingNote,
-    appState.latestDeliveryTrackingNote,
-    appState.latestDeliveryDriverLocation,
-    appState.isDeliveryDriverTrackingActive,
     appState.selectedSiteBaseUrl,
     appState.currentUser,
   ];
@@ -43,12 +38,6 @@ class LogisticsDeliveryState extends AppStateProxyNotifier
   bool get isMoreDeliveryNotesLoading => _isMoreDeliveryNotesLoading;
   bool get hasMoreDeliveryNotes => _hasMoreDeliveryNotes;
   String? get deliveryNotesError => _deliveryNotesError;
-  String? get activeDeliveryTrackingNote => appState.activeDeliveryTrackingNote;
-  String? get latestDeliveryTrackingNote => appState.latestDeliveryTrackingNote;
-  VisitLocationPoint? get latestDeliveryDriverLocation =>
-      appState.latestDeliveryDriverLocation;
-  bool get isDeliveryDriverTrackingActive =>
-      appState.isDeliveryDriverTrackingActive;
   FrappeService get frappeService => appState.frappeService;
 
   @override
@@ -57,8 +46,8 @@ class LogisticsDeliveryState extends AppStateProxyNotifier
       previous,
       next,
       authIndex: 0,
-      siteIndex: 12,
-      userIndex: 13,
+      siteIndex: 9,
+      userIndex: 10,
     )) {
       _resetLocalDeliveryNotes();
     }
@@ -167,22 +156,6 @@ class LogisticsDeliveryState extends AppStateProxyNotifier
       documentName: deliveryNoteId,
       filePath: filePath,
     );
-  }
-
-  Future<VisitLocationPoint> startDeliveryDriverTracking(
-    DeliveryNote deliveryNote,
-  ) {
-    return appState.startDeliveryDriverTracking(deliveryNote);
-  }
-
-  Future<VisitLocationPoint> recordDeliveryDriverLocation(
-    DeliveryNote deliveryNote,
-  ) {
-    return appState.recordDeliveryDriverLocation(deliveryNote);
-  }
-
-  Future<void> stopDeliveryDriverTracking() {
-    return appState.stopDeliveryDriverTracking();
   }
 
   Future<void> _fetchDeliveryNotes() async {

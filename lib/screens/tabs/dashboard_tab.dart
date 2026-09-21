@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:image_picker/image_picker.dart';
+
 import '../../state/dashboard/dashboard_state.dart';
 import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
@@ -348,8 +350,41 @@ class _DashboardGreetingCardState extends State<_DashboardGreetingCard> {
       );
       if (!ok || !context.mounted) return;
     }
+
+    final state = context.read<DashboardState>();
     try {
-      await context.read<DashboardState>().punchAttendance(logType);
+      await state.ensureAttendanceLocation();
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+
+    final photo = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.front,
+      imageQuality: 75,
+      maxWidth: 1280,
+    );
+    if (!context.mounted) return;
+    if (photo == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Foto kamera depan wajib sebelum Check In/Out.'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+      return;
+    }
+
+    try {
+      await state.punchAttendance(logType, photoPath: photo.path);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

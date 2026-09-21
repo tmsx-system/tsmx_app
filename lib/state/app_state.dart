@@ -44,7 +44,7 @@ import '../services/frappe_service.dart';
 import '../services/local_app_database.dart';
 import '../services/mobile_site_registry_service.dart';
 import '../services/native_notification_service.dart';
-import '../services/sales_visit_location_service.dart';
+import '../services/employee_checkin_location_service.dart';
 import '../utils/erp_doc_utils.dart';
 import '../utils/num_parse.dart';
 import '../utils/frappe_page_walker.dart';
@@ -833,8 +833,8 @@ class AppState with ChangeNotifier {
       'approval_notification_count';
 
   final ErpServices services;
-  final SalesVisitLocationService _visitLocationService =
-      SalesVisitLocationService();
+  final EmployeeCheckinLocationService _employeeCheckinLocationService =
+      EmployeeCheckinLocationService();
   SalesVisit? _activeSalesVisit;
   SalesVisit? get activeSalesVisit => _activeSalesVisit;
   SalesVisit? _activeSpgVisit;
@@ -842,17 +842,8 @@ class AppState with ChangeNotifier {
   List<SalesVisit> _salesVisitCache = const [];
   DateTime? _salesVisitCacheAt;
   Future<List<SalesVisit>>? _salesVisitFetchInFlight;
-  VisitLocationPoint? _latestVisitLocation;
-  VisitLocationPoint? get latestVisitLocation => _latestVisitLocation;
-  String? _activeDeliveryTrackingNote;
-  String? get activeDeliveryTrackingNote => _activeDeliveryTrackingNote;
-  String? _latestDeliveryTrackingNote;
-  String? get latestDeliveryTrackingNote => _latestDeliveryTrackingNote;
-  VisitLocationPoint? _latestDeliveryDriverLocation;
-  VisitLocationPoint? get latestDeliveryDriverLocation =>
-      _latestDeliveryDriverLocation;
-  bool get isDeliveryDriverTrackingActive =>
-      _activeDeliveryTrackingNote?.isNotEmpty == true;
+  EmployeeCheckinLocation? _latestEmployeeCheckinLocation;
+  EmployeeCheckinLocation? get latestEmployeeCheckinLocation => _latestEmployeeCheckinLocation;
 
   FrappeService get _frappeService => services.frappe;
   AuthService get _authService => services.auth;
@@ -1268,7 +1259,6 @@ class AppState with ChangeNotifier {
 
   Future<void> resetLocalAppCache({bool keepSiteSelection = true}) async {
     _stopNotificationPolling();
-    await _visitLocationService.stopTracking();
     final sp = await SharedPreferences.getInstance();
     final cfg = keepSiteSelection ? await _loadFrappeConfig() : null;
     final history = keepSiteSelection
@@ -1740,10 +1730,9 @@ class AppState with ChangeNotifier {
 
   Future<void> logout() async {
     _stopNotificationPolling();
-    await _visitLocationService.stopTracking();
     _activeSalesVisit = null;
     _activeSpgVisit = null;
-    _latestVisitLocation = null;
+    _latestEmployeeCheckinLocation = null;
     _mobileCompatibilityWarning = null;
     _mobileBoot = null;
     _salesOrderApprovalTodoCount = 0;
@@ -1863,7 +1852,6 @@ class AppState with ChangeNotifier {
   @override
   void dispose() {
     _stopNotificationPolling();
-    unawaited(_visitLocationService.stopTracking());
     super.dispose();
   }
 
@@ -3253,18 +3241,18 @@ class AppState with ChangeNotifier {
     return _customerService.fetchVisitLocation(customer);
   }
 
-  Future<VisitLocationPoint> getCurrentVisitLocation() async {
-    final point = await _visitLocationService.currentPosition();
-    _latestVisitLocation = point;
+  Future<EmployeeCheckinLocation> getCurrentEmployeeCheckinLocation() async {
+    final point = await _employeeCheckinLocationService.currentPosition();
+    _latestEmployeeCheckinLocation = point;
     notifyListeners();
     return point;
   }
 
   double visitDistanceTo(
     CustomerVisitLocation target,
-    VisitLocationPoint from,
+    EmployeeCheckinLocation from,
   ) {
-    return _visitLocationService.distanceMeters(
+    return _employeeCheckinLocationService.distanceMeters(
       fromLatitude: from.latitude,
       fromLongitude: from.longitude,
       toLatitude: target.latitude,
@@ -3280,7 +3268,7 @@ class AppState with ChangeNotifier {
     if (_activeSalesVisit != null) {
       throw Exception('Selesaikan check-in aktif sebelum memulai yang baru.');
     }
-    final point = await getCurrentVisitLocation();
+    final point = await getCurrentEmployeeCheckinLocation();
     final distance = visitDistanceTo(target, point);
     if (point.accuracy > 50) {
       throw Exception(
@@ -3308,21 +3296,17 @@ class AppState with ChangeNotifier {
       'employee': employee,
     });
     final visit = SalesVisit.fromJson(created);
-    final checkin = await _createEmployeeCheckin(
-      employee: employee,
-      logType: 'IN',
-      time: now,
+    await _saveVisitCheckIn(
+      doctype: 'Sales Visit',
+      name: visit.id,
+      now: now,
       point: point,
-      target: target,
       distance: distance,
       photoPath: photoPath,
     );
-    await _frappeService.updateDocument('Sales Visit', visit.id, {
-      'employee_checkin_in': checkin['name']?.toString() ?? '',
-    });
     final updated = SalesVisit.fromJson(
       await _frappeService.fetchDocument('Sales Visit', visit.id),
-    ).copyWith(checkInTime: checkin['time']?.toString() ?? now);
+    ).copyWith(checkInTime: now);
     _activeSalesVisit = updated;
     _salesVisitCache = List<SalesVisit>.unmodifiable([
       updated,
@@ -3334,7 +3318,7 @@ class AppState with ChangeNotifier {
   }
 
   Future<void> checkOutSalesVisit(String visitId) async {
-    final point = await getCurrentVisitLocation();
+    final point = await getCurrentEmployeeCheckinLocation();
     SalesVisit? activeVisit = _activeSalesVisit?.id == visitId
         ? _activeSalesVisit
         : null;
@@ -3354,18 +3338,13 @@ class AppState with ChangeNotifier {
         'User belum terhubung ke Employee. Isi Employee.user_id di ERPNext.',
       );
     }
-    final checkout = await _createEmployeeCheckin(
-      employee: employee,
-      logType: 'OUT',
-      time: _formatFrappeDateTime(DateTime.now()),
+    final now = _formatFrappeDateTime(DateTime.now());
+    await _saveVisitCheckOut(
+      doctype: 'Sales Visit',
+      name: visitId,
+      now: now,
       point: point,
-      target: null,
-      distance: null,
     );
-    await _frappeService.updateDocument('Sales Visit', visitId, {
-      'employee_checkin_out': checkout['name']?.toString() ?? '',
-    });
-    await _visitLocationService.stopTracking();
     _activeSalesVisit = null;
     _invalidateSalesVisitCache();
     notifyListeners();
@@ -3436,7 +3415,7 @@ class AppState with ChangeNotifier {
         'Selesaikan check-in SPG aktif sebelum memulai yang baru.',
       );
     }
-    final point = await getCurrentVisitLocation();
+    final point = await getCurrentEmployeeCheckinLocation();
     final distance = visitDistanceTo(target, point);
     if (point.accuracy > 50) {
       throw Exception(
@@ -3465,29 +3444,25 @@ class AppState with ChangeNotifier {
       ...created,
       'customer_name': created['customer'] ?? customer,
     });
-    final checkin = await _createEmployeeCheckin(
-      employee: employee,
-      logType: 'IN',
-      time: now,
+    await _saveVisitCheckIn(
+      doctype: 'SPG Visit',
+      name: visit.id,
+      now: now,
       point: point,
-      target: target,
       distance: distance,
       photoPath: photoPath,
     );
-    await _frappeService.updateDocument('SPG Visit', visit.id, {
-      'employee_checkin_in': checkin['name']?.toString() ?? '',
-    });
     final updated = SalesVisit.fromJson({
       ...await _frappeService.fetchDocument('SPG Visit', visit.id),
       'customer_name': customer,
-    }).copyWith(checkInTime: checkin['time']?.toString() ?? now);
+    }).copyWith(checkInTime: now);
     _activeSpgVisit = updated;
     notifyListeners();
     return updated;
   }
 
   Future<void> checkOutSpgVisit(String visitId) async {
-    final point = await getCurrentVisitLocation();
+    final point = await getCurrentEmployeeCheckinLocation();
     final activeVisit = _activeSpgVisit?.id == visitId ? _activeSpgVisit : null;
     var employee = activeVisit?.employee.trim().isNotEmpty == true
         ? activeVisit!.employee.trim()
@@ -3501,18 +3476,13 @@ class AppState with ChangeNotifier {
         'User belum terhubung ke Employee melalui field User ID.',
       );
     }
-    final checkout = await _createEmployeeCheckin(
-      employee: employee,
-      logType: 'OUT',
-      time: _formatFrappeDateTime(DateTime.now()),
+    final now = _formatFrappeDateTime(DateTime.now());
+    await _saveVisitCheckOut(
+      doctype: 'SPG Visit',
+      name: visitId,
+      now: now,
       point: point,
-      target: null,
-      distance: null,
     );
-    await _frappeService.updateDocument('SPG Visit', visitId, {
-      'employee_checkin_out': checkout['name']?.toString() ?? '',
-    });
-    await _visitLocationService.stopTracking();
     _activeSpgVisit = null;
     notifyListeners();
   }
@@ -3986,29 +3956,89 @@ class AppState with ChangeNotifier {
     throw lastError ?? Exception('Gagal membaca $doctype.');
   }
 
+  Future<void> _saveVisitCheckIn({
+    required String doctype,
+    required String name,
+    required String now,
+    required EmployeeCheckinLocation point,
+    required double distance,
+    required String photoPath,
+  }) async {
+    final fields = <String, dynamic>{
+      'check_in_time': now,
+      'check_in_latitude': point.latitude,
+      'check_in_longitude': point.longitude,
+      'check_in_distance': distance,
+      'status': 'Checked In',
+    };
+    try {
+      await _frappeService.updateDocument(doctype, name, fields);
+    } catch (_) {
+      await _frappeService.updateDocument(doctype, name, {
+        'check_in_time': now,
+      });
+    }
+    if (photoPath.trim().isNotEmpty) {
+      await uploadAttachment(
+        doctype: doctype,
+        documentName: name,
+        filePath: photoPath,
+      );
+    }
+  }
+
+  Future<void> _saveVisitCheckOut({
+    required String doctype,
+    required String name,
+    required String now,
+    required EmployeeCheckinLocation point,
+  }) async {
+    final fields = <String, dynamic>{
+      'check_out_time': now,
+      'check_out_latitude': point.latitude,
+      'check_out_longitude': point.longitude,
+      'status': 'Checked Out',
+    };
+    try {
+      await _frappeService.updateDocument(doctype, name, fields);
+    } catch (_) {
+      await _frappeService.updateDocument(doctype, name, {
+        'check_out_time': now,
+      });
+    }
+  }
+
   Future<Map<String, dynamic>> _createEmployeeCheckin({
     required String employee,
     required String logType,
     required String time,
-    required VisitLocationPoint point,
-    required CustomerVisitLocation? target,
-    required double? distance,
+    required EmployeeCheckinLocation point,
     String? photoPath,
   }) async {
-    final locationText = [
-      point.latitude.toStringAsFixed(6),
-      point.longitude.toStringAsFixed(6),
-      'accuracy ${point.accuracy.toStringAsFixed(0)}m',
-      if (target != null && distance != null)
-        'distance ${distance.toStringAsFixed(0)}m',
-    ].join(', ');
-    final created = await _frappeService.createDocument('Employee Checkin', {
+    final locationText =
+        '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}';
+    final payload = <String, dynamic>{
       'employee': employee,
       'time': time,
       'log_type': logType,
       'device_id': locationText,
       'skip_auto_attendance': 0,
-    });
+      'latitude': point.latitude,
+      'longitude': point.longitude,
+    };
+    Map<String, dynamic> created;
+    try {
+      created = await _frappeService.createDocument('Employee Checkin', payload);
+    } catch (error) {
+      final text = error.toString();
+      if (!text.contains('Field not permitted') &&
+          !text.contains('Unknown column')) {
+        rethrow;
+      }
+      payload.remove('latitude');
+      payload.remove('longitude');
+      created = await _frappeService.createDocument('Employee Checkin', payload);
+    }
     final name = created['name']?.toString() ?? '';
     if (name.isNotEmpty && photoPath?.trim().isNotEmpty == true) {
       await uploadAttachment(
@@ -4094,16 +4124,77 @@ class AppState with ChangeNotifier {
     );
   }
 
+  Future<List<EmployeeCheckinLog>> fetchTodayEmployeeCheckinLogs() async {
+    if (_isSampleMode) {
+      final logs = <EmployeeCheckinLog>[];
+      if (_sampleAttendanceInTime.isNotEmpty) {
+        logs.add(
+          EmployeeCheckinLog(
+            id: 'CHKIN-SAMPLE',
+            logType: 'IN',
+            time: _sampleAttendanceInTime,
+          ),
+        );
+      }
+      if (_sampleAttendanceOutTime.isNotEmpty) {
+        logs.add(
+          EmployeeCheckinLog(
+            id: 'CHKOUT-SAMPLE',
+            logType: 'OUT',
+            time: _sampleAttendanceOutTime,
+          ),
+        );
+      }
+      logs.sort((a, b) => b.time.compareTo(a.time));
+      return logs;
+    }
+
+    await _ensureCurrentEmployee();
+    final employee = _currentEmployee?.trim() ?? '';
+    if (employee.isEmpty) return const [];
+
+    final start = '${_formatFrappeDate(DateTime.now())} 00:00:00';
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await _frappeService.fetchResource(
+        'Employee Checkin',
+        fields: const ['name', 'time', 'log_type', 'latitude', 'longitude'],
+        filters: [
+          ['employee', '=', employee],
+          ['time', '>=', start],
+        ],
+        orderBy: 'time desc',
+        limit: 50,
+      );
+    } catch (_) {
+      rows = await _frappeService.fetchResource(
+        'Employee Checkin',
+        fields: const ['name', 'time', 'log_type'],
+        filters: [
+          ['employee', '=', employee],
+          ['time', '>=', start],
+        ],
+        orderBy: 'time desc',
+        limit: 50,
+      );
+    }
+    return rows.map(EmployeeCheckinLog.fromJson).toList();
+  }
+
   String _sampleAttendanceLogType = '';
   String _sampleAttendanceInTime = '';
   String _sampleAttendanceOutTime = '';
 
   Future<EmployeeAttendanceSnapshot> punchEmployeeAttendance({
     required String logType,
+    required String photoPath,
   }) async {
     final type = logType.trim().toUpperCase();
     if (type != 'IN' && type != 'OUT') {
       throw Exception('Tipe absensi tidak valid.');
+    }
+    if (photoPath.trim().isEmpty) {
+      throw Exception('Foto kamera depan wajib untuk Employee Checkin.');
     }
 
     if (_isSampleMode) {
@@ -4126,14 +4217,13 @@ class AppState with ChangeNotifier {
       );
     }
 
-    final point = await getCurrentVisitLocation();
+    final point = await getCurrentEmployeeCheckinLocation();
     await _createEmployeeCheckin(
       employee: employee,
       logType: type,
       time: _formatFrappeDateTime(DateTime.now()),
       point: point,
-      target: null,
-      distance: null,
+      photoPath: photoPath,
     );
     notifyListeners();
     return fetchTodayEmployeeAttendance();
@@ -5027,69 +5117,6 @@ class AppState with ChangeNotifier {
     );
   }
 
-  Future<VisitLocationPoint> recordDeliveryDriverLocation(
-    DeliveryNote deliveryNote,
-  ) async {
-    final point = await _visitLocationService.currentPosition();
-    await _saveDeliveryTrackingPoint(deliveryNote, point);
-    _latestDeliveryTrackingNote = deliveryNote.id;
-    _latestDeliveryDriverLocation = point;
-    notifyListeners();
-    return point;
-  }
-
-  Future<VisitLocationPoint> startDeliveryDriverTracking(
-    DeliveryNote deliveryNote,
-  ) async {
-    if (_activeSalesVisit != null || _activeSpgVisit != null) {
-      throw Exception('Selesaikan check-in aktif sebelum tracking driver.');
-    }
-    if (_activeDeliveryTrackingNote != null &&
-        _activeDeliveryTrackingNote != deliveryNote.id) {
-      throw Exception(
-        'Selesaikan tracking ${_activeDeliveryTrackingNote!} sebelum memulai yang baru.',
-      );
-    }
-
-    final firstPoint = await recordDeliveryDriverLocation(deliveryNote);
-    _activeDeliveryTrackingNote = deliveryNote.id;
-    notifyListeners();
-    await _visitLocationService.startTracking(
-      (point) async {
-        _latestDeliveryTrackingNote = deliveryNote.id;
-        _latestDeliveryDriverLocation = point;
-        notifyListeners();
-        await _saveDeliveryTrackingPoint(deliveryNote, point);
-      },
-      notificationTitle: 'Tracking driver aktif',
-      notificationText: '$appDisplayName mencatat lokasi driver tiap 5 menit.',
-      queueFailedPoints: false,
-      queueScope: '${_frappeService.baseUrl.trim()}::${_currentUser ?? ''}',
-    );
-    return firstPoint;
-  }
-
-  Future<void> stopDeliveryDriverTracking() async {
-    await _visitLocationService.stopTracking();
-    _activeDeliveryTrackingNote = null;
-    notifyListeners();
-  }
-
-  Future<void> _saveDeliveryTrackingPoint(
-    DeliveryNote deliveryNote,
-    VisitLocationPoint point,
-  ) async {
-    await _frappeService.createDocument('Delivery Tracking Point', {
-      'delivery_note': deliveryNote.id,
-      'customer': deliveryNote.customer,
-      if (_currentUser?.isNotEmpty == true) 'driver': _currentUser,
-      'captured_at': point.capturedAt.toIso8601String(),
-      'latitude': point.latitude,
-      'longitude': point.longitude,
-      'accuracy': point.accuracy,
-    });
-  }
-
   Future<List<DeliveryActivityLog>> fetchDeliveryActivityLogs(
     String deliveryNoteId,
   ) async {
@@ -5121,9 +5148,9 @@ class AppState with ChangeNotifier {
     required String activityStatus,
     String notes = '',
   }) async {
-    VisitLocationPoint? point;
+    EmployeeCheckinLocation? point;
     try {
-      point = await _visitLocationService.currentPosition();
+      point = await _employeeCheckinLocationService.currentPosition();
     } catch (_) {
       point = null;
     }

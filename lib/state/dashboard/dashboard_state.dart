@@ -10,6 +10,7 @@ class DashboardState extends AppStateProxyNotifier {
   }
 
   EmployeeAttendanceSnapshot _attendance = const EmployeeAttendanceSnapshot();
+  List<EmployeeCheckinLog> _checkinLogs = const [];
   bool _attendanceLoading = false;
   bool _attendancePunching = false;
   String? _attendanceError;
@@ -17,6 +18,7 @@ class DashboardState extends AppStateProxyNotifier {
   String? _userImageUrl;
 
   EmployeeAttendanceSnapshot get attendance => _attendance;
+  List<EmployeeCheckinLog> get checkinLogs => _checkinLogs;
   bool get attendanceLoading => _attendanceLoading;
   bool get attendancePunching => _attendancePunching;
   String? get attendanceError => _attendanceError;
@@ -60,6 +62,9 @@ class DashboardState extends AppStateProxyNotifier {
         appState.fetchTodayEmployeeAttendance().then((value) {
           _attendance = value;
         }),
+        appState.fetchTodayEmployeeCheckinLogs().then((value) {
+          _checkinLogs = value;
+        }),
       ]);
     } catch (error) {
       _attendanceError = error
@@ -94,13 +99,21 @@ class DashboardState extends AppStateProxyNotifier {
     return Uri.parse(base).resolve(image).toString();
   }
 
-  Future<void> punchAttendance(String logType) async {
+  Future<void> ensureAttendanceLocation() async {
+    await appState.getCurrentEmployeeCheckinLocation();
+  }
+
+  Future<void> punchAttendance(String logType, {required String photoPath}) async {
     if (_attendancePunching) return;
     _attendancePunching = true;
     _attendanceError = null;
     notifyListeners();
     try {
-      _attendance = await appState.punchEmployeeAttendance(logType: logType);
+      _attendance = await appState.punchEmployeeAttendance(
+        logType: logType,
+        photoPath: photoPath,
+      );
+      _checkinLogs = await appState.fetchTodayEmployeeCheckinLogs();
     } catch (error) {
       _attendanceError = error
           .toString()
