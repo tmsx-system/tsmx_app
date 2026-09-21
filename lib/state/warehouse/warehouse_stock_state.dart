@@ -853,12 +853,27 @@ class WarehouseStockState extends AppStateProxyNotifier {
       return _stockEntryTypes;
     }
     await appState.frappeService.ensureLoggedIn();
-    final rows = await _fetchAllResourcePages(
-      doctype: 'Stock Entry Type',
-      fields: const ['name', 'purpose'],
-      orderBy: 'name asc',
-      maxRows: 200,
-    );
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await _fetchAllResourcePages(
+        doctype: 'Stock Entry Type',
+        fields: const ['name', 'purpose'],
+        orderBy: 'name asc',
+        maxRows: 200,
+      );
+    } catch (_) {
+      rows = await walkFrappePages(
+        pageSize: _pageSize,
+        maxRows: 200,
+        fetchPage: (start, limit) => appState.frappeService.fetchReportView(
+          'Stock Entry Type',
+          fields: const ['name', 'purpose'],
+          limit: limit,
+          limitStart: start,
+          orderBy: 'name asc',
+        ),
+      );
+    }
     final types = rows
         .map(StockEntryType.fromJson)
         .where((row) => row.name.isNotEmpty)

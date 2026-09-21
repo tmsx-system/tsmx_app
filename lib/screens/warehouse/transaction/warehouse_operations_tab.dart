@@ -17,8 +17,8 @@ class WarehouseOperationsTab extends StatefulWidget {
 
 class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
   bool _loading = true;
-  bool _stockEntry = false;
   bool _stockReconciliation = false;
+  List<StockEntryKind> _entryTypes = const [];
 
   @override
   void initState() {
@@ -27,6 +27,7 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
   }
 
   Future<void> _loadPermissions() async {
+    setState(() => _loading = true);
     final state = context.read<WarehouseStockState>();
     final results = await Future.wait([
       state.canReadDoctype('Stock Entry'),
@@ -34,9 +35,22 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
       state.canReadDoctype('Stock Reconciliation'),
       state.canCreateDoctype('Stock Reconciliation'),
     ]);
+    final canUseStockEntry = results[0] || results[1];
+    var types = const <StockEntryKind>[];
+    if (canUseStockEntry) {
+      try {
+        final rows = await state.fetchStockEntryTypes(forceRefresh: true);
+        types = rows.map(StockEntryKind.fromType).toList(growable: false);
+      } catch (_) {
+        types = const [];
+      }
+      if (types.isEmpty) {
+        types = StockEntryKind.standard;
+      }
+    }
     if (!mounted) return;
     setState(() {
-      _stockEntry = results[0] || results[1];
+      _entryTypes = types;
       _stockReconciliation = results[2] || results[3];
       _loading = false;
     });
@@ -45,13 +59,18 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
   @override
   Widget build(BuildContext context) {
     final actions = <_WarehouseTransactionAction>[
-      if (_stockEntry)
+      for (final kind in _entryTypes)
         _WarehouseTransactionAction(
-          onTap: () => _openStockEntry(context),
-          icon: Icons.swap_horiz_rounded,
-          title: 'Stock Entry',
-          subtitle: 'Transfer, receipt, issue, dan tipe ERPNext lain',
-          color: warehouseOrange,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => StockEntryPanel(kind: kind),
+            ),
+          ),
+          icon: kind.icon,
+          title: kind.title,
+          subtitle: kind.subtitle,
+          color: kind.color,
         ),
       if (_stockReconciliation)
         _WarehouseTransactionAction(
@@ -68,62 +87,55 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
         ),
     ];
 
-    return ListView(
-      padding: warehousePagePaddingOf(context),
-      children: [
-        const WarehouseSectionHeader(
-          title: 'Transaksi Gudang',
-          subtitle: 'Mendukung transaksi Gudang',
-          icon: Icons.store_outlined,
-        ),
-        warehouseSectionGap,
-        if (_loading)
-          const Padding(
-            padding: EdgeInsets.only(top: 24),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (actions.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 16),
-            child: Text(
-              'Tidak ada transaksi gudang yang bisa diakses.',
-              style: TextStyle(
-                color: AppColors.slate,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          )
-        else
-          GridView.count(
-            crossAxisCount: 4,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 14,
-            childAspectRatio: 0.86,
-            children: actions
-                .map(
-                  (action) => WarehouseActionGridCard(
-                    onTap: action.onTap,
-                    icon: action.icon,
-                    title: action.title,
-                    subtitle: action.subtitle,
-                    color: action.color,
-                  ),
-                )
-                .toList(),
+    return RefreshIndicator(
+      onRefresh: _loadPermissions,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: warehousePagePaddingOf(context),
+        children: [
+          const WarehouseSectionHeader(
+            title: 'Transaksi Gudang',
+            subtitle: 'Mendukung transaksi Gudang',
+            icon: Icons.store_outlined,
           ),
-      ],
-    );
-  }
-
-  Future<void> _openStockEntry(BuildContext context) async {
-    final kind = await showStockEntryTypePicker(context);
-    if (kind == null || !context.mounted) return;
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => StockEntryPanel(kind: kind),
+          warehouseSectionGap,
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.only(top: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (actions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 16),
+              child: Text(
+                'Tidak ada transaksi gudang yang bisa diakses.',
+                style: TextStyle(
+                  color: AppColors.slate,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          else
+            GridView.count(
+              crossAxisCount: 4,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 14,
+              childAspectRatio: 0.72,
+              children: actions
+                  .map(
+                    (action) => WarehouseActionGridCard(
+                      onTap: action.onTap,
+                      icon: action.icon,
+                      title: action.title,
+                      subtitle: action.subtitle,
+                      color: action.color,
+                    ),
+                  )
+                  .toList(),
+            ),
+        ],
       ),
     );
   }

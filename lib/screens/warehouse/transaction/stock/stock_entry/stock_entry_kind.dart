@@ -62,6 +62,27 @@ class StockEntryKind {
 
   String get instruction =>
       'Tipe $name (purpose $purpose) diambil dari ERPNext dan sudah dikunci di form ini.';
+
+  static const standard = <StockEntryKind>[
+    StockEntryKind(name: 'Material Transfer', purpose: 'Material Transfer'),
+    StockEntryKind(name: 'Material Receipt', purpose: 'Material Receipt'),
+    StockEntryKind(name: 'Material Issue', purpose: 'Material Issue'),
+    StockEntryKind(name: 'Repack', purpose: 'Repack'),
+    StockEntryKind(
+      name: 'Material Transfer for Manufacture',
+      purpose: 'Material Transfer for Manufacture',
+    ),
+    StockEntryKind(
+      name: 'Material Consumption for Manufacture',
+      purpose: 'Material Consumption for Manufacture',
+    ),
+    StockEntryKind(name: 'Manufacture', purpose: 'Manufacture'),
+    StockEntryKind(
+      name: 'Send to Subcontractor',
+      purpose: 'Send to Subcontractor',
+    ),
+    StockEntryKind(name: 'Disassemble', purpose: 'Disassemble'),
+  ];
 }
 
 Future<StockEntryKind?> showStockEntryTypePicker(BuildContext context) {

@@ -342,6 +342,22 @@ class _AppMainScreenState extends State<AppMainScreen> {
       'Material Request',
     );
     final canCreateStockEntry = await authState.canCreateDoctype('Stock Entry');
+    var stockEntryKinds = const <StockEntryKind>[];
+    if (canCreateStockEntry) {
+      try {
+        final types = await context
+            .read<WarehouseStockState>()
+            .fetchStockEntryTypes();
+        stockEntryKinds = types
+            .map(StockEntryKind.fromType)
+            .toList(growable: false);
+      } catch (_) {
+        stockEntryKinds = const [];
+      }
+      if (stockEntryKinds.isEmpty) {
+        stockEntryKinds = StockEntryKind.standard;
+      }
+    }
 
     if (!context.mounted) return;
 
@@ -353,7 +369,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
           icon: Icons.point_of_sale_rounded,
           onTap: () => _openSalesOrderCreate(context),
         ),
-      if (canCreateDeliveryNote)
+      if (canCreateDeliveryNote)  
         _QuickCreateAction(
           title: 'Delivery Note',
           subtitle: 'Dari Sales Order submitted',
@@ -431,12 +447,12 @@ class _AppMainScreenState extends State<AppMainScreen> {
     ];
 
     final stockActions = <_QuickCreateAction>[
-      if (canCreateStockEntry)
+      for (final kind in stockEntryKinds)
         _QuickCreateAction(
-          title: 'Stock Entry',
-          subtitle: 'Transfer, receipt, issue',
-          icon: Icons.inventory_2_outlined,
-          onTap: () => _openStockEntryCreate(context),
+          title: kind.title,
+          subtitle: kind.subtitle,
+          icon: kind.icon,
+          onTap: () => _openStockEntryCreate(context, kind),
         ),
     ];
 
@@ -611,9 +627,10 @@ class _AppMainScreenState extends State<AppMainScreen> {
     }
   }
 
-  Future<void> _openStockEntryCreate(BuildContext context) async {
-    final kind = await showStockEntryTypePicker(context);
-    if (kind == null || !context.mounted) return;
+  Future<void> _openStockEntryCreate(
+    BuildContext context,
+    StockEntryKind kind,
+  ) async {
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => CreateStockEntryScreen(kind: kind)),
     );

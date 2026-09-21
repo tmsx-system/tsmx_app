@@ -121,8 +121,7 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
   bool get _hasExtraFilters =>
       (_company ?? '').isNotEmpty ||
       (_fromWarehouse ?? '').isNotEmpty ||
-      (_toWarehouse ?? '').isNotEmpty ||
-      _stockEntryType != widget.kind.name;
+      (_toWarehouse ?? '').isNotEmpty;
 
   Future<void> _openFilters() async {
     final state = context.read<WarehouseStockState>();
@@ -154,7 +153,7 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     );
     if (result == null || !mounted) return;
     setState(() {
-      _stockEntryType = result.stockEntryType;
+      _stockEntryType = widget.kind.name;
       _company = result.company;
       _fromWarehouse = result.fromWarehouse;
       _toWarehouse = result.toWarehouse;
@@ -181,17 +180,11 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
   }
 
   Future<void> _create() async {
-    final state = context.read<WarehouseStockState>();
-    final matched = state.stockEntryTypes.where(
-      (type) => type.name == _stockEntryType,
-    );
-    final purpose = matched.isEmpty ? widget.kind.purpose : matched.first.purpose;
-    final kind = StockEntryKind(name: _stockEntryType, purpose: purpose);
     final created = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => CreateStockEntryScreen(
-          kind: kind,
+          kind: widget.kind,
           company: _company,
           sourceWarehouse: _fromWarehouse,
           targetWarehouse: _toWarehouse,
@@ -382,9 +375,9 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
           padding: warehousePagePaddingOf(context),
           children: [
             WarehouseSectionHeader(
-              title: 'Stock Entry',
+              title: widget.kind.title,
               subtitle: [
-                _stockEntryType,
+                widget.kind.subtitle,
                 if ((_company ?? '').isNotEmpty) _company!,
               ].join(' · '),
               icon: widget.kind.icon,
@@ -648,7 +641,6 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<WarehouseStockState>();
-    final types = state.stockEntryTypes;
     final companies = state.stockCompanies.map((entry) => entry.key).toList();
     final warehouses = _warehousesForCompany(state.warehouses, _company);
 
@@ -688,7 +680,7 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Sama seperti filter list ERPNext: type, company, gudang.',
+                'Filter company dan gudang. Tipe sudah dikunci sesuai fitur yang dibuka.',
                 style: TextStyle(
                   color: AppColors.slate,
                   fontSize: 12,
@@ -696,27 +688,6 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              _dropdown<String>(
-                label: 'Stock Entry Type',
-                value: types.any((type) => type.name == _stockEntryType)
-                    ? _stockEntryType
-                    : (types.isEmpty ? _stockEntryType : types.first.name),
-                items: [
-                  for (final type in types)
-                    DropdownMenuItem(value: type.name, child: Text(type.name)),
-                  if (_stockEntryType.isNotEmpty &&
-                      types.every((type) => type.name != _stockEntryType))
-                    DropdownMenuItem(
-                      value: _stockEntryType,
-                      child: Text(_stockEntryType),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() => _stockEntryType = value);
-                },
-              ),
-              const SizedBox(height: 12),
               _dropdown<String?>(
                 label: 'Company',
                 value: (_company ?? '').isEmpty
