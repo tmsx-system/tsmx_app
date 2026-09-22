@@ -66,6 +66,7 @@ class StockEntryItemLine {
   final String uom;
   final String sourceWarehouse;
   final String targetWarehouse;
+  final String costCenter;
   final double basicRate;
   final double amount;
 
@@ -76,6 +77,7 @@ class StockEntryItemLine {
     required this.uom,
     this.sourceWarehouse = '',
     this.targetWarehouse = '',
+    this.costCenter = '',
     this.basicRate = 0,
     this.amount = 0,
   });
@@ -90,6 +92,7 @@ class StockEntryItemLine {
       uom: json['uom']?.toString() ?? json['stock_uom']?.toString() ?? '',
       sourceWarehouse: json['s_warehouse']?.toString() ?? '',
       targetWarehouse: json['t_warehouse']?.toString() ?? '',
+      costCenter: json['cost_center']?.toString() ?? '',
       basicRate: rate,
       amount: NumParse.asDouble(json['amount']) > 0
           ? NumParse.asDouble(json['amount'])

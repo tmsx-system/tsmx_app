@@ -88,16 +88,23 @@ class _ErpItemAutocompleteFieldState extends State<ErpItemAutocompleteField> {
     widget.onSelected(selected.id);
   }
 
+  bool get _canOpenPicker =>
+      widget.onSearch != null || widget.options.isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: _displayController,
       readOnly: true,
-      onTap: widget.options.isEmpty ? null : _openPicker,
+      onTap: _canOpenPicker ? _openPicker : null,
       decoration: widget.decoration.copyWith(
         labelText: widget.label,
         suffixIcon: widget.selectedId == null || widget.selectedId!.isEmpty
-            ? const Icon(Icons.search_rounded)
+            ? IconButton(
+                tooltip: 'Cari ${widget.label}',
+                onPressed: _canOpenPicker ? _openPicker : null,
+                icon: const Icon(Icons.search_rounded),
+              )
             : IconButton(
                 tooltip: 'Bersihkan pilihan',
                 onPressed: () => widget.onSelected(null),
@@ -134,49 +141,57 @@ class _ErpItemSearchSheetState extends State<_ErpItemSearchSheet> {
   int _searchGeneration = 0;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.onSearch != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_runRemoteSearch(''));
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  void _onQueryChanged(String value) {
-    setState(() {});
+  Future<void> _runRemoteSearch(String query) async {
     final remoteSearch = widget.onSearch;
     if (remoteSearch == null) return;
+    final generation = ++_searchGeneration;
+    setState(() => _searching = true);
+    try {
+      final rows = await remoteSearch(query);
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() => _remoteOptions = rows);
+    } catch (_) {
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() => _remoteOptions = const []);
+    } finally {
+      if (mounted && generation == _searchGeneration) {
+        setState(() => _searching = false);
+      }
+    }
+  }
+
+  void _onQueryChanged(String value) {
+    setState(() {});
+    if (widget.onSearch == null) return;
 
     final query = value.trim();
     _searchDebounce?.cancel();
-    if (query.isEmpty) {
-      setState(() {
-        _remoteOptions = const [];
-        _searching = false;
-      });
-      return;
-    }
-
-    final generation = ++_searchGeneration;
-    _searchDebounce = Timer(const Duration(milliseconds: 280), () async {
+    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
       if (!mounted) return;
-      setState(() => _searching = true);
-      try {
-        final rows = await remoteSearch(query);
-        if (!mounted || generation != _searchGeneration) return;
-        setState(() => _remoteOptions = rows);
-      } catch (_) {
-        if (!mounted || generation != _searchGeneration) return;
-        setState(() => _remoteOptions = const []);
-      } finally {
-        if (mounted && generation == _searchGeneration) {
-          setState(() => _searching = false);
-        }
-      }
+      unawaited(_runRemoteSearch(query));
     });
   }
 
   List<ErpItemOption> _filteredOptions() {
     final query = _searchController.text.trim().toLowerCase();
-    if (widget.onSearch != null && query.isNotEmpty) {
+    if (widget.onSearch != null) {
+      if (query.isEmpty) return _remoteOptions.take(80).toList();
       return _remoteOptions.take(80).toList();
     }
     final source = query.isEmpty

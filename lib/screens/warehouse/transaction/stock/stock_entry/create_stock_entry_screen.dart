@@ -41,6 +41,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   String? _company;
   String? _sourceWarehouse;
   String? _targetWarehouse;
+  String? _costCenter;
   String? _series;
   List<String> _seriesOptions = const [];
   DateTime _postingDate = DateTime.now();
@@ -150,6 +151,14 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
     _sourceWarehouse = _normalized(detail.fromWarehouse) ?? _sourceWarehouse;
     _targetWarehouse = _normalized(detail.toWarehouse) ?? _targetWarehouse;
     _series = _normalized(detail.namingSeries) ?? _series;
+    _costCenter = null;
+    for (final item in detail.items) {
+      final costCenter = _normalized(item.costCenter);
+      if (costCenter != null) {
+        _costCenter = costCenter;
+        break;
+      }
+    }
     final parsedDate = DateTime.tryParse(detail.postingDate);
     if (parsedDate != null) {
       _postingDate = parsedDate;
@@ -246,6 +255,37 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
       options.add(ErpItemOption(id: id, label: '$name - $id'));
     }
     return options;
+  }
+
+  Future<List<ErpItemOption>> _fetchCostCenters([String query = '']) async {
+    final filters = <List<dynamic>>[
+      ['is_group', '=', 0],
+      if ((_company ?? '').trim().isNotEmpty) ['company', '=', _company],
+    ];
+    final q = query.trim();
+    final orFilters = q.isEmpty
+        ? null
+        : [
+            ['name', 'like', '%$q%'],
+            ['cost_center_name', 'like', '%$q%'],
+          ];
+    final rows = await context.read<WarehouseStockState>().frappeService
+        .fetchResource(
+          'Cost Center',
+          fields: const ['name'],
+          filters: filters,
+          orFilters: orFilters,
+          orderBy: 'name asc',
+          limit: 50,
+        );
+    return [
+      for (final row in rows)
+        if ((row['name']?.toString() ?? '').trim().isNotEmpty)
+          ErpItemOption(
+            id: row['name'].toString().trim(),
+            label: row['name'].toString().trim(),
+          ),
+    ];
   }
 
   List<String> get _companies {
@@ -388,12 +428,17 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
       setState(() => _error = 'Gudang asal dan tujuan harus berbeda.');
       return;
     }
+    if ((_costCenter ?? '').trim().isEmpty) {
+      setState(() => _error = 'Cost Center wajib dipilih sebelum save/submit.');
+      return;
+    }
 
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
+      final costCenter = _costCenter!.trim();
       final payload = [
         for (final row in filled)
           {
@@ -407,6 +452,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
               's_warehouse': row.sourceWarehouse ?? _sourceWarehouse,
             if (_needsTarget)
               't_warehouse': row.targetWarehouse ?? _targetWarehouse,
+            'cost_center': costCenter,
           },
       ];
       final stockState = context.read<WarehouseStockState>();
@@ -589,6 +635,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                   _company = value;
                                   _sourceWarehouse = null;
                                   _targetWarehouse = null;
+                                  _costCenter = null;
                                   for (final row in _rows) {
                                     row.sourceWarehouse = null;
                                     row.targetWarehouse = null;
@@ -662,6 +709,32 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                   ],
                                 ),
                               ),
+                            ),
+                            const SizedBox(height: 12),
+                            ErpItemAutocompleteField(
+                              key: ValueKey(
+                                'cc:${_company ?? ''}:${_costCenter ?? ''}',
+                              ),
+                              label: 'Cost Center',
+                              selectedId: _costCenter,
+                              decoration: _fieldDecoration(
+                                'Cost Center',
+                                hint: 'Pilih Cost Center',
+                              ),
+                              options: [
+                                if ((_costCenter ?? '').isNotEmpty)
+                                  ErpItemOption(
+                                    id: _costCenter!,
+                                    label: _costCenter!,
+                                  ),
+                              ],
+                              onSearch: _fetchCostCenters,
+                              onSelected: (value) =>
+                                  setState(() => _costCenter = value),
+                              validator: (value) =>
+                                  value == null || value.trim().isEmpty
+                                  ? 'Cost Center wajib dipilih'
+                                  : null,
                             ),
                             if (_needsSource) ...[
                               const SizedBox(height: 12),
