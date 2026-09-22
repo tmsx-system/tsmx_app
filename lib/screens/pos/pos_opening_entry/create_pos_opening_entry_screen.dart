@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../state/pos/pos_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../shared/pos_ui.dart';
 
 class CreatePosOpeningEntryScreen extends StatefulWidget {
@@ -72,7 +73,7 @@ class _CreatePosOpeningEntryScreenState
     try {
       final state = context.read<PosState>();
       final profiles = await state.fetchSelectableProfileNames();
-      final companies = await state.fetchNames('Company');
+      final companies = await state.fetchCompanyOptions();
       final modes = await state.fetchNames(
         'Mode of Payment',
         filters: const [
@@ -201,7 +202,12 @@ class _CreatePosOpeningEntryScreenState
       }
 
       setState(() {
-        if (company.isNotEmpty) _company = company;
+        if (company.isNotEmpty) {
+          _company = company;
+          if (!_companies.contains(company)) {
+            _companies = [company, ..._companies];
+          }
+        }
         if (profileModes.isNotEmpty) {
           _modes = {...profileModes, ..._modes}.toList();
         }
@@ -428,26 +434,55 @@ class _CreatePosOpeningEntryScreenState
                             value == null ? 'POS Profile wajib' : null,
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        key: ValueKey('company-${_company ?? 'none'}'),
-                        initialValue: _companies.contains(_company)
+                      ErpItemAutocompleteField(
+                        key: ValueKey(
+                          'company:${_companies.length}:${_company ?? ''}',
+                        ),
+                        label: 'Company *',
+                        selectedId: (_company ?? '').isNotEmpty
                             ? _company
                             : null,
-                        isExpanded: true,
-                        decoration: posFieldDecoration('Company *'),
-                        items: [
+                        decoration: posFieldDecoration(
+                          'Company *',
+                          hintText: 'Pilih company',
+                          prefixIcon: const Icon(Icons.business_outlined),
+                        ),
+                        options: [
                           for (final company in _companies)
-                            DropdownMenuItem(
-                              value: company,
-                              child: Text(
-                                company,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                            ErpItemOption(id: company, label: company),
+                          if ((_company ?? '').isNotEmpty &&
+                              !_companies.contains(_company))
+                            ErpItemOption(id: _company!, label: _company!),
                         ],
-                        onChanged: (value) => setState(() => _company = value),
+                        onSearch: (query) async {
+                          final q = query.trim().toLowerCase();
+                          var source = _companies;
+                          if (source.isEmpty) {
+                            source = await context
+                                .read<PosState>()
+                                .fetchCompanyOptions(preferred: _company);
+                            if (mounted && source.isNotEmpty) {
+                              setState(() => _companies = source);
+                            }
+                          }
+                          if (q.isEmpty) {
+                            return [
+                              for (final company in source)
+                                ErpItemOption(id: company, label: company),
+                            ];
+                          }
+                          return [
+                            for (final company in source)
+                              if (company.toLowerCase().contains(q))
+                                ErpItemOption(id: company, label: company),
+                          ];
+                        },
+                        onSelected: (value) =>
+                            setState(() => _company = value),
                         validator: (value) =>
-                            value == null ? 'Company wajib' : null,
+                            value == null || value.isEmpty
+                            ? 'Company wajib'
+                            : null,
                       ),
                       const SizedBox(height: 12),
                       _DateFieldTile(

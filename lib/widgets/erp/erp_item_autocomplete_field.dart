@@ -191,8 +191,19 @@ class _ErpItemSearchSheetState extends State<_ErpItemSearchSheet> {
   List<ErpItemOption> _filteredOptions() {
     final query = _searchController.text.trim().toLowerCase();
     if (widget.onSearch != null) {
-      if (query.isEmpty) return _remoteOptions.take(80).toList();
-      return _remoteOptions.take(80).toList();
+      if (_remoteOptions.isNotEmpty) {
+        return _remoteOptions.take(80).toList();
+      }
+      // Fallback: show local options while remote is empty/loading/failed.
+      if (query.isEmpty) return widget.options.take(80).toList();
+      return widget.options
+          .where(
+            (option) =>
+                option.id.toLowerCase().contains(query) ||
+                option.label.toLowerCase().contains(query),
+          )
+          .take(80)
+          .toList();
     }
     final source = query.isEmpty
         ? widget.options

@@ -849,6 +849,52 @@ class PosState extends AppStateProxyNotifier {
         .toList();
   }
 
+  Future<List<String>> fetchCompanyOptions({String? preferred}) async {
+    final names = <String>{};
+
+    void add(String? value) {
+      final trimmed = value?.trim() ?? '';
+      if (trimmed.isNotEmpty) names.add(trimmed);
+    }
+
+    for (final company in appState.mobileBoot?.companies ?? const <String>[]) {
+      add(company);
+    }
+    add(appState.mobileBoot?.defaultCompany);
+    add(appState.currentEmployeeProfile['company']?.toString());
+    for (final entry in appState.stockCompanies) {
+      add(entry.key);
+    }
+    for (final company in appState.sellingCompanies) {
+      add(company);
+    }
+    for (final company in appState.buyingCompanies) {
+      add(company);
+    }
+    add(preferred);
+
+    try {
+      for (final company in await fetchNames('Company')) {
+        add(company);
+      }
+    } catch (_) {
+      // Company doctype may be restricted; local lists above are enough.
+    }
+
+    try {
+      final profiles = await fetchSelectableProfileNames();
+      for (final profileName in profiles.take(20)) {
+        try {
+          final doc = await loadProfileDocument(profileName);
+          add(doc['company']?.toString());
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    final list = names.toList()..sort();
+    return list;
+  }
+
   Future<List<Map<String, dynamic>>> fetchLinkOptions(
     String doctype, {
     List<String> fields = const ['name'],

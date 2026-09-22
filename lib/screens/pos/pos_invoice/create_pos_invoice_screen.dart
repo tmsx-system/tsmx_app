@@ -7,7 +7,6 @@ import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
-import '../../../widgets/print/erp_bluetooth_print.dart';
 import '../shared/pos_ui.dart';
 
 class CreatePosInvoiceScreen extends StatefulWidget {
@@ -120,8 +119,6 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   String? _sellingPriceList;
   DateTime _postingDate = DateTime.now();
   bool _updateStock = true;
-  bool _printAfterSave = true;
-  bool _canPrint = false;
   bool _loading = true;
   bool _saving = false;
   bool _loadingProfile = false;
@@ -194,7 +191,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       final state = context.read<PosState>();
       final results = await Future.wait([
         state.fetchSelectableProfileNames(),
-        state.fetchNames('Company'),
+        state.fetchCompanyOptions(),
         state.fetchNames('Warehouse'),
         state.fetchLinkOptions(
           'Customer',
@@ -219,7 +216,6 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
             ['enabled', '=', 1],
           ],
         ),
-        state.canPrintDoctype('POS Invoice'),
         state.fetchLinkOptions(
           'Cost Center',
           fields: const ['name', 'company'],
@@ -237,8 +233,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       final customerRows = results[3] as List<Map<String, dynamic>>;
       final itemRows = results[4] as List<Map<String, dynamic>>;
       final modes = results[5] as List<String>;
-      final canPrint = results[6] as bool;
-      final costCenterRows = results[7] as List<Map<String, dynamic>>;
+      final costCenterRows = results[6] as List<Map<String, dynamic>>;
 
       final customers = customerRows
           .map(
@@ -294,8 +289,6 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         _customers = customers;
         _items = items;
         _modes = modes;
-        _canPrint = canPrint;
-        _printAfterSave = canPrint;
         _posProfile = profiles.isNotEmpty ? profiles.first : null;
         _company = companies.isNotEmpty ? companies.first : null;
         _customer = null;
@@ -839,24 +832,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     });
   }
 
-  Future<void> _printInvoice(String name) async {
-    if (!_canPrint) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('User tidak punya permission Print untuk POS Invoice.'),
-        ),
-      );
-      return;
-    }
-    await printErpPdfViaBluetooth(
-      context,
-      downloadPdf: () =>
-          context.read<PosState>().downloadPosPdf('POS Invoice', name),
-      title: 'POS Invoice $name',
-    );
-  }
-
-  Future<void> _save({bool andPrint = false}) async {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_posProfile == null || _customer == null || _company == null) {
       setState(() => _error = 'Lengkapi POS Profile, Customer, dan Company.');
@@ -963,13 +939,6 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
 
       if (!mounted) return;
       setState(() => _savedName = savedName);
-
-      final shouldPrint = andPrint || _printAfterSave;
-      if (shouldPrint && _canPrint) {
-        await _printInvoice(savedName);
-      }
-
-      if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
@@ -1000,14 +969,6 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primary),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        actions: [
-          if (_canPrint && _documentName != null)
-            IconButton(
-              tooltip: 'Print / Share PDF',
-              onPressed: _saving ? null : () => _printInvoice(_documentName!),
-              icon: const Icon(Icons.print_rounded, color: AppColors.primary),
-            ),
-        ],
       ),
       body: _loading
           ? const Center(
@@ -1152,24 +1113,52 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                         },
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        key: ValueKey('company-${_company ?? 'none'}'),
-                        initialValue: _companies.contains(_company)
+                      ErpItemAutocompleteField(
+                        key: ValueKey(
+                          'company:${_companies.length}:${_company ?? ''}',
+                        ),
+                        label: 'Company *',
+                        selectedId: _companies.contains(_company)
                             ? _company
-                            : null,
-                        isExpanded: true,
-                        decoration: posFieldDecoration('Company *'),
-                        items: [
+                            : (_company != null && _company!.isNotEmpty
+                                  ? _company
+                                  : null),
+                        decoration: posFieldDecoration(
+                          'Company *',
+                          hintText: 'Pilih company',
+                          prefixIcon: const Icon(Icons.business_outlined),
+                        ),
+                        options: [
                           for (final company in _companies)
-                            DropdownMenuItem(
-                              value: company,
-                              child: Text(
-                                company,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                            ErpItemOption(id: company, label: company),
+                          if ((_company ?? '').isNotEmpty &&
+                              !_companies.contains(_company))
+                            ErpItemOption(id: _company!, label: _company!),
                         ],
-                        onChanged: (value) => setState(() {
+                        onSearch: (query) async {
+                          final q = query.trim().toLowerCase();
+                          var source = _companies;
+                          if (source.isEmpty) {
+                            source = await context
+                                .read<PosState>()
+                                .fetchCompanyOptions(preferred: _company);
+                            if (mounted && source.isNotEmpty) {
+                              setState(() => _companies = source);
+                            }
+                          }
+                          if (q.isEmpty) {
+                            return [
+                              for (final company in source)
+                                ErpItemOption(id: company, label: company),
+                            ];
+                          }
+                          return [
+                            for (final company in source)
+                              if (company.toLowerCase().contains(q))
+                                ErpItemOption(id: company, label: company),
+                          ];
+                        },
+                        onSelected: (value) => setState(() {
                           _company = value;
                           final centers = _costCentersForCompany;
                           if (_costCenter != null &&
@@ -1178,7 +1167,9 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                           }
                         }),
                         validator: (value) =>
-                            value == null ? 'Company wajib' : null,
+                            value == null || value.isEmpty
+                            ? 'Company wajib'
+                            : null,
                       ),
                       const SizedBox(height: 12),
                       InkWell(
@@ -1476,24 +1467,6 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                       ),
                     ],
                   ),
-                  if (_canPrint)
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      value: _printAfterSave,
-                      activeColor: AppColors.primary,
-                      title: const Text(
-                        'Print / Share PDF setelah simpan',
-                        style: TextStyle(
-                          color: AppColors.navy,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      onChanged: (value) =>
-                          setState(() => _printAfterSave = value ?? false),
-                    ),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: _saving ? null : () => _save(),
@@ -1515,27 +1488,6 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                       ),
                     ),
                   ),
-                  if (_canPrint) ...[
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: _saving
-                          ? null
-                          : () => _save(andPrint: true),
-                      icon: const Icon(Icons.print_rounded),
-                      label: Text(
-                        _saving ? 'Menyimpan...' : 'Simpan & Print',
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        minimumSize: const Size.fromHeight(48),
-                        side: const BorderSide(color: AppColors.primary),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ],
                     ],
                   ),
                 ),
