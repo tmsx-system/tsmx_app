@@ -899,14 +899,39 @@ class PosState extends AppStateProxyNotifier {
     String doctype, {
     List<String> fields = const ['name'],
     List<List<dynamic>>? filters,
+    List<List<dynamic>>? orFilters,
     String orderBy = 'name asc',
+    int limit = 200,
   }) {
     return frappeService.fetchResource(
       doctype,
       fields: fields,
       filters: filters,
+      orFilters: orFilters,
       orderBy: orderBy,
-      limit: 200,
+      limit: limit,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCustomerOptions({
+    String query = '',
+    int limit = 2000,
+  }) {
+    final q = query.trim();
+    return fetchLinkOptions(
+      'Customer',
+      fields: const ['name', 'customer_name'],
+      filters: const [
+        ['disabled', '=', 0],
+      ],
+      orFilters: q.isEmpty
+          ? null
+          : [
+              ['customer_name', 'like', '%$q%'],
+              ['name', 'like', '%$q%'],
+            ],
+      orderBy: 'customer_name asc',
+      limit: limit,
     );
   }
 

@@ -174,6 +174,9 @@ class AppState with ChangeNotifier {
   Future<bool> canAmendDoctype(String doctype) =>
       _hasDoctypePermission(doctype, 'amend');
 
+  Future<bool> canReportDoctype(String doctype) =>
+      _hasDoctypePermission(doctype, 'report');
+
   Future<bool> _hasDoctypePermission(String doctype, String permType) async {
     final normalizedDoctype = doctype.trim();
     final normalizedPermType = permType.trim().toLowerCase();

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../config/mobile_role_registry.dart';
+import '../consignment/consignment_main_screen.dart';
 import '../finance/finance_main_screen.dart';
 import '../logistics/logistics_main_screen.dart';
 import '../plantation/plantation_main_screen.dart';
@@ -36,6 +37,7 @@ class ModuleScreenRegistry {
     add(MobileModule.spg);
     add(MobileModule.collection);
     add(MobileModule.pos);
+    add(MobileModule.consignment);
     add(MobileModule.purchase);
     add(MobileModule.warehouse);
     add(MobileModule.logistics);
@@ -64,6 +66,8 @@ class ModuleScreenRegistry {
         return const CollectionMainScreen();
       case MobileModule.pos:
         return const PosMainScreen();
+      case MobileModule.consignment:
+        return const ConsignmentMainScreen();
       case MobileModule.purchase:
         return const PurchaseMainScreen();
       case MobileModule.warehouse:

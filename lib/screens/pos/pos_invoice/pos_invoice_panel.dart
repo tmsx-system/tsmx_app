@@ -29,6 +29,7 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
   Timer? _debounce;
   bool _didLoadPermissions = false;
   bool _didLoadProfiles = false;
+  bool _didLoadInvoices = false;
   List<String> _profiles = const [];
   PosDoctypeActionPermissions _permissions =
       const PosDoctypeActionPermissions();
@@ -45,6 +46,10 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
     if (!_didLoadProfiles) {
       _didLoadProfiles = true;
       unawaited(_loadProfiles());
+    }
+    if (!_didLoadInvoices) {
+      _didLoadInvoices = true;
+      unawaited(context.read<PosState>().refreshInvoices());
     }
   }
 

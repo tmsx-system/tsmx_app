@@ -22,8 +22,13 @@ import 'stock_entry_kind.dart';
 
 class StockEntryPanel extends StatefulWidget {
   final StockEntryKind kind;
+  final bool embedded;
 
-  const StockEntryPanel({super.key, required this.kind});
+  const StockEntryPanel({
+    super.key,
+    required this.kind,
+    this.embedded = false,
+  });
 
   @override
   State<StockEntryPanel> createState() => _StockEntryPanelState();
@@ -348,17 +353,19 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     final entries = state.stockEntries;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        surfaceTintColor: Colors.transparent,
-        title: Text(
-          _stockEntryType,
-          style: const TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              backgroundColor: AppColors.white,
+              surfaceTintColor: Colors.transparent,
+              title: Text(
+                _stockEntryType,
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
       floatingActionButton: _canCreate
           ? FloatingActionButton.extended(
               onPressed: _create,

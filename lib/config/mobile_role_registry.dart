@@ -17,6 +17,7 @@ class MobileModule {
   static const finance = 'finance';
   static const accounting = 'accounting';
   static const plantation = 'plantation';
+  static const consignment = 'consignment';
 
   static const all = [
     dashboard,
@@ -25,6 +26,7 @@ class MobileModule {
     collection,
     purchase,
     pos,
+    consignment,
     stock,
     warehouse,
     qualityControl,
@@ -42,6 +44,7 @@ class MobileModule {
     collection,
     purchase,
     pos,
+    consignment,
     stock,
     warehouse,
     qualityControl,
@@ -188,6 +191,14 @@ class MobileRoleRegistry {
       icon: Icons.receipt_long_rounded,
       menuOrder: 3,
     ),
+    MobileModule.consignment: MobileModuleMeta(
+      key: MobileModule.consignment,
+      groupKey: 'sales',
+      defaultLabel: 'Consignment',
+      defaultSubtitle: 'SO, POS Invoice, Material Transfer consignment',
+      icon: Icons.handshake_rounded,
+      menuOrder: 4,
+    ),
     MobileModule.stock: MobileModuleMeta(
       key: MobileModule.stock,
       groupKey: 'warehouse',
@@ -290,6 +301,16 @@ class MobileRoleRegistry {
         'POS Opening Entry',
         'POS Invoice',
         'POS Closing Entry',
+      ],
+    ),
+    MobileModuleAccessRule(
+      module: MobileModule.consignment,
+      readDoctypes: [
+        'Consigment',
+        'Consignment',
+        'Sales Order',
+        'POS Invoice',
+        'Stock Entry',
       ],
     ),
     MobileModuleAccessRule(

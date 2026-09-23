@@ -455,7 +455,7 @@ class FrappeService {
     }
 
     if (decoded is Map && decoded['exc'] != null) {
-      throw Exception(decoded['exc'].toString());
+      throw Exception(_extractFrappeError(decoded, response.statusCode));
     }
 
     if (decoded is Map) {
@@ -1057,6 +1057,14 @@ class FrappeService {
     final message = parsed.isEmpty ? raw.trim() : parsed;
     final lower = message.toLowerCase();
 
+    // Keep Query Report permission details — callers need to distinguish
+    // Report roles vs Ref DocType "Report" permission.
+    if (lower.contains("don't have access to report") ||
+        lower.contains('dont have access to report') ||
+        lower.contains('permission to get a report on')) {
+      return _stripFrappeExceptionPrefix(message);
+    }
+
     if (lower.contains('permissionerror') ||
         lower.contains('not permitted') ||
         lower.contains('insufficient permission')) {
@@ -1137,6 +1145,17 @@ class FrappeService {
       }
     }
     return null;
+  }
+
+  static String _stripFrappeExceptionPrefix(String message) {
+    final cleaned = message
+        .replaceFirst(
+          RegExp(r'^frappe\.exceptions\.[A-Za-z]+:\s*'),
+          '',
+        )
+        .replaceFirst(RegExp(r'^[A-Za-z]*Error:\s*'), '')
+        .trim();
+    return cleaned.isEmpty ? message.trim() : cleaned;
   }
 
   void _logHttpError({

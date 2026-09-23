@@ -52,6 +52,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
   Timer? _searchDebounce;
   bool _isOpeningDetail = false;
   bool _didLoadActionPermissions = false;
+  bool _didLoadOrders = false;
   bool _canWriteSalesOrder = false;
   bool _canPrintSalesOrder = false;
 
@@ -69,9 +70,14 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_didLoadActionPermissions) return;
-    _didLoadActionPermissions = true;
-    unawaited(_loadActionPermissions());
+    if (!_didLoadActionPermissions) {
+      _didLoadActionPermissions = true;
+      unawaited(_loadActionPermissions());
+    }
+    if (!_didLoadOrders) {
+      _didLoadOrders = true;
+      unawaited(context.read<SalesOrderState>().refreshSalesOrders());
+    }
   }
 
   Future<void> _loadActionPermissions() async {

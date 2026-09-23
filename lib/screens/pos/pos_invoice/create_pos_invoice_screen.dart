@@ -193,14 +193,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         state.fetchSelectableProfileNames(),
         state.fetchCompanyOptions(),
         state.fetchNames('Warehouse'),
-        state.fetchLinkOptions(
-          'Customer',
-          fields: const ['name', 'customer_name'],
-          filters: const [
-            ['disabled', '=', 0],
-          ],
-          orderBy: 'customer_name asc',
-        ),
+        state.fetchCustomerOptions(),
         state.fetchLinkOptions(
           'Item',
           fields: const ['name', 'item_name', 'standard_rate'],
@@ -209,6 +202,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
             ['is_sales_item', '=', 1],
           ],
           orderBy: 'item_name asc',
+          limit: 500,
         ),
         state.fetchNames(
           'Mode of Payment',
@@ -1069,16 +1063,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                             : null,
                         onSearch: (query) async {
                           final state = context.read<PosState>();
-                          final byName = await state.fetchLinkOptions(
-                            'Customer',
-                            fields: const ['name', 'customer_name'],
-                            filters: [
-                              ['disabled', '=', 0],
-                              ['customer_name', 'like', '%$query%'],
-                            ],
-                            orderBy: 'customer_name asc',
+                          final rows = await state.fetchCustomerOptions(
+                            query: query,
                           );
-                          var mapped = byName
+                          final mapped = rows
                               .map(
                                 (row) => ErpItemOption(
                                   id: row['name']?.toString() ?? '',
@@ -1088,26 +1076,21 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                               )
                               .where((row) => row.id.isNotEmpty)
                               .toList();
-                          if (mapped.isEmpty) {
-                            final byId = await state.fetchLinkOptions(
-                              'Customer',
-                              fields: const ['name', 'customer_name'],
-                              filters: [
-                                ['disabled', '=', 0],
-                                ['name', 'like', '%$query%'],
-                              ],
-                              orderBy: 'name asc',
-                            );
-                            mapped = byId
-                                .map(
-                                  (row) => ErpItemOption(
-                                    id: row['name']?.toString() ?? '',
-                                    label:
-                                        '${row['customer_name'] ?? row['name']} (${row['name']})',
-                                  ),
-                                )
-                                .where((row) => row.id.isNotEmpty)
-                                .toList();
+                          if (mounted && query.trim().isEmpty && rows.isNotEmpty) {
+                            setState(() {
+                              _customers = rows
+                                  .map(
+                                    (row) => _LinkOption(
+                                      id: row['name']?.toString() ?? '',
+                                      label:
+                                          row['customer_name']?.toString() ??
+                                          row['name']?.toString() ??
+                                          '',
+                                    ),
+                                  )
+                                  .where((row) => row.id.isNotEmpty)
+                                  .toList();
+                            });
                           }
                           return mapped;
                         },
