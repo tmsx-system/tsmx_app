@@ -141,17 +141,21 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
   Widget build(BuildContext context) {
     final selected = _selectedCustomer;
     final insight = _customerInsight;
-    return RefreshIndicator(
-      onRefresh: () async {
-        await _loadCustomers();
-        if (_selectedCustomer != null) await _loadPrices();
-      },
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverPadding(
-            padding: SalesUi.compactScreenPaddingOf(context),
-            sliver: SliverList.list(
+    return ColoredBox(
+      color: AppColors.background,
+      child: RefreshIndicator(
+        onRefresh: () async {
+          await _loadCustomers();
+          if (_selectedCustomer != null) await _loadPrices();
+        },
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: SalesUi.compactScreenPaddingOf(
+                context,
+              ).copyWith(bottom: 0),
+              sliver: SliverList.list(
               children: [
                 SalesInfoCard(
                   child: Column(
@@ -241,13 +245,15 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
                     itemCount: _prices.length,
                   ),
                 ],
-                SalesUi.gap(14),
+                SalesUi.gap(),
               ],
             ),
           ),
           if (selected == null)
             SliverPadding(
-              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              padding: SalesUi.compactScreenPaddingOf(
+                context,
+              ).copyWith(top: 0),
               sliver: const SliverToBoxAdapter(
                 child: ErpEmptyState(
                   icon: Icons.storefront_rounded,
@@ -259,19 +265,25 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
             )
           else if (_loadingPrices)
             SliverPadding(
-              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              padding: SalesUi.compactScreenPaddingOf(
+                context,
+              ).copyWith(top: 0),
               sliver: const SliverToBoxAdapter(child: _PriceListLoading()),
             )
           else if (_priceError != null)
             SliverPadding(
-              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              padding: SalesUi.compactScreenPaddingOf(
+                context,
+              ).copyWith(top: 0),
               sliver: SliverToBoxAdapter(
                 child: ErpErrorBox(message: _priceError!, onRetry: _loadPrices),
               ),
             )
           else if (_prices.isEmpty)
             SliverPadding(
-              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              padding: SalesUi.compactScreenPaddingOf(
+                context,
+              ).copyWith(top: 0),
               sliver: const SliverToBoxAdapter(
                 child: ErpEmptyState(
                   icon: Icons.price_change_outlined,
@@ -283,7 +295,9 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
             )
           else
             SliverPadding(
-              padding: SalesUi.compactScreenPaddingOf(context).copyWith(top: 0),
+              padding: SalesUi.compactScreenPaddingOf(
+                context,
+              ).copyWith(top: 0),
               sliver: SliverList.builder(
                 itemCount: _prices.length,
                 itemBuilder: (context, index) {
@@ -298,8 +312,10 @@ class _CustomerPriceListTabState extends State<CustomerPriceListTab> {
                 },
               ),
             ),
+          const SliverToBoxAdapter(child: SizedBox(height: 84)),
         ],
       ),
+    ),
     );
   }
 }
