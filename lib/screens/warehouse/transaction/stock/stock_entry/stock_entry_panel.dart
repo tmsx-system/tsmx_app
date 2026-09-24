@@ -12,6 +12,7 @@ import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
 import '../../../../../utils/erp_doc_utils.dart';
 import '../../../../../widgets/erp/erp_empty_state.dart';
+import '../../../../../widgets/erp/erp_error_dialog.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
 import '../../../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../shared/warehouse_widgets.dart';
@@ -114,10 +115,11 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
       );
       if (!mounted) return;
       if (state.stockEntriesError != null) {
-        _error = _friendlyError(state.stockEntriesError!);
+        _error = captureErpError(context, state.stockEntriesError!);
       }
     } catch (error) {
-      _error = _friendlyError(error);
+      if (!mounted) return;
+      _error = captureErpError(context, error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -594,13 +596,6 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     if (row.toWarehouse.isNotEmpty) return 'Ke ${row.toWarehouse}';
     return '';
   }
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _StockEntryListFilters {

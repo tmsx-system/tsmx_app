@@ -8,6 +8,7 @@ import '../../../../../models/warehouse_info.dart';
 import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
 import '../../../../../utils/num_parse.dart';
+import '../../../../../widgets/erp/erp_error_dialog.dart';
 import '../../../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../../../widgets/responsive/responsive_layout.dart';
 import 'stock_entry_kind.dart';
@@ -137,7 +138,15 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
         _series ??= series.isEmpty ? null : series.first;
       });
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(
+            context,
+            error,
+            action: 'memuat form ${widget.kind.title}',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -492,7 +501,17 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
       );
       Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(
+            context,
+            error,
+            action: _isEdit
+                ? 'memperbarui ${widget.kind.title}'
+                : 'membuat ${widget.kind.title}',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -993,13 +1012,6 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   String _formatRate(double value) {
     return NumberFormat('#,##0.##', 'id_ID').format(value);
   }
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _ItemMeta {

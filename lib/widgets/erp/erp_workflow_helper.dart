@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_doc_utils.dart';
 import 'erp_detail_sheet.dart';
+import 'erp_error_dialog.dart';
 
 Future<bool> runErpWorkflowAction(
   BuildContext context, {
@@ -17,12 +18,7 @@ Future<bool> runErpWorkflowAction(
     return true;
   } catch (e) {
     if (!context.mounted) return false;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(e.toString().replaceFirst('Exception: ', '')),
-        backgroundColor: Colors.redAccent,
-      ),
-    );
+    await showErpError(context, error: e, action: 'menjalankan aksi dokumen');
     return false;
   }
 }

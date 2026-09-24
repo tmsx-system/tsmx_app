@@ -6,6 +6,7 @@ import '../../../models/pos_opening_entry.dart';
 import '../../../state/pos/pos_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/pos_ui.dart';
 
@@ -147,7 +148,9 @@ class _CreatePosClosingEntryScreenState
         await _applyOpening(_openingId!);
       }
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -313,7 +316,9 @@ class _CreatePosClosingEntryScreenState
 
       await _reloadInvoices();
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _loadingSession = false);
     }
@@ -418,7 +423,9 @@ class _CreatePosClosingEntryScreenState
         _totalQty = totalQty;
       });
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _loadingSession = false);
     }
@@ -556,7 +563,9 @@ class _CreatePosClosingEntryScreenState
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

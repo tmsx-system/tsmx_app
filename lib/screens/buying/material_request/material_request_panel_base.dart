@@ -11,6 +11,7 @@ import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/document_trend_card.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/erp/erp_status_badge.dart';
 import '../../../widgets/erp/erp_status_chip_bar.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
@@ -212,12 +213,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal membuat draft MR. $error'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
+      await showErpError(context, error: error, action: 'membuat draft MR');
     }
   }
 

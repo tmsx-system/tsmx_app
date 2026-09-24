@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../../models/stock_entry.dart';
 import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
+import '../../../../../widgets/erp/erp_error_dialog.dart';
 import '../../../shared/warehouse_widgets.dart';
 
 class StockEntryKind {
@@ -134,7 +135,7 @@ class _StockEntryTypePickerSheetState extends State<_StockEntryTypePickerSheet> 
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = _friendlyError(error));
+      setState(() => _error = captureErpError(context, error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -268,11 +269,4 @@ class _StockEntryTypePickerSheetState extends State<_StockEntryTypePickerSheet> 
       ),
     );
   }
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }

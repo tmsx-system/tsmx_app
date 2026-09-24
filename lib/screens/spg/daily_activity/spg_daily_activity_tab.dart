@@ -5,6 +5,7 @@ import '../../../state/spg/spg_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/erp/erp_section_widgets.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import 'create_spg_daily_activity_screen.dart';
@@ -37,7 +38,9 @@ class _SpgDailyActivityTabState extends State<SpgDailyActivityTab> {
       if (!mounted) return;
       setState(() => _records = records);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -207,7 +210,9 @@ class _SpgDailyActivityTabState extends State<SpgDailyActivityTab> {
         builder: (_) => _SpgDailyActivityDetailSheet(detail: detail),
       );
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     }
   }
 }

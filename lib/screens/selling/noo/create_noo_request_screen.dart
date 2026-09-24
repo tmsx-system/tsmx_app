@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/noo_request.dart';
 import '../../../state/selling/noo_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../shared/sales_ui.dart';
 
 class CreateNooRequestScreen extends StatefulWidget {
@@ -498,9 +499,7 @@ class _CreateNooRequestScreenState extends State<CreateNooRequestScreen> {
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Gagal kirim NOO: $error')));
+      await showErpError(context, error: error, action: 'mengirim pengajuan NOO');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }

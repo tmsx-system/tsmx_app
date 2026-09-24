@@ -6,6 +6,7 @@ import '../../../models/purchase_order.dart';
 import '../../../models/warehouse_info.dart';
 import '../../../state/purchasing/purchase_order_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/purchase_ui.dart';
@@ -679,15 +680,12 @@ class _CreatePurchaseOrderScreenState extends State<CreatePurchaseOrderScreen> {
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.isEditMode
-                ? 'Gagal memperbarui Purchase Order: $e'
-                : 'Gagal membuat Purchase Order: $e',
-          ),
-          backgroundColor: Colors.redAccent,
-        ),
+      await showErpError(
+        context,
+        error: e,
+        action: widget.isEditMode
+            ? 'memperbarui Purchase Order'
+            : 'membuat Purchase Order',
       );
     } finally {
       if (mounted) {

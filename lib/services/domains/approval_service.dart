@@ -177,26 +177,31 @@ class ApprovalService {
     if (normalizedDoctype.isEmpty || normalizedName.isEmpty) return const [];
     await frappe.ensureLoggedIn();
 
-    final comments = await _fetchAllResourcePages(
-      doctype: 'Comment',
-      fields: const [
-        'name',
-        'reference_doctype',
-        'reference_name',
-        'content',
-        'comment_type',
-        'comment_by',
-        'owner',
-        'creation',
-      ],
-      filters: [
-        ['reference_doctype', '=', normalizedDoctype],
-        ['reference_name', '=', normalizedName],
-      ],
-      orderBy: 'creation desc',
-      maxRows: 500,
-    );
-    final activity = comments.map(SalesOrderApprovalHistory.fromJson).toList();
+    final activity = <SalesOrderApprovalHistory>[];
+    try {
+      final comments = await _fetchAllResourcePages(
+        doctype: 'Comment',
+        fields: const [
+          'name',
+          'reference_doctype',
+          'reference_name',
+          'content',
+          'comment_type',
+          'comment_by',
+          'owner',
+          'creation',
+        ],
+        filters: [
+          ['reference_doctype', '=', normalizedDoctype],
+          ['reference_name', '=', normalizedName],
+        ],
+        orderBy: 'creation desc',
+        maxRows: 500,
+      );
+      activity.addAll(comments.map(SalesOrderApprovalHistory.fromJson));
+    } catch (_) {
+      // Comment permission is optional for the approval detail page.
+    }
 
     try {
       final versions = await _fetchAllResourcePages(

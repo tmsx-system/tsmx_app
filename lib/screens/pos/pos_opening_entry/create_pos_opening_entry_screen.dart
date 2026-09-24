@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../state/pos/pos_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../shared/pos_ui.dart';
 
@@ -104,7 +105,9 @@ class _CreatePosOpeningEntryScreenState
         await _loadExisting(widget.editName!.trim());
       }
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -355,7 +358,9 @@ class _CreatePosOpeningEntryScreenState
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

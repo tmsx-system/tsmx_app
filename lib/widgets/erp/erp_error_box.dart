@@ -39,7 +39,7 @@ class ErpErrorBox extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Gagal memuat data',
+                  'Mohon maaf, data belum bisa ditampilkan',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.danger,

@@ -6,6 +6,7 @@ import '../../../models/quality_inspection_record.dart';
 import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../shared/warehouse_widgets.dart';
 
 class WarehouseQcApprovalScreen extends StatefulWidget {
@@ -48,7 +49,8 @@ class _WarehouseQcApprovalScreenState extends State<WarehouseQcApprovalScreen> {
           .read<WarehouseStockState>()
           .fetchQualityInspectionsForApproval(periodDays: _periodDays);
     } catch (error) {
-      _error = _friendlyError(error);
+      if (!mounted) return;
+      _error = captureErpError(context, error, action: 'memuat approval QC');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -98,7 +100,15 @@ class _WarehouseQcApprovalScreenState extends State<WarehouseQcApprovalScreen> {
         ),
       );
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(
+            context,
+            error,
+            action: 'submit Quality Inspection',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _submittingName = null);
     }
@@ -372,11 +382,4 @@ class _WarehouseQcApprovalScreenState extends State<WarehouseQcApprovalScreen> {
       ],
     ),
   );
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../state/selling/noo_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../shared/sales_ui.dart';
 import 'create_noo_request_screen.dart';
 
@@ -170,7 +171,7 @@ class _NooRequestTabState extends State<NooRequestTab> {
       setState(() => _requests = rows);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+      setState(() => _error = captureErpError(context, error));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/warehouse_info.dart';
 import '../../../state/purchasing/purchase_receipt_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/purchase_ui.dart';
@@ -147,7 +148,15 @@ class _CreatePurchaseReceiptScreenState
         _selectedWarehouse = appState.preferredWarehouse(warehouses);
       });
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(
+            context,
+            error,
+            action: 'memuat form Purchase Receipt',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -276,12 +285,7 @@ class _CreatePurchaseReceiptScreenState
       Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal membuat $_doctype: $error'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      await showErpError(context, error: error, action: 'membuat $_doctype');
     } finally {
       if (mounted) setState(() => _saving = false);
     }

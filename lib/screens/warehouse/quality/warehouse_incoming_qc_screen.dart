@@ -6,6 +6,7 @@ import '../../../models/quality_inspection_record.dart';
 import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../shared/warehouse_widgets.dart';
 
 class WarehouseIncomingQcScreen extends StatefulWidget {
@@ -50,7 +51,8 @@ class _WarehouseIncomingQcScreenState extends State<WarehouseIncomingQcScreen> {
             forceRefresh: forceRefresh,
           );
     } catch (error) {
-      _error = _friendlyError(error);
+      if (!mounted) return;
+      _error = captureErpError(context, error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -340,11 +342,4 @@ class _WarehouseIncomingQcScreenState extends State<WarehouseIncomingQcScreen> {
     if (normalized == 'rejected') return Icons.close_rounded;
     return Icons.hourglass_empty_rounded;
   }
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'app_state.dart';
 
@@ -64,6 +65,26 @@ abstract class AppStateProxyNotifier extends ChangeNotifier {
       appState.addListener(_handleAppStateChanged);
     }
     notifyListeners();
+  }
+
+  bool _notifyQueued = false;
+
+  @override
+  void notifyListeners() {
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    final duringBuild =
+        phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks;
+    if (!duringBuild) {
+      super.notifyListeners();
+      return;
+    }
+    if (_notifyQueued) return;
+    _notifyQueued = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _notifyQueued = false;
+      super.notifyListeners();
+    });
   }
 
   void _handleAppStateChanged() {

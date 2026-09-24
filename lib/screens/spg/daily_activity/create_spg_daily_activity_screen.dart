@@ -8,6 +8,7 @@ import '../../../models/spg_workspace.dart';
 import '../../../state/spg/spg_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_error_box.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 
 class CreateSpgDailyActivityScreen extends StatefulWidget {
@@ -62,7 +63,9 @@ class _CreateSpgDailyActivityScreenState
         _employees = employees;
       });
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -89,7 +92,9 @@ class _CreateSpgDailyActivityScreenState
       if (!mounted) return;
       setState(() => _customers = customers);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -145,7 +150,9 @@ class _CreateSpgDailyActivityScreenState
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

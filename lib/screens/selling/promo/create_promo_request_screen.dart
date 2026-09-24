@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/promo_request.dart';
 import '../../../state/selling/promo_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/sales_ui.dart';
 
@@ -939,7 +940,7 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
-      _showError(error.toString().replaceFirst('Exception: ', ''));
+      await showErpError(context, error: error, action: 'membuat Promo Request');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -1235,7 +1236,11 @@ class _LinkSearchSheetState extends State<_LinkSearchSheet> {
       } catch (_) {
         if (!mounted) return;
         setState(
-          () => _error = error.toString().replaceFirst('Exception: ', ''),
+          () => _error = captureErpError(
+            context,
+            error,
+            action: 'memuat ${widget.doctype}',
+          ),
         );
       }
     } finally {
@@ -1433,7 +1438,7 @@ class _ItemSearchSheetState extends State<_ItemSearchSheet> {
       setState(() => _items = rows);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+      setState(() => _error = captureErpError(context, error));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

@@ -10,6 +10,7 @@ import '../../../models/sales_workspace.dart';
 import '../../../models/warehouse_info.dart';
 import '../../../state/selling/sales_order_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/sales_ui.dart';
@@ -1784,11 +1785,10 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                 );
               } catch (e) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  SnackBar(
-                    content: Text('Gagal membuat customer: $e'),
-                    backgroundColor: Colors.redAccent,
-                  ),
+                await showErpError(
+                  this.context,
+                  error: e,
+                  action: 'membuat customer',
                 );
               } finally {
                 if (mounted && sheetOpen) {
@@ -2104,15 +2104,12 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.isEditMode
-                ? 'Gagal memperbarui Sales Order: $e'
-                : 'Gagal membuat Sales Order: $e',
-          ),
-          backgroundColor: Colors.redAccent,
-        ),
+      await showErpError(
+        context,
+        error: e,
+        action: widget.isEditMode
+            ? 'memperbarui Sales Order'
+            : 'membuat Sales Order',
       );
     } finally {
       if (mounted) {
@@ -4224,7 +4221,11 @@ class _CustomerHistorySheetState extends State<_CustomerHistorySheet>
         _hasMore[doctype] = page.isNotEmpty;
       });
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(context, error, action: 'memuat data'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading[doctype] = false);
     }

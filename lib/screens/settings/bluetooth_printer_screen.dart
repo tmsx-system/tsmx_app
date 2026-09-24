@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/bluetooth_printer_service.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/erp/erp_error_dialog.dart';
 
 class BluetoothPrinterScreen extends StatefulWidget {
   final bool popOnSelect;
@@ -39,7 +40,7 @@ class _BluetoothPrinterScreenState extends State<BluetoothPrinterScreen> {
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+      setState(() => _error = captureErpError(context, error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

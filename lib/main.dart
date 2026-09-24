@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -40,9 +41,12 @@ import 'services/erp_services.dart';
 import 'services/native_notification_service.dart';
 import 'screens/auth/loading_screen.dart';
 import 'theme/app_colors.dart';
+import 'utils/app_navigator.dart';
+import 'widgets/erp/erp_error_dialog.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  _installGlobalErrorHandlers();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -401,12 +405,29 @@ void main() {
   );
 }
 
+void _installGlobalErrorHandlers() {
+  final previousOnError = FlutterError.onError;
+  FlutterError.onError = (details) {
+    previousOnError?.call(details);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ErpErrorDialog.showUnexpected(details.exception);
+    });
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ErpErrorDialog.showUnexpected(error);
+    });
+    return true;
+  };
+}
+
 class TmsxHubApp extends StatelessWidget {
   const TmsxHubApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: AppNavigator.key,
       title: AppConfig.defaultAppName,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

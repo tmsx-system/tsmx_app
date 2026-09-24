@@ -8,6 +8,7 @@ import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
 import '../../../../../utils/erp_format.dart';
 import '../../../../../widgets/erp/erp_empty_state.dart';
+import '../../../../../widgets/erp/erp_error_dialog.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
 import '../../../shared/warehouse_widgets.dart';
 import 'create_stock_reconciliation_screen.dart';
@@ -82,7 +83,8 @@ class _StockReconciliationPanelState extends State<StockReconciliationPanel> {
         name: _search.text,
       );
     } catch (error) {
-      _error = _friendlyError(error);
+      if (!mounted) return;
+      _error = captureErpError(context, error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -271,13 +273,6 @@ class _StockReconciliationPanelState extends State<StockReconciliationPanel> {
       ),
     );
   }
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _RecoFilters {

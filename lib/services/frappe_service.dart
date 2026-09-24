@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
+import '../utils/erp_error_message.dart';
 
 class FrappeService {
   static const int maxPageLength = 10000;
@@ -1065,27 +1066,7 @@ class FrappeService {
       return _stripFrappeExceptionPrefix(message);
     }
 
-    if (lower.contains('permissionerror') ||
-        lower.contains('not permitted') ||
-        lower.contains('insufficient permission')) {
-      return 'Akses ERPNext tidak diizinkan untuk data ini.';
-    }
-    if (lower.contains('doctype') &&
-        (lower.contains('not found') ||
-            lower.contains('does not exist') ||
-            lower.contains('tidak ditemukan'))) {
-      final doctype = _extractMissingDoctype(message);
-      return doctype == null
-          ? 'Fitur belum aktif di site ERPNext ini.'
-          : 'Fitur $doctype belum aktif di site ERPNext ini.';
-    }
-    if (statusCode == 401 || statusCode == 403) {
-      return 'Session atau akses ERPNext tidak diizinkan.';
-    }
-    if (statusCode == 404) {
-      return 'Data atau endpoint ERPNext tidak ditemukan.';
-    }
-    return message;
+    return ErpErrorMessage.fromFrappe(message, statusCode: statusCode);
   }
 
   static String _parseServerMessage(String raw) {
@@ -1124,27 +1105,6 @@ class FrappeService {
       return message?.toString() ?? '';
     }
     return item?.toString() ?? '';
-  }
-
-  static String? _extractMissingDoctype(String message) {
-    final patterns = [
-      RegExp(
-        r'DocType\s+(.+?)\s+(?:tidak ditemukan|not found|does not exist)',
-        caseSensitive: false,
-      ),
-      RegExp(
-        r'(.+?)\s+DocType\s+(?:tidak ditemukan|not found|does not exist)',
-        caseSensitive: false,
-      ),
-    ];
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(message);
-      final value = match?.group(1)?.trim();
-      if (value != null && value.isNotEmpty) {
-        return value.replaceAll(RegExp(r'["`.]'), '').trim();
-      }
-    }
-    return null;
   }
 
   static String _stripFrappeExceptionPrefix(String message) {

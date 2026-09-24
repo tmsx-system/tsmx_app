@@ -6,6 +6,7 @@ import '../../../state/warehouse/warehouse_valuation_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../shared/warehouse_widgets.dart';
 
 enum _ValuationSort { highestValue, lowestValue, highestQty, itemName }
@@ -52,7 +53,8 @@ class _WarehouseInventoryValuationViewState
     try {
       await context.read<WarehouseValuationState>().refreshInventory();
     } catch (error) {
-      _error = _friendlyError(error);
+      if (!mounted) return;
+      _error = captureErpError(context, error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -372,13 +374,6 @@ class _WarehouseInventoryValuationViewState
       ],
     ),
   );
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _ValuationFilterValue {

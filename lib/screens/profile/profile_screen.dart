@@ -376,20 +376,26 @@ class _ProfileScreenState extends State<ProfileScreen>
             icon: Icons.print_outlined,
             accent: _accentSky,
             children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.print_rounded, color: AppColors.primary),
-                title: const Text(
-                  'Pilih printer HP',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: const Text(
-                  'Pair di Settings Bluetooth, lalu pilih di sini',
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const BluetoothPrinterScreen(),
+              Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.print_rounded,
+                    color: AppColors.primary,
+                  ),
+                  title: const Text(
+                    'Pilih printer HP',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: const Text(
+                    'Pair di Settings Bluetooth, lalu pilih di sini',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const BluetoothPrinterScreen(),
+                    ),
                   ),
                 ),
               ),
@@ -790,33 +796,38 @@ class _ProfileScreenState extends State<ProfileScreen>
                     },
                   ),
                   const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceMuted,
+                  Material(
+                    color: AppColors.surfaceMuted,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.border),
+                      side: const BorderSide(color: AppColors.border),
                     ),
-                    child: SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      value: _logoutAllSessions,
-                      activeTrackColor: AppColors.primary,
-                      onChanged: (value) {
-                        setState(() => _logoutAllSessions = value);
-                      },
-                      title: const Text(
-                        'Keluar dari perangkat lain',
-                        style: TextStyle(
-                          color: AppColors.navy,
-                          fontWeight: FontWeight.w800,
-                        ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
                       ),
-                      subtitle: const Text(
-                        'Disarankan jika akun terasa tidak aman.',
-                        style: TextStyle(color: AppColors.slate, fontSize: 11),
+                      child: SwitchListTile.adaptive(
+                        contentPadding: EdgeInsets.zero,
+                        value: _logoutAllSessions,
+                        activeTrackColor: AppColors.primary,
+                        onChanged: (value) {
+                          setState(() => _logoutAllSessions = value);
+                        },
+                        title: const Text(
+                          'Keluar dari perangkat lain',
+                          style: TextStyle(
+                            color: AppColors.navy,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          'Disarankan jika akun terasa tidak aman.',
+                          style: TextStyle(
+                            color: AppColors.slate,
+                            fontSize: 11,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -1082,22 +1093,26 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: accent.withValues(alpha: 0.14)),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: 0.08),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
+    return Material(
+      color: AppColors.white,
+      elevation: 0,
+      shadowColor: accent.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: accent.withValues(alpha: 0.14)),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.08),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
           Row(
             children: [
               Container(
@@ -1141,6 +1156,7 @@ class _SectionCard extends StatelessWidget {
           const SizedBox(height: 6),
           ...children,
         ],
+        ),
       ),
     );
   }
@@ -1253,13 +1269,16 @@ class _PhotoSourceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      tileColor: AppColors.surfaceMuted,
-      leading: Icon(icon, color: AppColors.primary),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-      trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: onTap,
+    return Material(
+      color: AppColors.surfaceMuted,
+      borderRadius: BorderRadius.circular(18),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        leading: Icon(icon, color: AppColors.primary),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      ),
     );
   }
 }

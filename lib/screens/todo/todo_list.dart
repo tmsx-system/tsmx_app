@@ -11,6 +11,7 @@ import '../../utils/erp_doc_utils.dart';
 import '../../utils/erp_format.dart';
 import '../../utils/num_parse.dart';
 import '../../widgets/erp/erp_empty_state.dart';
+import '../../widgets/erp/erp_error_dialog.dart';
 import '../../widgets/erp/erp_status_badge.dart';
 import '../../widgets/erp/erp_status_chip_bar.dart';
 import '../../widgets/erp/erp_workflow_helper.dart';
@@ -133,7 +134,15 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       if (!mounted) return;
       setState(() => _rows = filtered);
     } catch (error) {
-      if (!silent && mounted) setState(() => _error = _friendlyError(error));
+      if (!silent && mounted) {
+        setState(
+          () => _error = captureErpError(
+            context,
+            error,
+            action: 'memuat daftar approval',
+          ),
+        );
+      }
     }
     if (widget.showHistoryTab) {
       try {
@@ -141,7 +150,13 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
         if (mounted) setState(() => _history = history);
       } catch (error) {
         if (!silent && mounted) {
-          setState(() => _historyError = _friendlyError(error));
+          setState(
+            () => _historyError = captureErpError(
+              context,
+              error,
+              action: 'memuat riwayat approval',
+            ),
+          );
         }
       }
     }
@@ -1039,13 +1054,6 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       .replaceAll(RegExp(r'<[^>]*>'), ' ')
       .replaceAll(RegExp(r'[ \t]+'), ' ')
       .trim();
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _ApprovalCompactFilterBar extends StatelessWidget {
@@ -1485,26 +1493,46 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     });
     try {
       final appState = context.read<TodoState>();
-      final results = await Future.wait<dynamic>([
-        appState.fetchApprovalDocument(
+      Map<String, dynamic>? detail;
+      var activity = const <SalesOrderApprovalHistory>[];
+      Object? documentError;
+      try {
+        detail = await appState.fetchApprovalDocument(
           doctype: widget.approval.doctype,
           name: widget.approval.name,
           forceRefresh: true,
-        ),
-        appState.fetchApprovalDocumentActivity(
+        );
+      } catch (error) {
+        documentError = error;
+      }
+      try {
+        activity = await appState.fetchApprovalDocumentActivity(
           doctype: widget.approval.doctype,
           name: widget.approval.name,
-        ),
-      ]);
+        );
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
-        _detail = Map<String, dynamic>.from(results[0] as Map);
-        _activity = (results[1] as List)
-            .whereType<SalesOrderApprovalHistory>()
-            .toList();
+        _detail = detail;
+        _activity = activity;
+        _error = documentError == null
+            ? null
+            : captureErpError(
+                context,
+                documentError,
+                action: 'memuat detail approval',
+              );
       });
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(
+            context,
+            error,
+            action: 'memuat detail approval',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1548,7 +1576,11 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       );
       Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(context, error),
+        );
+      }
     } finally {
       if (mounted) setState(() => _processing = false);
     }
@@ -1636,7 +1668,11 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       );
       await _loadDetail();
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(context, error),
+        );
+      }
     } finally {
       if (mounted) setState(() => _addingApprover = false);
     }
@@ -1701,7 +1737,11 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       );
       Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(context, error),
+        );
+      }
     } finally {
       if (mounted) setState(() => _additionalApprovalProcessing = false);
     }
@@ -2722,13 +2762,6 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         normalized.contains('decline') ||
         normalized.contains('return');
   }
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _SalesOrderApprovalHistoryDetailPage extends StatefulWidget {
@@ -2781,7 +2814,7 @@ class _SalesOrderApprovalHistoryDetailPageState
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = _friendlyError(error));
+      setState(() => _error = captureErpError(context, error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -3402,13 +3435,6 @@ class _SalesOrderApprovalHistoryDetailPageState
       .trim();
 
   String _text(dynamic value) => value?.toString().trim() ?? '';
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _ApproverPickerSheet extends StatefulWidget {
@@ -3640,7 +3666,7 @@ class _SalesOrderApprovalDetailPageState
       setState(() => _detail = detail);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = _friendlyError(error));
+      setState(() => _error = captureErpError(context, error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -3679,7 +3705,11 @@ class _SalesOrderApprovalDetailPageState
       );
       Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(context, error),
+        );
+      }
     } finally {
       if (mounted) setState(() => _processing = false);
     }
@@ -4036,13 +4066,6 @@ class _SalesOrderApprovalDetailPageState
         normalized.contains('tolak') ||
         normalized.contains('decline');
   }
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _ApprovalDecision {

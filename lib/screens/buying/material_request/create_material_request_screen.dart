@@ -5,6 +5,7 @@ import '../../../models/inventory_item.dart';
 import '../../../models/warehouse_info.dart';
 import '../../../state/purchasing/material_request_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/purchase_ui.dart';
@@ -137,7 +138,15 @@ class _CreateMaterialRequestScreenState
         _selectedWarehouse ??= appState.preferredWarehouse(warehouses);
       });
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(
+          () => _error = captureErpError(
+            context,
+            error,
+            action: 'memuat form Material Request',
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -243,11 +252,10 @@ class _CreateMaterialRequestScreenState
       Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal membuat Material Request: $error'),
-          backgroundColor: Colors.redAccent,
-        ),
+      await showErpError(
+        context,
+        error: error,
+        action: 'membuat Material Request',
       );
     } finally {
       if (mounted) setState(() => _saving = false);

@@ -12,6 +12,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/erp_doc_utils.dart';
 import '../../utils/erp_format.dart';
 import '../../widgets/erp/erp_empty_state.dart';
+import '../../widgets/erp/erp_error_dialog.dart';
 import 'logistics_widgets.dart';
 
 class LogisticsDeliveryTab extends StatefulWidget {
@@ -157,7 +158,9 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
         ),
       );
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _busyId = null);
     }
@@ -188,7 +191,9 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
         ),
       );
     } catch (error) {
-      if (mounted) setState(() => _error = _friendlyError(error));
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _busyId = null);
       File(filePath).delete().ignore();

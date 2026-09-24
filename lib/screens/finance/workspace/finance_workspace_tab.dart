@@ -119,7 +119,9 @@ class _FinanceWorkspaceTabState extends State<_FinanceWorkspaceTab> {
       });
       _financeFilterStore.update(company: selectedCompany);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

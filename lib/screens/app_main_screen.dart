@@ -18,6 +18,7 @@ import '../state/warehouse/warehouse_stock_state.dart';
 import '../theme/app_colors.dart';
 import '../utils/erp_doc_utils.dart';
 import '../utils/erp_format.dart';
+import '../widgets/erp/erp_error_dialog.dart';
 import '../widgets/responsive/responsive_layout.dart';
 import '../config/mobile_role_registry.dart';
 import 'auth/login_screen.dart';
@@ -415,6 +416,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
     final canCreateStockEntry = await authState.canCreateDoctype('Stock Entry');
     var stockEntryKinds = const <StockEntryKind>[];
     if (canCreateStockEntry) {
+      if (!context.mounted) return const [];
       try {
         final types = await context
             .read<WarehouseStockState>()
@@ -697,11 +699,10 @@ class _AppMainScreenState extends State<AppMainScreen> {
       namingSeries = await salesOrderState.fetchNamingSeries(doctype);
     } catch (error) {
       if (!context.mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal memuat naming series $doctype: $error'),
-          backgroundColor: Colors.redAccent,
-        ),
+      await showErpError(
+        context,
+        error: error,
+        action: 'memuat naming series $doctype',
       );
       return null;
     }
@@ -878,12 +879,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
       );
     } catch (err) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$failurePrefix: $err'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      await showErpError(context, error: err, action: failurePrefix);
     }
   }
 }

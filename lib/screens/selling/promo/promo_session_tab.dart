@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../state/selling/promo_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import 'create_promo_request_screen.dart';
 import '../shared/sales_ui.dart';
 
@@ -136,7 +137,7 @@ class _PromoSessionTabState extends State<PromoSessionTab> {
       setState(() => _requests = rows);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+      setState(() => _error = captureErpError(context, error));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

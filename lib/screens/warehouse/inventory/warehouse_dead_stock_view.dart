@@ -6,6 +6,7 @@ import '../../../state/warehouse/warehouse_dead_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
+import '../../../widgets/erp/erp_error_dialog.dart';
 import '../shared/warehouse_widgets.dart';
 
 class WarehouseDeadStockView extends StatefulWidget {
@@ -51,7 +52,8 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
         forceRefresh: forceRefresh,
       );
     } catch (error) {
-      _error = _friendlyError(error);
+      if (!mounted) return;
+      _error = captureErpError(context, error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -296,13 +298,6 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
       ],
     ),
   );
-
-  String _friendlyError(Object error) => error
-      .toString()
-      .replaceFirst(RegExp(r'^Exception:\s*'), '')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
 }
 
 class _DeadStockFilterValue {

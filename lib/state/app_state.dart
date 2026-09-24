@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import '../models/sales_order.dart';
@@ -1082,6 +1083,8 @@ class AppState with ChangeNotifier {
     await sp.setString(_prefsFrappeSiteHistoryKey, jsonEncode(next));
   }
 
+  bool _notifyQueued = false;
+
   AppState({ErpServices? services}) : services = services ?? ErpServices() {
     () async {
       await _restoreFrappeConfig();
@@ -1090,6 +1093,24 @@ class AppState with ChangeNotifier {
       _isInitializing = false;
       notifyListeners();
     }();
+  }
+
+  @override
+  void notifyListeners() {
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    final duringBuild =
+        phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks;
+    if (!duringBuild) {
+      super.notifyListeners();
+      return;
+    }
+    if (_notifyQueued) return;
+    _notifyQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notifyQueued = false;
+      super.notifyListeners();
+    });
   }
 
   Future<bool> initApp() async {
