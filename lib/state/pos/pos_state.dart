@@ -935,6 +935,47 @@ class PosState extends AppStateProxyNotifier {
     );
   }
 
+  Future<
+    ({
+      List<String> uoms,
+      String defaultUom,
+      Map<String, double> conversionFactors,
+    })
+  >
+  fetchItemUoms(String itemCode) async {
+    final doc = await frappeService.fetchDocument('Item', itemCode);
+    final stockUom = doc['stock_uom']?.toString().trim() ?? '';
+    final salesUom = doc['sales_uom']?.toString().trim() ?? '';
+    final uoms = <String>[];
+    final factors = <String, double>{};
+
+    void addUom(String value, [double factor = 1]) {
+      final uom = value.trim();
+      if (uom.isEmpty) return;
+      if (!uoms.contains(uom)) uoms.add(uom);
+      factors[uom] = factor <= 0 ? 1 : factor;
+    }
+
+    addUom(stockUom, 1);
+    addUom(salesUom, factors[salesUom] ?? 1);
+    final child = doc['uoms'];
+    if (child is List) {
+      for (final row in child.whereType<Map>()) {
+        final uom = row['uom']?.toString().trim() ?? '';
+        final factor =
+            double.tryParse(row['conversion_factor']?.toString() ?? '') ?? 1;
+        addUom(uom, factor);
+      }
+    }
+
+    final defaultUom = salesUom.isNotEmpty
+        ? salesUom
+        : (stockUom.isNotEmpty
+              ? stockUom
+              : (uoms.isNotEmpty ? uoms.first : ''));
+    return (uoms: uoms, defaultUom: defaultUom, conversionFactors: factors);
+  }
+
   /// Resolve selling rate from POS price list / ERPNext pricing rules.
   Future<({double rate, double discountAmount})> resolveItemSellingRate({
     required String itemCode,
@@ -942,6 +983,7 @@ class PosState extends AppStateProxyNotifier {
     String? company,
     String? priceList,
     String? warehouse,
+    String? uom,
     DateTime? postingDate,
     double qty = 1,
   }) async {
@@ -952,6 +994,7 @@ class PosState extends AppStateProxyNotifier {
         company: company,
         priceList: priceList,
         warehouse: warehouse,
+        uom: uom,
         transactionDate: postingDate,
         qty: qty,
       );
@@ -965,6 +1008,7 @@ class PosState extends AppStateProxyNotifier {
         ['selling', '=', 1],
         if (priceList != null && priceList.trim().isNotEmpty)
           ['price_list', '=', priceList.trim()],
+        if (uom != null && uom.trim().isNotEmpty) ['uom', '=', uom.trim()],
       ];
       final rows = await fetchLinkOptions(
         'Item Price',

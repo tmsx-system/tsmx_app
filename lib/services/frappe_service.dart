@@ -475,6 +475,7 @@ class FrappeService {
     String? priceList,
     String? currency,
     String? customerGroup,
+    String? uom,
     bool ignorePricingRule = false,
   }) async {
     final pricingArgs = <String, dynamic>{
@@ -500,6 +501,7 @@ class FrappeService {
         'currency': currency.trim(),
       if (customerGroup != null && customerGroup.trim().isNotEmpty)
         'customer_group': customerGroup.trim(),
+      if (uom != null && uom.trim().isNotEmpty) 'uom': uom.trim(),
     };
 
     final result = await callMethod(

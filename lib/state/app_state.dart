@@ -4675,6 +4675,7 @@ class AppState with ChangeNotifier {
     String? currency,
     String? warehouse,
     String? customerGroup,
+    String? uom,
     DateTime? transactionDate,
     double qty = 1,
     bool ignorePricingRule = false,
@@ -4699,6 +4700,7 @@ class AppState with ChangeNotifier {
           priceList: priceList,
           currency: currency,
           customerGroup: customerGroup,
+          uom: uom,
           ignorePricingRule: ignorePricingRule,
         );
       } catch (_) {}
@@ -4708,6 +4710,7 @@ class AppState with ChangeNotifier {
       ['selling', '=', 1],
       if (priceList != null && priceList.isNotEmpty)
         ['price_list', '=', priceList],
+      if (uom != null && uom.trim().isNotEmpty) ['uom', '=', uom.trim()],
     ];
     List<Map<String, dynamic>> prices;
     try {

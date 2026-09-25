@@ -284,6 +284,7 @@ class _ConsignmentMainScreenState extends State<ConsignmentMainScreen> {
     }
 
     return FloatingActionButton.extended(
+      heroTag: 'consignment-create-${entry.key}',
       onPressed: () => _openCreate(context, entry.key),
       backgroundColor: AppColors.primary,
       foregroundColor: Colors.white,

@@ -262,6 +262,7 @@ class _PosMainScreenState extends State<PosMainScreen> {
     if (!entry.canCreate) return null;
 
     return FloatingActionButton.extended(
+      heroTag: 'pos-create-${entry.key}',
       onPressed: () => _openCreate(context, entry.key),
       backgroundColor: AppColors.primary,
       foregroundColor: Colors.white,

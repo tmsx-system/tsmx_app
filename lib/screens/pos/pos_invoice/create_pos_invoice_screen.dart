@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -21,18 +23,28 @@ class CreatePosInvoiceScreen extends StatefulWidget {
 
 class _ItemRow {
   String? itemCode;
+  String? uom;
+  List<String> uomOptions = const [];
+  Map<String, double> conversionFactors = const {};
   final TextEditingController qtyCtrl;
   final TextEditingController rateCtrl;
   final TextEditingController discountCtrl;
 
   _ItemRow({
     this.itemCode,
+    this.uom,
     String qty = '1',
     String rate = '0',
     String discount = '0',
   }) : qtyCtrl = TextEditingController(text: qty),
        rateCtrl = TextEditingController(text: rate),
        discountCtrl = TextEditingController(text: discount);
+
+  double get conversionFactor {
+    final selected = uom?.trim() ?? '';
+    if (selected.isEmpty) return 1;
+    return conversionFactors[selected] ?? 1;
+  }
 
   double get qty => double.tryParse(qtyCtrl.text.trim()) ?? 0;
   double get rate => double.tryParse(rateCtrl.text.trim()) ?? 0;
@@ -429,6 +441,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         itemRows.add(
           _ItemRow(
             itemCode: itemCode.isEmpty ? null : itemCode,
+            uom: (row['uom'] ?? row['stock_uom'])?.toString().trim().isNotEmpty ==
+                    true
+                ? (row['uom'] ?? row['stock_uom']).toString().trim()
+                : null,
             qty: (row['qty'] ?? 1).toString(),
             rate: (row['rate'] ?? 0).toString(),
             discount: (row['discount_amount'] ?? 0).toString(),
@@ -526,6 +542,12 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           : paymentRows;
       _salesTeamRows = salesTeamRows;
     });
+    if (!mounted) return;
+    for (final row in _itemRows) {
+      if ((row.itemCode ?? '').trim().isNotEmpty) {
+        unawaited(_ensureItemUoms(row, applyDefault: row.uom == null));
+      }
+    }
   }
 
   void _syncPrimaryPaymentAmount() {
@@ -643,6 +665,44 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     return mapped;
   }
 
+  Future<void> _ensureItemUoms(_ItemRow row, {bool applyDefault = true}) async {
+    final itemCode = row.itemCode?.trim() ?? '';
+    if (itemCode.isEmpty) {
+      row.uom = null;
+      row.uomOptions = const [];
+      row.conversionFactors = const {};
+      return;
+    }
+
+    try {
+      final result = await context.read<PosState>().fetchItemUoms(itemCode);
+      if (!mounted || row.itemCode != itemCode) return;
+
+      final options = [...result.uoms];
+      final current = row.uom?.trim() ?? '';
+      if (current.isNotEmpty && !options.contains(current)) {
+        options.insert(0, current);
+      }
+      row.uomOptions = options;
+      row.conversionFactors = result.conversionFactors;
+      if (applyDefault || current.isEmpty) {
+        row.uom = result.defaultUom.isNotEmpty
+            ? result.defaultUom
+            : (options.isNotEmpty ? options.first : null);
+      } else {
+        row.uom = current;
+      }
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (!mounted || row.itemCode != itemCode) return;
+      final fallback = row.uom?.trim() ?? '';
+      if (fallback.isNotEmpty) {
+        row.uomOptions = [fallback];
+        if (mounted) setState(() {});
+      }
+    }
+  }
+
   Future<void> _applyItemPricing(_ItemRow row) async {
     final itemCode = row.itemCode?.trim() ?? '';
     if (itemCode.isEmpty) return;
@@ -650,6 +710,11 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     final rowKey = identityHashCode(row);
     setState(() => _loadingItemRates.add(rowKey));
     try {
+      if (row.uomOptions.isEmpty) {
+        await _ensureItemUoms(row, applyDefault: row.uom == null);
+        if (!mounted || row.itemCode != itemCode) return;
+      }
+
       final state = context.read<PosState>();
       final pricing = await state.resolveItemSellingRate(
         itemCode: itemCode,
@@ -657,6 +722,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         company: _company,
         priceList: _sellingPriceList,
         warehouse: _warehouse,
+        uom: row.uom,
         postingDate: _postingDate,
         qty: row.qty > 0 ? row.qty : 1,
       );
@@ -855,9 +921,15 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         setState(() => _error = 'Rate item tidak valid.');
         return;
       }
+      if (row.uom == null || row.uom!.trim().isEmpty) {
+        setState(() => _error = 'Setiap baris item wajib punya UOM.');
+        return;
+      }
       items.add({
         'item_code': itemCode,
         'qty': row.qty,
+        'uom': row.uom!.trim(),
+        'conversion_factor': row.conversionFactor,
         'rate': row.rate,
         'discount_amount': row.discountAmount,
         'amount': row.amount,
@@ -948,7 +1020,9 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return HeroMode(
+      enabled: false,
+      child: Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.white,
@@ -1351,6 +1425,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                           },
                           onSearchItems: _searchItems,
                           onItemSelected: _applyItemPricing,
+                          onUomSelected: (row) => _applyItemPricing(row),
                         ),
                       ],
                       const SizedBox(height: 4),
@@ -1481,6 +1556,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                 ),
               ),
             ),
+      ),
     );
   }
 }
@@ -1537,6 +1613,7 @@ class _InvoiceItemCard extends StatelessWidget {
   final ValueChanged<List<_LinkOption>> onItemsUpdated;
   final Future<List<_LinkOption>> Function(String query) onSearchItems;
   final Future<void> Function(_ItemRow row) onItemSelected;
+  final Future<void> Function(_ItemRow row) onUomSelected;
 
   const _InvoiceItemCard({
     required this.index,
@@ -1549,6 +1626,7 @@ class _InvoiceItemCard extends StatelessWidget {
     required this.onItemsUpdated,
     required this.onSearchItems,
     required this.onItemSelected,
+    required this.onUomSelected,
   });
 
   InputDecoration _field(String label, {Widget? prefixIcon, Widget? suffixIcon}) {
@@ -1627,6 +1705,9 @@ class _InvoiceItemCard extends StatelessWidget {
             ).copyWith(hintText: 'Pilih atau search item'),
             onSelected: (value) async {
               row.itemCode = value;
+              row.uom = null;
+              row.uomOptions = const [];
+              row.conversionFactors = const {};
               row.rateCtrl.text = '0';
               row.discountCtrl.text = '0';
               onChanged();
@@ -1669,34 +1750,69 @@ class _InvoiceItemCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                flex: 2,
-                child: TextFormField(
-                  controller: row.rateCtrl,
-                  readOnly: true,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey(
+                    'uom-$index-${row.itemCode ?? 'none'}-${row.uom ?? 'none'}-${row.uomOptions.join('|')}',
                   ),
-                  decoration: _field(
-                    'Harga/Unit',
-                    prefixIcon: isLoadingRate
-                        ? const Padding(
-                            padding: EdgeInsets.all(14),
-                            child: SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : const Icon(Icons.lock_outline_rounded, size: 18),
+                  initialValue: row.uomOptions.contains(row.uom)
+                      ? row.uom
+                      : null,
+                  isExpanded: true,
+                  decoration: _field('UOM *'),
+                  hint: Text(
+                    row.itemCode == null || row.itemCode!.isEmpty
+                        ? 'Pilih item dulu'
+                        : (row.uomOptions.isEmpty ? 'Memuat UOM...' : 'Pilih UOM'),
                   ),
+                  items: [
+                    for (final uom in row.uomOptions)
+                      DropdownMenuItem(
+                        value: uom,
+                        child: Text(uom, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: row.uomOptions.isEmpty
+                      ? null
+                      : (value) async {
+                          row.uom = value;
+                          onChanged();
+                          await onUomSelected(row);
+                        },
                   validator: (value) {
-                    final rate = double.tryParse(value?.trim() ?? '');
-                    if (rate == null || rate < 0) return 'Harga >= 0';
-                    return null;
+                    if (row.itemCode == null || row.itemCode!.isEmpty) {
+                      return null;
+                    }
+                    return value == null || value.isEmpty ? 'UOM wajib' : null;
                   },
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: row.rateCtrl,
+            readOnly: true,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+            ),
+            decoration: _field(
+              'Harga/Unit',
+              prefixIcon: isLoadingRate
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : const Icon(Icons.lock_outline_rounded, size: 18),
+            ),
+            validator: (value) {
+              final rate = double.tryParse(value?.trim() ?? '');
+              if (rate == null || rate < 0) return 'Harga >= 0';
+              return null;
+            },
           ),
           const SizedBox(height: 12),
           TextFormField(
