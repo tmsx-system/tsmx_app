@@ -1,13 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../state/pos/pos_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
+import '../../../utils/erp_share_file.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../widgets/print/erp_bluetooth_print.dart';
 
@@ -215,25 +212,28 @@ Future<void> downloadAndSharePosPdf(
       name,
       printFormat: selectedFormat,
     );
-    final directory = await getApplicationDocumentsDirectory();
-    final folder = Directory('${directory.path}/pos_pdf');
-    if (!await folder.exists()) {
-      await folder.create(recursive: true);
-    }
     final safeName = name.replaceAll(RegExp(r'[^\w\-]+'), '_');
     final safeFormat = selectedFormat.replaceAll(RegExp(r'[^\w\-]+'), '_');
-    final file = File('${folder.path}/${safeName}_$safeFormat.pdf');
-    await file.writeAsBytes(bytes, flush: true);
+    final saved = await saveBytesForUser(
+      bytes: bytes,
+      fileName: '${safeName}_$safeFormat.pdf',
+      mimeType: 'application/pdf',
+      appSubfolder: 'pos_pdf',
+    );
     if (!context.mounted) return;
     messenger.showSnackBar(
-      SnackBar(content: Text('PDF tersimpan: ${file.path.split('/').last}')),
-    );
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path, mimeType: 'application/pdf')],
-        subject: '$doctype $name ($selectedFormat)',
-        text: '$doctype $name — $selectedFormat',
+      SnackBar(
+        content: Text(
+          saved.savedToDownloads
+              ? 'PDF tersimpan di ${saved.locationLabel}. Bisa dibuka dari Files/Download.'
+              : 'PDF siap dibagikan: ${saved.locationLabel}',
+        ),
       ),
+    );
+    await shareSavedFile(
+      saved,
+      subject: '$doctype $name ($selectedFormat)',
+      text: '$doctype $name — $selectedFormat',
     );
   } catch (error) {
     if (!context.mounted) return;

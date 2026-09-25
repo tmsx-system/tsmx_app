@@ -1,15 +1,12 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../../../models/stock_entry.dart';
 import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
 import '../../../../../utils/erp_doc_utils.dart';
 import '../../../../../utils/erp_format.dart';
+import '../../../../../utils/erp_share_file.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
 import '../../../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../shared/warehouse_widgets.dart';
@@ -102,28 +99,12 @@ class _StockEntryDetailScreenState extends State<StockEntryDetailScreen> {
     );
   }
 
-  Future<File> _writePdfFile(List<int> bytes) async {
-    final directory = await getApplicationDocumentsDirectory();
-    final folder = Directory('${directory.path}/stock_entry_pdf');
-    if (!await folder.exists()) {
-      await folder.create(recursive: true);
-    }
-    final safeName = widget.stockEntryId
-        .trim()
-        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '-')
-        .replaceAll(RegExp(r'\s+'), '_');
-    final file = File('${folder.path}/$safeName.pdf');
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
-  }
-
-  Future<void> _sharePdf(File file, {required String subject}) async {
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path, mimeType: 'application/pdf')],
-        subject: subject,
-        text: subject,
-      ),
+  Future<SavedShareFile> _savePdfFile(List<int> bytes) {
+    return saveBytesForUser(
+      bytes: bytes,
+      fileName: '${widget.stockEntryId}.pdf',
+      mimeType: 'application/pdf',
+      appSubfolder: 'stock_entry_pdf',
     );
   }
 
@@ -136,13 +117,19 @@ class _StockEntryDetailScreenState extends State<StockEntryDetailScreen> {
         ),
       );
       try {
-        final file = await _writePdfFile(await _downloadPdfBytes());
+        final saved = await _savePdfFile(await _downloadPdfBytes());
         if (!mounted) return;
         messenger.showSnackBar(
-          SnackBar(content: Text('PDF tersimpan: ${file.uri.pathSegments.last}')),
+          SnackBar(
+            content: Text(
+              saved.savedToDownloads
+                  ? 'PDF tersimpan di ${saved.locationLabel}. Bisa dibuka dari Files/Download.'
+                  : 'PDF siap dibagikan: ${saved.locationLabel}',
+            ),
+          ),
         );
-        await _sharePdf(
-          file,
+        await shareSavedFile(
+          saved,
           subject: 'Stock Entry ${widget.stockEntryId}',
         );
       } catch (error) {

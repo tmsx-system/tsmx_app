@@ -1,16 +1,14 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../../../models/stock_entry.dart';
 import '../../../../../models/warehouse_info.dart';
 import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
 import '../../../../../utils/erp_doc_utils.dart';
+import '../../../../../utils/erp_share_file.dart';
 import '../../../../../widgets/erp/erp_empty_state.dart';
 import '../../../../../widgets/erp/erp_error_dialog.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
@@ -233,31 +231,15 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     }
   }
 
-  Future<File> _writePdf(String name) async {
+  Future<SavedShareFile> _savePdf(String name) async {
     final bytes = await context
         .read<WarehouseStockState>()
         .downloadStockEntryPdf(name);
-    final directory = await getApplicationDocumentsDirectory();
-    final folder = Directory('${directory.path}/stock_entry_pdf');
-    if (!await folder.exists()) {
-      await folder.create(recursive: true);
-    }
-    final safeName = name
-        .trim()
-        .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '-')
-        .replaceAll(RegExp(r'\s+'), '_');
-    final file = File('${folder.path}/$safeName.pdf');
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
-  }
-
-  Future<void> _sharePdf(File file, String subject) {
-    return SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path, mimeType: 'application/pdf')],
-        subject: subject,
-        text: subject,
-      ),
+    return saveBytesForUser(
+      bytes: bytes,
+      fileName: '$name.pdf',
+      mimeType: 'application/pdf',
+      appSubfolder: 'stock_entry_pdf',
     );
   }
 
@@ -268,12 +250,18 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
         SnackBar(content: Text('Mengunduh PDF Stock Entry ${row.id}...')),
       );
       try {
-        final file = await _writePdf(row.id);
+        final saved = await _savePdf(row.id);
         if (!mounted) return;
         messenger.showSnackBar(
-          SnackBar(content: Text('PDF tersimpan: ${file.uri.pathSegments.last}')),
+          SnackBar(
+            content: Text(
+              saved.savedToDownloads
+                  ? 'PDF tersimpan di ${saved.locationLabel}. Bisa dibuka dari Files/Download.'
+                  : 'PDF siap dibagikan: ${saved.locationLabel}',
+            ),
+          ),
         );
-        await _sharePdf(file, 'Stock Entry ${row.id}');
+        await shareSavedFile(saved, subject: 'Stock Entry ${row.id}');
       } catch (error) {
         if (!mounted) return;
         messenger.showSnackBar(

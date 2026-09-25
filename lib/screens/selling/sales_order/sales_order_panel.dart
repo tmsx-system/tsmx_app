@@ -1,15 +1,13 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../../models/sales_order.dart';
 import '../../../state/selling/sales_order_state.dart';
 import '../../../state/selling/selling_summary_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
+import '../../../utils/erp_share_file.dart';
 import '../../../widgets/erp/document_trend_card.dart';
 import '../../../widgets/erp/erp_document_card.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
@@ -568,24 +566,27 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       final bytes = await context.read<SalesOrderState>().downloadSalesOrderPdf(
         id,
       );
-      final directory = await getApplicationDocumentsDirectory();
-      final folder = Directory('${directory.path}/sales_order_pdf');
-      if (!await folder.exists()) {
-        await folder.create(recursive: true);
-      }
       final fileName = '${_safeFileName(id)}.pdf';
-      final file = File('${folder.path}/$fileName');
-      await file.writeAsBytes(bytes, flush: true);
+      final saved = await saveBytesForUser(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: 'application/pdf',
+        appSubfolder: 'sales_order_pdf',
+      );
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('PDF tersimpan: $fileName')),
-      );
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'application/pdf')],
-          subject: 'Sales Order $id',
-          text: 'Sales Order $id',
+        SnackBar(
+          content: Text(
+            saved.savedToDownloads
+                ? 'PDF tersimpan di ${saved.locationLabel}. Bisa dibuka dari Files/Download.'
+                : 'PDF siap dibagikan: ${saved.locationLabel}',
+          ),
         ),
+      );
+      await shareSavedFile(
+        saved,
+        subject: 'Sales Order $id',
+        text: 'Sales Order $id',
       );
     } catch (error) {
       if (!mounted) return;
