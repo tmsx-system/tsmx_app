@@ -255,13 +255,24 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
                             )
                         : null,
                     onPrint: _permissions.canPrint
-                        ? () => printErpPdfViaBluetooth(
+                        ? () async {
+                            final format = await showPosPrintFormatPicker(
+                              context: context,
+                              doctype: _doctype,
+                            );
+                            if (format == null || !context.mounted) return;
+                            await printErpPdfViaBluetooth(
                               context,
                               downloadPdf: () => context
                                   .read<PosState>()
-                                  .downloadPosPdf(_doctype, invoice.id),
+                                  .downloadPosPdf(
+                                    _doctype,
+                                    invoice.id,
+                                    printFormat: format,
+                                  ),
                               title: 'POS Invoice ${invoice.id}',
-                            )
+                            );
+                          }
                         : null,
                   ),
               ],

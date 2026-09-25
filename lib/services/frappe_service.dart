@@ -378,30 +378,58 @@ class FrappeService {
     return response.bodyBytes;
   }
 
-  Future<String?> resolvePrintFormat(
-    String doctype, {
-    String? preferred,
-  }) async {
-    final wanted = preferred?.trim();
+  Future<List<String>> fetchPrintFormats(String doctype) async {
+    List<Map<String, dynamic>> rows;
     try {
-      final rows = await fetchResource(
+      rows = await fetchResource(
+        'Print Format',
+        fields: const ['name', 'print_format_type'],
+        filters: [
+          ['doc_type', '=', doctype],
+          ['disabled', '=', 0],
+        ],
+        orderBy: 'name asc',
+        limit: 100,
+      );
+    } catch (_) {
+      rows = await fetchResource(
         'Print Format',
         fields: const ['name'],
         filters: [
           ['doc_type', '=', doctype],
           ['disabled', '=', 0],
         ],
-        limit: 50,
+        orderBy: 'name asc',
+        limit: 100,
       );
-      final names = [
-        for (final row in rows)
-          if ((row['name']?.toString().trim() ?? '').isNotEmpty)
-            row['name'].toString().trim(),
-      ];
+    }
+
+    final names = <String>[];
+    for (final row in rows) {
+      final name = row['name']?.toString().trim() ?? '';
+      if (name.isEmpty) continue;
+      final type = (row['print_format_type']?.toString() ?? '').toLowerCase();
+      if (type == 'js') continue;
+      if (!names.contains(name)) names.add(name);
+    }
+    if (!names.any((name) => name.toLowerCase() == 'standard')) {
+      names.insert(0, 'Standard');
+    }
+    return names;
+  }
+
+  Future<String?> resolvePrintFormat(
+    String doctype, {
+    String? preferred,
+  }) async {
+    final wanted = preferred?.trim();
+    try {
+      final names = await fetchPrintFormats(doctype);
       if (wanted != null && names.contains(wanted)) return wanted;
       for (final name in names) {
         if (name.toLowerCase().contains('struk')) return name;
       }
+      if (names.isNotEmpty) return names.first;
     } catch (_) {}
     return wanted;
   }

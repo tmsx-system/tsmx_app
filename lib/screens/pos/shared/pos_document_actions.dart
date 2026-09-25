@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../state/pos/pos_state.dart';
+import '../../../theme/app_colors.dart';
 import '../../../utils/erp_doc_utils.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../widgets/print/erp_bluetooth_print.dart';
@@ -117,12 +118,22 @@ List<Widget> buildPosDocumentActionButtons({
       erpActionButton(
         label: 'Print',
         icon: Icons.print_outlined,
-        onPressed: () => printErpPdfViaBluetooth(
-          context,
-          downloadPdf: () =>
-              context.read<PosState>().downloadPosPdf(doctype, name),
-          title: '$doctype $name',
-        ),
+        onPressed: () async {
+          final format = await showPosPrintFormatPicker(
+            context: context,
+            doctype: doctype,
+          );
+          if (format == null || !context.mounted) return;
+          await printErpPdfViaBluetooth(
+            context,
+            downloadPdf: () => context.read<PosState>().downloadPosPdf(
+              doctype,
+              name,
+              printFormat: format,
+            ),
+            title: '$doctype $name',
+          );
+        },
       ),
     if (canPrint)
       erpActionButton(
@@ -171,24 +182,47 @@ List<Widget> buildPosDocumentActionButtons({
   ];
 }
 
+Future<String?> showPosPrintFormatPicker({
+  required BuildContext context,
+  required String doctype,
+}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) => _PosPrintFormatSheet(doctype: doctype),
+  );
+}
+
 Future<void> downloadAndSharePosPdf(
   BuildContext context,
   String doctype,
-  String name,
-) async {
+  String name, {
+  String? printFormat,
+}) async {
+  final selectedFormat =
+      printFormat ??
+      await showPosPrintFormatPicker(context: context, doctype: doctype);
+  if (selectedFormat == null || !context.mounted) return;
+
   final messenger = ScaffoldMessenger.of(context);
   messenger.showSnackBar(
-    SnackBar(content: Text('Mengunduh PDF $doctype $name...')),
+    SnackBar(content: Text('Mengunduh PDF $selectedFormat...')),
   );
   try {
-    final bytes = await context.read<PosState>().downloadPosPdf(doctype, name);
+    final bytes = await context.read<PosState>().downloadPosPdf(
+      doctype,
+      name,
+      printFormat: selectedFormat,
+    );
     final directory = await getApplicationDocumentsDirectory();
     final folder = Directory('${directory.path}/pos_pdf');
     if (!await folder.exists()) {
       await folder.create(recursive: true);
     }
     final safeName = name.replaceAll(RegExp(r'[^\w\-]+'), '_');
-    final file = File('${folder.path}/$safeName.pdf');
+    final safeFormat = selectedFormat.replaceAll(RegExp(r'[^\w\-]+'), '_');
+    final file = File('${folder.path}/${safeName}_$safeFormat.pdf');
     await file.writeAsBytes(bytes, flush: true);
     if (!context.mounted) return;
     messenger.showSnackBar(
@@ -197,14 +231,227 @@ Future<void> downloadAndSharePosPdf(
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile(file.path, mimeType: 'application/pdf')],
-        subject: '$doctype $name',
-        text: '$doctype $name',
+        subject: '$doctype $name ($selectedFormat)',
+        text: '$doctype $name — $selectedFormat',
       ),
     );
   } catch (error) {
     if (!context.mounted) return;
     messenger.showSnackBar(
       SnackBar(content: Text('Gagal download PDF: $error')),
+    );
+  }
+}
+
+class _PosPrintFormatSheet extends StatefulWidget {
+  final String doctype;
+
+  const _PosPrintFormatSheet({required this.doctype});
+
+  @override
+  State<_PosPrintFormatSheet> createState() => _PosPrintFormatSheetState();
+}
+
+class _PosPrintFormatSheetState extends State<_PosPrintFormatSheet> {
+  List<String> _formats = const [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final formats = await context.read<PosState>().fetchPrintFormats(
+        widget.doctype,
+      );
+      if (!mounted) return;
+      setState(() {
+        _formats = formats;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primaryDark.withValues(alpha: 0.16),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 10, 8),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Pilih Print Format',
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Tutup',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: Text(
+                  'Pilih format PDF dari ERPNext, lalu export.',
+                  style: TextStyle(
+                    color: AppColors.slate,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Flexible(
+                child: _loading
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(28),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _error!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: AppColors.slate,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextButton(
+                                onPressed: _load,
+                                child: const Text('Coba lagi'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : _formats.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(28),
+                          child: Text(
+                            'Tidak ada Print Format PDF untuk dokumen ini.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AppColors.slate,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                        itemCount: _formats.length,
+                        separatorBuilder: (_, _) =>
+                            const Divider(height: 1, color: AppColors.border),
+                        itemBuilder: (context, index) {
+                          final format = _formats[index];
+                          final isPreferred = format.toLowerCase().contains(
+                            'struk',
+                          );
+                          return ListTile(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            leading: CircleAvatar(
+                              backgroundColor: isPreferred
+                                  ? AppColors.primary
+                                  : AppColors.softGreen,
+                              foregroundColor: isPreferred
+                                  ? AppColors.white
+                                  : AppColors.primary,
+                              child: const Icon(Icons.picture_as_pdf_outlined),
+                            ),
+                            title: Text(
+                              format,
+                              style: const TextStyle(
+                                color: AppColors.navy,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            subtitle: Text(
+                              isPreferred
+                                  ? 'Format struk • Ketuk untuk export PDF'
+                                  : 'Ketuk untuk export PDF',
+                              style: const TextStyle(
+                                color: AppColors.slate,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppColors.slate,
+                            ),
+                            onTap: () => Navigator.pop(context, format),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
