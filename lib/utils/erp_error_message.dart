@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 enum ErpErrorKind {
   permission,
   session,
@@ -147,10 +149,19 @@ class ErpErrorMessage {
   }
 
   static bool isIgnorableFrameworkNoise(Object error) {
+    if (error is ConcurrentModificationError) return true;
+    if (error is FlutterError) {
+      final message = error.message.toLowerCase();
+      if (message.contains('concurrent modification') ||
+          message.contains('growablelist')) {
+        return true;
+      }
+    }
     final lower = error.toString().toLowerCase();
     return lower.contains('overflowed') ||
         lower.contains('renderflex') ||
         lower.contains('concurrent modification') ||
+        lower.contains('growablelist') ||
         lower.contains('multiple heroes') ||
         lower.contains('share the same tag') ||
         lower.contains('mouse_tracker') ||

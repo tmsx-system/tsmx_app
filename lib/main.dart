@@ -43,6 +43,7 @@ import 'screens/auth/loading_screen.dart';
 import 'theme/app_colors.dart';
 import 'utils/app_navigator.dart';
 import 'widgets/erp/erp_error_dialog.dart';
+import 'utils/erp_error_message.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -410,7 +411,12 @@ void _installGlobalErrorHandlers() {
   FlutterError.onError = (details) {
     previousOnError?.call(details);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ErpErrorDialog.showUnexpected(details.exception);
+      final error = details.exception;
+      if (ErpErrorMessage.isIgnorableFrameworkNoise(error) ||
+          ErpErrorMessage.isIgnorableFrameworkNoise(details.exceptionAsString())) {
+        return;
+      }
+      ErpErrorDialog.showUnexpected(error);
     });
   };
   PlatformDispatcher.instance.onError = (error, stack) {

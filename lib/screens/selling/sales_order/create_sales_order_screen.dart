@@ -51,6 +51,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   Timer? _pricingDebounce;
   int _repriceGeneration = 0;
   bool _syncingControllers = false;
+  bool _totalScheduled = false;
   String? _selectedCurrency;
   String? _selectedPriceList;
   String? _priceListCurrency;
@@ -565,9 +566,9 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   void initState() {
     super.initState();
     _itemTextController = TextEditingController();
-    _qtyCtrl.addListener(_onPricingInputChanged);
-    _rateCtrl.addListener(_calculateTotal);
-    _discountCtrl.addListener(_calculateTotal);
+    _qtyCtrl.addListener(_onPrimaryQtyChanged);
+    _rateCtrl.addListener(_scheduleCalculateTotal);
+    _discountCtrl.addListener(_scheduleCalculateTotal);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final appState = context.read<SalesOrderState>();
@@ -597,6 +598,28 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     super.dispose();
   }
 
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase != SchedulerPhase.idle) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(fn);
+      });
+      return;
+    }
+    setState(fn);
+  }
+
+  void _scheduleCalculateTotal() {
+    if (_totalScheduled) return;
+    _totalScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _totalScheduled = false;
+      _calculateTotal();
+    });
+  }
+
   void _calculateTotal() {
     final rows = List<_AdditionalItemRow>.of(_additionalItems);
     final total =
@@ -619,16 +642,10 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
 
     void apply() {
       if (!mounted || _totalAmount == total) return;
-      setState(() => _totalAmount = total);
+      _safeSetState(() => _totalAmount = total);
     }
 
-    final phase = SchedulerBinding.instance.schedulerPhase;
-    if (phase == SchedulerPhase.persistentCallbacks ||
-        phase == SchedulerPhase.midFrameMicrotasks) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
-      return;
-    }
-    apply();
+    WidgetsBinding.instance.addPostFrameCallback((_) => apply());
   }
 
   double _parseNumber(String value) {
@@ -694,10 +711,28 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     );
   }
 
-  void _onPricingInputChanged() {
-    _calculateTotal();
+  void _onPrimaryQtyChanged() {
+    _scheduleCalculateTotal();
     if (_syncingControllers) return;
-    _scheduleRepriceAllItems();
+    _pricingDebounce?.cancel();
+    _pricingDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) unawaited(_repricePrimary());
+    });
+  }
+
+  void _onRowQtyChanged(_AdditionalItemRow row) {
+    _scheduleCalculateTotal();
+    if (_syncingControllers) return;
+    _pricingDebounce?.cancel();
+    _pricingDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) unawaited(_repriceRow(row));
+    });
+  }
+
+  void _bindAdditionalRowListeners(_AdditionalItemRow row) {
+    row.qtyController.addListener(() => _onRowQtyChanged(row));
+    row.rateController.addListener(_scheduleCalculateTotal);
+    row.discountController.addListener(_scheduleCalculateTotal);
   }
 
   void _setControllerText(TextEditingController controller, String value) {
@@ -709,10 +744,8 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
 
   void _addItemRow() {
     final row = _AdditionalItemRow();
-    row.qtyController.addListener(_onPricingInputChanged);
-    row.rateController.addListener(_calculateTotal);
-    row.discountController.addListener(_calculateTotal);
-    setState(() => _additionalItems.add(row));
+    _bindAdditionalRowListeners(row);
+    _safeSetState(() => _additionalItems.add(row));
   }
 
   void _clearPrimaryItem() {
@@ -728,7 +761,11 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     _calculateTotal();
   }
 
-  void _adjustQuantity(TextEditingController controller, double delta) {
+  void _adjustQuantity(
+    TextEditingController controller,
+    double delta, {
+    _AdditionalItemRow? row,
+  }) {
     final current = _parseNumber(controller.text);
     final next = (current + delta).clamp(1, double.infinity);
     _setControllerText(
@@ -737,8 +774,13 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
           ? next.toInt().toString()
           : next.toStringAsFixed(2),
     );
-    _calculateTotal();
-    _scheduleRepriceAllItems();
+    _scheduleCalculateTotal();
+    if (_syncingControllers) return;
+    if (row != null) {
+      unawaited(_repriceRow(row));
+    } else {
+      unawaited(_repricePrimary());
+    }
   }
 
   void _scheduleRepriceAllItems() {
@@ -746,6 +788,19 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     _pricingDebounce = Timer(const Duration(milliseconds: 350), () {
       if (mounted) _repriceAllItems();
     });
+  }
+
+  Future<void> _repricePrimary() async {
+    final code = _selectedItemCode;
+    if (code == null || code.isEmpty) return;
+    await _loadItemInsight(code, applyPrice: true);
+  }
+
+  Future<void> _repriceRow(_AdditionalItemRow row) async {
+    final code = row.itemCode;
+    if (code == null || code.isEmpty) return;
+    if (!_additionalItems.contains(row)) return;
+    await _loadItemInsight(code, applyPrice: true, row: row);
   }
 
   Future<void> _repriceAllItems() async {
@@ -767,9 +822,11 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   void _removeItemRow(int index) {
+    if (index < 0 || index >= _additionalItems.length) return;
     final row = _additionalItems.removeAt(index);
     row.dispose();
-    _calculateTotal();
+    _safeSetState(() {});
+    _scheduleCalculateTotal();
   }
 
   List<Map<String, dynamic>> _buildItemsPayload(String firstItemCode) {
@@ -890,7 +947,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     }
 
     final requestContextKey = pricingContextKey();
-    setState(() => _loadingItemPrices.add(loadingKey));
+    _safeSetState(() => _loadingItemPrices.add(loadingKey));
     try {
       final qty = _itemQty((row?.qtyController ?? _qtyCtrl).text);
       final insight = await _withTransientRetry(
@@ -915,7 +972,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       final resolvedPrice = insight.priceListRate > 0
           ? insight.priceListRate
           : insight.price;
-      setState(() {
+      _safeSetState(() {
         _itemInsights[itemCode] = insight;
       });
       if (applyPrice && resolvedPrice > 0) {
@@ -939,7 +996,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
             );
           }
         }
-        _calculateTotal();
+        _scheduleCalculateTotal();
       }
       return insight;
     } catch (error) {
@@ -950,7 +1007,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       }
       return null;
     } finally {
-      if (mounted) setState(() => _loadingItemPrices.remove(loadingKey));
+      if (mounted) _safeSetState(() => _loadingItemPrices.remove(loadingKey));
     }
   }
 
@@ -1399,18 +1456,22 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       selectedCode: _selectedItemCode,
     );
     if (option == null || !mounted) return;
-    setState(() {
+    _safeSetState(() {
       _selectedItemCode = option.code;
       _initialItemText = option.label;
-      _itemTextController?.text = option.label;
       _itemError = null;
-      _rateCtrl.clear();
       _isValidatingItem = true;
     });
+    final itemCtrl = _itemTextController;
+    if (itemCtrl != null) {
+      _setControllerText(itemCtrl, option.label);
+    }
+    _setControllerText(_rateCtrl, '');
+    _setControllerText(_rateCtrl, '');
     try {
       await _loadItemInsight(option.code, applyPrice: true);
     } finally {
-      if (mounted) setState(() => _isValidatingItem = false);
+      if (mounted) _safeSetState(() => _isValidatingItem = false);
     }
   }
 
@@ -1420,11 +1481,11 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       selectedCode: row.itemCode,
     );
     if (option == null || !mounted) return;
-    setState(() {
+    _safeSetState(() {
       row.itemCode = option.code;
-      row.itemTextController.text = option.label;
-      row.rateController.clear();
     });
+    _setControllerText(row.itemTextController, option.label);
+    _setControllerText(row.rateController, '');
     await _loadItemInsight(option.code, applyPrice: true, row: row);
   }
 
@@ -2590,9 +2651,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
             : '0',
         warehouse: item.warehouse.isNotEmpty ? item.warehouse : null,
       );
-      row.qtyController.addListener(_onPricingInputChanged);
-      row.rateController.addListener(_calculateTotal);
-      row.discountController.addListener(_calculateTotal);
+      _bindAdditionalRowListeners(row);
       _additionalItems.add(row);
     }
     setState(() {
@@ -2657,7 +2716,171 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       _syncingControllers = false;
     }
     _loadCustomerInsight();
-    _calculateTotal();
+    _scheduleCalculateTotal();
+  }
+
+  Widget _buildAdditionalItemCard(int index, _AdditionalItemRow row) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Item ${index + 2}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.navy,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Hapus item',
+                onPressed: () => _removeItemRow(index),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Colors.redAccent,
+                ),
+              ),
+            ],
+          ),
+          TextFormField(
+            controller: row.itemTextController,
+            readOnly: true,
+            onTap: () => _selectAdditionalItem(row),
+            decoration: InputDecoration(
+              labelText: 'Nama Item / Kode',
+              hintText: 'Pilih atau search item',
+              prefixIcon: const Icon(Icons.inventory_2_rounded),
+              suffixIcon: IconButton(
+                tooltip: 'Search item',
+                onPressed: () => _selectAdditionalItem(row),
+                icon: const Icon(Icons.search_rounded),
+              ),
+              filled: true,
+              fillColor: AppColors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.16),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide(
+                  color: AppColors.primary.withValues(alpha: 0.36),
+                  width: 1.4,
+                ),
+              ),
+            ),
+            validator: (value) {
+              if (row.itemCode == null || row.itemCode!.trim().isEmpty) {
+                return 'Item wajib dipilih';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: row.qtyController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Quantity',
+              prefixIcon: IconButton(
+                tooltip: 'Kurangi quantity',
+                onPressed: () =>
+                    _adjustQuantity(row.qtyController, -1, row: row),
+                icon: const Icon(Icons.remove_rounded),
+              ),
+              suffixIcon: IconButton(
+                tooltip: 'Tambah quantity',
+                onPressed: () =>
+                    _adjustQuantity(row.qtyController, 1, row: row),
+                icon: const Icon(Icons.add_rounded),
+              ),
+            ),
+            validator: (value) {
+              final qty = _itemQty(value ?? '');
+              return qty <= 0 ? 'Qty > 0' : null;
+            },
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: row.rateController,
+            readOnly: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onEditingComplete: () => _formatMoneyController(row.rateController),
+            onTapOutside: (_) => _formatMoneyController(row.rateController),
+            decoration: const InputDecoration(
+              labelText: 'Harga/Unit',
+              prefixIcon: Icon(Icons.lock_outline_rounded),
+            ),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return null;
+              }
+              final rate = _itemRate(value);
+              return rate < 0 ? 'Harga >= 0' : null;
+            },
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: row.discountController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onEditingComplete: () =>
+                _formatMoneyController(row.discountController),
+            onTapOutside: (_) =>
+                _formatMoneyController(row.discountController),
+            decoration: const InputDecoration(
+              labelText: 'Discount Amount',
+              prefixIcon: Icon(Icons.discount_outlined),
+            ),
+            validator: (value) {
+              final discount = _itemDiscount(value ?? '');
+              if (discount < 0) {
+                return 'Diskon harus 0 atau lebih';
+              }
+              final rate = _itemRate(row.rateController.text);
+              if (rate > 0 && discount > rate) {
+                return 'Diskon tidak boleh melebihi harga';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 10),
+          _ItemSubtotalSummary(
+            qty: _itemQty(row.qtyController.text),
+            rate: _itemRate(row.rateController.text),
+            discount: _itemDiscount(row.discountController.text),
+            effectiveRate: _effectiveItemRate(
+              rateText: row.rateController.text,
+              discountText: row.discountController.text,
+            ),
+            subtotal: _itemSubtotal(
+              qtyText: row.qtyController.text,
+              rateText: row.rateController.text,
+              discountText: row.discountController.text,
+            ),
+            formatCurrency: _formatRupiah,
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -2665,6 +2888,8 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     final appState = context.watch<SalesOrderState>();
     final warehouseOptions = _warehousesForCompany(appState);
     final costCenterOptions = _costCentersForCompany();
+
+    final additionalItems = List<_AdditionalItemRow>.of(_additionalItems);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -3566,199 +3791,14 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                         formatCurrency: _formatRupiah,
                       ),
                       const SizedBox(height: 12),
-                      ...List<_AdditionalItemRow>.of(
-                        _additionalItems,
-                      ).asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final row = entry.value;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppColors.background,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: AppColors.primary.withValues(alpha: 0.18),
-                            ),
+                      for (var index = 0; index < additionalItems.length; index++)
+                        KeyedSubtree(
+                          key: ObjectKey(additionalItems[index]),
+                          child: _buildAdditionalItemCard(
+                            index,
+                            additionalItems[index],
                           ),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      'Item ${index + 2}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        color: AppColors.navy,
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Hapus item',
-                                    onPressed: () => _removeItemRow(index),
-                                    icon: const Icon(
-                                      Icons.delete_outline_rounded,
-                                      color: Colors.redAccent,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              TextFormField(
-                                controller: row.itemTextController,
-                                readOnly: true,
-                                onTap: () => _selectAdditionalItem(row),
-                                decoration: InputDecoration(
-                                  labelText: 'Nama Item / Kode',
-                                  hintText: 'Pilih atau search item',
-                                  prefixIcon: const Icon(
-                                    Icons.inventory_2_rounded,
-                                  ),
-                                  suffixIcon: IconButton(
-                                    tooltip: 'Search item',
-                                    onPressed: () => _selectAdditionalItem(row),
-                                    icon: const Icon(Icons.search_rounded),
-                                  ),
-                                  filled: true,
-                                  fillColor: AppColors.white,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(18),
-                                    borderSide: BorderSide(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.16,
-                                      ),
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(18),
-                                    borderSide: BorderSide(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.10,
-                                      ),
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(18),
-                                    borderSide: BorderSide(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.36,
-                                      ),
-                                      width: 1.4,
-                                    ),
-                                  ),
-                                ),
-                                validator: (value) {
-                                  if (row.itemCode == null ||
-                                      row.itemCode!.trim().isEmpty) {
-                                    return 'Item wajib dipilih';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 10),
-                              TextFormField(
-                                controller: row.qtyController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                decoration: InputDecoration(
-                                  labelText: 'Quantity',
-                                  prefixIcon: IconButton(
-                                    tooltip: 'Kurangi quantity',
-                                    onPressed: () =>
-                                        _adjustQuantity(row.qtyController, -1),
-                                    icon: const Icon(Icons.remove_rounded),
-                                  ),
-                                  suffixIcon: IconButton(
-                                    tooltip: 'Tambah quantity',
-                                    onPressed: () =>
-                                        _adjustQuantity(row.qtyController, 1),
-                                    icon: const Icon(Icons.add_rounded),
-                                  ),
-                                ),
-                                validator: (value) {
-                                  final qty = _itemQty(value ?? '');
-                                  return qty <= 0 ? 'Qty > 0' : null;
-                                },
-                              ),
-                              const SizedBox(height: 10),
-                              TextFormField(
-                                controller: row.rateController,
-                                readOnly: true,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                onEditingComplete: () =>
-                                    _formatMoneyController(row.rateController),
-                                onTapOutside: (_) =>
-                                    _formatMoneyController(row.rateController),
-                                decoration: const InputDecoration(
-                                  labelText: 'Harga/Unit',
-                                  prefixIcon: Icon(Icons.lock_outline_rounded),
-                                ),
-                                validator: (value) {
-                                  if (value == null || value.trim().isEmpty) {
-                                    return null;
-                                  }
-                                  final rate = _itemRate(value);
-                                  return rate < 0 ? 'Harga >= 0' : null;
-                                },
-                              ),
-                              const SizedBox(height: 10),
-                              TextFormField(
-                                controller: row.discountController,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                onEditingComplete: () => _formatMoneyController(
-                                  row.discountController,
-                                ),
-                                onTapOutside: (_) => _formatMoneyController(
-                                  row.discountController,
-                                ),
-                                decoration: const InputDecoration(
-                                  labelText: 'Discount Amount',
-                                  prefixIcon: Icon(Icons.discount_outlined),
-                                ),
-                                validator: (value) {
-                                  final discount = _itemDiscount(value ?? '');
-                                  if (discount < 0) {
-                                    return 'Diskon harus 0 atau lebih';
-                                  }
-                                  final rate = _itemRate(
-                                    row.rateController.text,
-                                  );
-                                  if (rate > 0 && discount > rate) {
-                                    return 'Diskon tidak boleh melebihi harga';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 10),
-                              _ItemSubtotalSummary(
-                                qty: _itemQty(row.qtyController.text),
-                                rate: _itemRate(row.rateController.text),
-                                discount: _itemDiscount(
-                                  row.discountController.text,
-                                ),
-                                effectiveRate: _effectiveItemRate(
-                                  rateText: row.rateController.text,
-                                  discountText: row.discountController.text,
-                                ),
-                                subtotal: _itemSubtotal(
-                                  qtyText: row.qtyController.text,
-                                  rateText: row.rateController.text,
-                                  discountText: row.discountController.text,
-                                ),
-                                formatCurrency: _formatRupiah,
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
+                        ),
                       OutlinedButton.icon(
                         onPressed: _addItemRow,
                         icon: const Icon(Icons.add_rounded),
