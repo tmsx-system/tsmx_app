@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -48,6 +49,8 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   bool _isLoadingCustomerInsight = false;
   String? _customerInsightError;
   Timer? _pricingDebounce;
+  int _repriceGeneration = 0;
+  bool _syncingControllers = false;
   String? _selectedCurrency;
   String? _selectedPriceList;
   String? _priceListCurrency;
@@ -595,24 +598,37 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   void _calculateTotal() {
-    setState(() {
-      _totalAmount =
-          _itemSubtotal(
-            qtyText: _qtyCtrl.text,
-            rateText: _rateCtrl.text,
-            discountText: _discountCtrl.text,
-          ) +
-          _additionalItems.fold<double>(
-            0,
-            (total, row) =>
-                total +
-                _itemSubtotal(
-                  qtyText: row.qtyController.text,
-                  rateText: row.rateController.text,
-                  discountText: row.discountController.text,
-                ),
-          );
-    });
+    final rows = List<_AdditionalItemRow>.of(_additionalItems);
+    final total =
+        _itemSubtotal(
+          qtyText: _qtyCtrl.text,
+          rateText: _rateCtrl.text,
+          discountText: _discountCtrl.text,
+        ) +
+        rows.fold<double>(
+          0,
+          (sum, row) =>
+              sum +
+              _itemSubtotal(
+                qtyText: row.qtyController.text,
+                rateText: row.rateController.text,
+                discountText: row.discountController.text,
+              ),
+        );
+    if (!mounted || _totalAmount == total) return;
+
+    void apply() {
+      if (!mounted || _totalAmount == total) return;
+      setState(() => _totalAmount = total);
+    }
+
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+      return;
+    }
+    apply();
   }
 
   double _parseNumber(String value) {
@@ -672,7 +688,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   void _formatMoneyController(TextEditingController controller) {
     if (controller.text.trim().isEmpty) return;
     final value = _parseNumber(controller.text);
-    controller.text = _formatRupiah(value);
+    _setControllerText(controller, _formatRupiah(value));
     controller.selection = TextSelection.collapsed(
       offset: controller.text.length,
     );
@@ -680,7 +696,15 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
 
   void _onPricingInputChanged() {
     _calculateTotal();
+    if (_syncingControllers) return;
     _scheduleRepriceAllItems();
+  }
+
+  void _setControllerText(TextEditingController controller, String value) {
+    final previous = _syncingControllers;
+    _syncingControllers = true;
+    controller.text = value;
+    _syncingControllers = previous;
   }
 
   void _addItemRow() {
@@ -707,9 +731,14 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   void _adjustQuantity(TextEditingController controller, double delta) {
     final current = _parseNumber(controller.text);
     final next = (current + delta).clamp(1, double.infinity);
-    controller.text = next == next.roundToDouble()
-        ? next.toInt().toString()
-        : next.toStringAsFixed(2);
+    _setControllerText(
+      controller,
+      next == next.roundToDouble()
+          ? next.toInt().toString()
+          : next.toStringAsFixed(2),
+    );
+    _calculateTotal();
+    _scheduleRepriceAllItems();
   }
 
   void _scheduleRepriceAllItems() {
@@ -720,11 +749,16 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   }
 
   Future<void> _repriceAllItems() async {
+    final generation = ++_repriceGeneration;
     final firstCode = _selectedItemCode;
     if (firstCode != null && firstCode.isNotEmpty) {
       await _loadItemInsight(firstCode, applyPrice: true);
+      if (!mounted || generation != _repriceGeneration) return;
     }
-    for (final row in _additionalItems) {
+    final rows = List<_AdditionalItemRow>.of(_additionalItems);
+    for (final row in rows) {
+      if (!mounted || generation != _repriceGeneration) return;
+      if (!_additionalItems.contains(row)) continue;
       final code = row.itemCode;
       if (code != null && code.isNotEmpty) {
         await _loadItemInsight(code, applyPrice: true, row: row);
@@ -790,7 +824,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         discountAmount: _itemDiscount(_discountCtrl.text),
         warehouse: _selectedWarehouse,
       ),
-      ..._additionalItems.map(
+      ...List<_AdditionalItemRow>.of(_additionalItems).map(
         (row) => itemPayload(
           itemCode: row.itemCode!,
           qty: _itemQty(row.qtyController.text),
@@ -883,22 +917,30 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
           : insight.price;
       setState(() {
         _itemInsights[itemCode] = insight;
-        if (applyPrice && resolvedPrice > 0) {
-          if (row == null) {
-            _rateCtrl.text = _formatRupiah(resolvedPrice);
-            if (insight.discountAmount > 0) {
-              _discountCtrl.text = _formatRupiah(insight.discountAmount);
-            }
-          } else {
-            row.rateController.text = _formatRupiah(resolvedPrice);
-            if (insight.discountAmount > 0) {
-              row.discountController.text = _formatRupiah(
-                insight.discountAmount,
-              );
-            }
+      });
+      if (applyPrice && resolvedPrice > 0) {
+        if (row == null) {
+          _setControllerText(_rateCtrl, _formatRupiah(resolvedPrice));
+          if (insight.discountAmount > 0) {
+            _setControllerText(
+              _discountCtrl,
+              _formatRupiah(insight.discountAmount),
+            );
+          }
+        } else {
+          _setControllerText(
+            row.rateController,
+            _formatRupiah(resolvedPrice),
+          );
+          if (insight.discountAmount > 0) {
+            _setControllerText(
+              row.discountController,
+              _formatRupiah(insight.discountAmount),
+            );
           }
         }
-      });
+        _calculateTotal();
+      }
       return insight;
     } catch (error) {
       if (mounted) {
@@ -2528,11 +2570,14 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
 
   void _applyOrderToForm(SalesOrder order, {required bool keepCurrentDates}) {
     final firstItem = order.items.isNotEmpty ? order.items.first : null;
-    for (final row in _additionalItems) {
+    final extraItems = List<SalesOrderItem>.of(order.items.skip(1));
+    for (final row in List<_AdditionalItemRow>.of(_additionalItems)) {
       row.dispose();
     }
     _additionalItems.clear();
-    for (final item in order.items.skip(1)) {
+    _syncingControllers = true;
+    try {
+    for (final item in extraItems) {
       final row = _AdditionalItemRow(
         itemCode: item.itemCode,
         itemLabel: item.itemCode.isNotEmpty
@@ -2608,6 +2653,9 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       _customerError = null;
       _itemError = null;
     });
+    } finally {
+      _syncingControllers = false;
+    }
     _loadCustomerInsight();
     _calculateTotal();
   }
@@ -3518,7 +3566,9 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                         formatCurrency: _formatRupiah,
                       ),
                       const SizedBox(height: 12),
-                      ..._additionalItems.asMap().entries.map((entry) {
+                      ...List<_AdditionalItemRow>.of(
+                        _additionalItems,
+                      ).asMap().entries.map((entry) {
                         final index = entry.key;
                         final row = entry.value;
                         return Container(

@@ -150,6 +150,7 @@ class ErpErrorMessage {
     final lower = error.toString().toLowerCase();
     return lower.contains('overflowed') ||
         lower.contains('renderflex') ||
+        lower.contains('concurrent modification') ||
         lower.contains('multiple heroes') ||
         lower.contains('share the same tag') ||
         lower.contains('mouse_tracker') ||
