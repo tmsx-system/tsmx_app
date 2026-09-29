@@ -435,7 +435,6 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
   Widget build(BuildContext context) {
     super.build(context);
     final dateFmt = DateFormat('dd/MM/yyyy');
-    final displayColumns = _columns.take(6).toList(growable: false);
     final warehouseValue =
         _parentWarehouse != null && _parentWarehouses.contains(_parentWarehouse)
             ? _parentWarehouse
@@ -497,7 +496,7 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
             ),
             const SizedBox(height: 12),
             for (final row in _rows)
-              _ReportRowCard(row: row, columns: displayColumns),
+              _ReportRowCard(row: row, columns: _columns),
           ],
         ],
       ),
@@ -1058,50 +1057,62 @@ class _ReportRowCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = _firstText(const [
-      'customer',
-      'customer_name',
-      'party',
-      'item_name',
-      'item_code',
-      'warehouse',
+    final targetWarehouse = _coalesceText([
+      _firstText(const [
+        'target_warehouse',
+        'to_warehouse',
+        't_warehouse',
+      ]),
+      _textMatching(const ['target warehouse', 'gudang tujuan']),
     ]);
-    final subtitle = _firstText(const [
-      'warehouse',
-      'item_code',
-      'item_name',
-      'customer',
-      'customer_name',
-    ], exclude: title);
+    final sourceWarehouse = _coalesceText([
+      _firstText(const [
+        'source_warehouse',
+        'from_warehouse',
+        's_warehouse',
+      ]),
+      _textMatching(const ['source warehouse', 'gudang asal']),
+    ]);
+    final itemName = _firstText(const ['item_name']);
+    final itemCode = _firstText(const ['item_code']);
+    final uom = _firstText(const ['uom', 'stock_uom']);
 
-    final titleKeys = {
-      for (final key in const [
-        'customer',
-        'customer_name',
-        'party',
-        'item_code',
-        'item_name',
-        'warehouse',
-      ])
-        key,
+    final qtyAkhirColumn = _columnMatching(const [
+      'qty_akhir',
+      'closing_qty',
+      'balance_qty',
+      'qty akhir',
+      'akhir',
+    ]);
+    final qtyAwalColumn = _columnMatching(const [
+      'qty_awal',
+      'opening_qty',
+      'qty awal',
+    ]);
+    final transferInColumn = _columnMatching(const [
+      'transfer_in',
+      'transfer in',
+    ]);
+    final soldColumn = _columnMatching(const ['terjual', 'sold', 'qty_sold']);
+    final returColumn = _columnMatching(const [
+      'retur',
+      'adjustment',
+      'qty_return',
+    ]);
+
+    final title = targetWarehouse.isNotEmpty
+        ? targetWarehouse
+        : (itemName.isNotEmpty ? itemName : itemCode);
+    final itemLine = [
+      if (itemName.isNotEmpty) itemName,
+      if (itemCode.isNotEmpty && itemCode != itemName) itemCode,
+    ].join(' · ');
+
+    final shownFields = <String>{
+      if (targetWarehouse.isNotEmpty) 'target',
+      if (itemName.isNotEmpty) 'item_name',
+      if (itemCode.isNotEmpty) 'item_code',
     };
-
-    final detailColumns = columns.where((column) {
-      final value = _cellValue(column);
-      if (value.isEmpty) return false;
-      if (title.isNotEmpty &&
-          titleKeys.contains(column.field.toLowerCase()) &&
-          value == title) {
-        return false;
-      }
-      if (subtitle.isNotEmpty && value == subtitle) return false;
-      return true;
-    }).toList(growable: false);
-
-    final metricColumns =
-        detailColumns.where((c) => c.isNumeric).take(3).toList();
-    final otherColumns =
-        detailColumns.where((c) => !metricColumns.contains(c)).toList();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1145,10 +1156,10 @@ class _ReportRowCard extends StatelessWidget {
                           fontSize: 14,
                         ),
                       ),
-                    if (subtitle.isNotEmpty) ...[
+                    if (itemLine.isNotEmpty) ...[
                       const SizedBox(height: 3),
                       Text(
-                        subtitle,
+                        itemLine,
                         style: const TextStyle(
                           color: AppColors.slate,
                           fontWeight: FontWeight.w600,
@@ -1156,58 +1167,82 @@ class _ReportRowCard extends StatelessWidget {
                         ),
                       ),
                     ],
-                    if (metricColumns.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          for (var i = 0; i < metricColumns.length; i++) ...[
-                            if (i > 0) const SizedBox(width: 8),
-                            Expanded(
-                              child: _MetricTile(
-                                label: metricColumns[i].label,
-                                value: _cellValue(metricColumns[i]),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                    if (otherColumns.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      for (final column in otherColumns)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: 108,
-                                child: Text(
-                                  column.label,
-                                  style: const TextStyle(
-                                    color: AppColors.slate,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Text(
-                                  _cellValue(column),
-                                  textAlign: column.isNumeric
-                                      ? TextAlign.right
-                                      : TextAlign.left,
-                                  style: const TextStyle(
-                                    color: AppColors.navy,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: _MetricTile(
+                            label: qtyAkhirColumn?.label ?? 'Qty Akhir',
+                            value: qtyAkhirColumn == null
+                                ? '-'
+                                : _cellValue(qtyAkhirColumn),
+                            emphasize: true,
                           ),
                         ),
-                    ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _MetricTile(
+                            label: 'UOM',
+                            value: uom.isEmpty ? '-' : uom,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _MetricTile(
+                            label: qtyAwalColumn?.label ?? 'Qty Awal',
+                            value: qtyAwalColumn == null
+                                ? '-'
+                                : _cellValue(qtyAwalColumn),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (sourceWarehouse.isNotEmpty)
+                      _DetailLine(
+                        label: 'Source Warehouse',
+                        value: sourceWarehouse,
+                      ),
+                    if (transferInColumn != null)
+                      _DetailLine(
+                        label: transferInColumn.label,
+                        value: _cellValue(transferInColumn),
+                        numeric: true,
+                      ),
+                    if (soldColumn != null)
+                      _DetailLine(
+                        label: soldColumn.label,
+                        value: _cellValue(soldColumn),
+                        numeric: true,
+                      ),
+                    if (returColumn != null)
+                      _DetailLine(
+                        label: returColumn.label,
+                        value: _cellValue(returColumn),
+                        numeric: true,
+                      ),
+                    for (final column in columns)
+                      if (_shouldShowExtra(column, shownFields, {
+                        qtyAkhirColumn?.field,
+                        qtyAwalColumn?.field,
+                        transferInColumn?.field,
+                        soldColumn?.field,
+                        returColumn?.field,
+                        'uom',
+                        'stock_uom',
+                        'item_name',
+                        'item_code',
+                        'target_warehouse',
+                        'to_warehouse',
+                        'source_warehouse',
+                        'from_warehouse',
+                      }))
+                        _DetailLine(
+                          label: column.label,
+                          value: _cellValue(column),
+                          numeric: column.isNumeric,
+                        ),
                   ],
                 ),
               ),
@@ -1216,6 +1251,60 @@ class _ReportRowCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  bool _shouldShowExtra(
+    _ReportColumn column,
+    Set<String> shownFields,
+    Set<String?> hiddenFields,
+  ) {
+    final field = column.field.toLowerCase();
+    final label = column.label.toLowerCase();
+    if (field == 'idx' || field == 'name') return false;
+    if (hiddenFields.contains(field) || hiddenFields.contains(column.field)) {
+      return false;
+    }
+    if (shownFields.contains(field)) return false;
+    const alreadyShown = [
+      'target warehouse',
+      'source warehouse',
+      'qty akhir',
+      'qty awal',
+      'uom',
+      'item name',
+      'item code',
+      'transfer in',
+      'terjual',
+      'retur',
+      'adjustment',
+    ];
+    final haystack = '$field $label';
+    if (alreadyShown.any(haystack.contains)) return false;
+    final value = _cellValue(column);
+    return value.isNotEmpty;
+  }
+
+  _ReportColumn? _columnMatching(List<String> needles) {
+    for (final needle in needles) {
+      final key = needle.toLowerCase();
+      for (final column in columns) {
+        final haystack = '${column.field} ${column.label}'.toLowerCase();
+        if (haystack.contains(key)) {
+          if (key == 'akhir' &&
+              (haystack.contains('awal') || haystack.contains('opening'))) {
+            continue;
+          }
+          return column;
+        }
+      }
+    }
+    return null;
+  }
+
+  String _textMatching(List<String> needles) {
+    final column = _columnMatching(needles);
+    if (column == null) return '';
+    return _cellValue(column);
   }
 
   String _firstText(List<String> keys, {String exclude = ''}) {
@@ -1231,8 +1320,15 @@ class _ReportRowCard extends StatelessWidget {
     return '';
   }
 
+  String _coalesceText(List<String> values) {
+    for (final value in values) {
+      if (value.trim().isNotEmpty) return value.trim();
+    }
+    return '';
+  }
+
   String _cellValue(_ReportColumn column) {
-    final raw = row[column.field];
+    final raw = _rawValue(column);
     if (raw == null) return '';
     if (raw is num) {
       return column.isCurrencyLike
@@ -1253,6 +1349,17 @@ class _ReportRowCard extends StatelessWidget {
     return text;
   }
 
+  dynamic _rawValue(_ReportColumn column) {
+    if (row.containsKey(column.field)) return row[column.field];
+    final field = column.field.toLowerCase();
+    final label = column.label.toLowerCase();
+    for (final entry in row.entries) {
+      final key = entry.key.toLowerCase();
+      if (key == field || key == label) return entry.value;
+    }
+    return null;
+  }
+
   String _formatNumber(double value) {
     if (value == value.roundToDouble()) {
       return formatErpCurrency(value);
@@ -1263,20 +1370,78 @@ class _ReportRowCard extends StatelessWidget {
   }
 }
 
+class _DetailLine extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool numeric;
+
+  const _DetailLine({
+    required this.label,
+    required this.value,
+    this.numeric = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (value.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 108,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.slate,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: numeric ? TextAlign.right : TextAlign.left,
+              style: const TextStyle(
+                color: AppColors.navy,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MetricTile extends StatelessWidget {
   final String label;
   final String value;
+  final bool emphasize;
 
-  const _MetricTile({required this.label, required this.value});
+  const _MetricTile({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: emphasize
+            ? AppColors.softGreen
+            : AppColors.background,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: emphasize
+              ? AppColors.primary.withValues(alpha: 0.28)
+              : AppColors.border,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1285,8 +1450,8 @@ class _MetricTile extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.slate,
+            style: TextStyle(
+              color: emphasize ? AppColors.primary : AppColors.slate,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -1296,9 +1461,9 @@ class _MetricTile extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.navy,
-              fontSize: 13,
+            style: TextStyle(
+              color: emphasize ? AppColors.primary : AppColors.navy,
+              fontSize: emphasize ? 16 : 13,
               fontWeight: FontWeight.w900,
             ),
           ),

@@ -60,6 +60,7 @@ class PosInvoice {
   final String company;
   final String posProfile;
   final String postingDate;
+  final String warehouse;
   final double value;
   final double outstandingAmount;
   final InvoiceStatusKey statusKey;
@@ -76,6 +77,7 @@ class PosInvoice {
     this.company = '',
     this.posProfile = '',
     this.postingDate = '',
+    this.warehouse = '',
     this.value = 0,
     this.outstandingAmount = 0,
     this.statusKey = InvoiceStatusKey.draft,
@@ -124,6 +126,10 @@ class PosInvoice {
       company: json['company']?.toString() ?? '',
       posProfile: json['pos_profile']?.toString() ?? '',
       postingDate: json['posting_date']?.toString() ?? '',
+      warehouse:
+          json['set_warehouse']?.toString() ??
+          json['warehouse']?.toString() ??
+          '',
       value: NumParse.asDouble(
         json['grand_total'] ?? json['rounded_total'] ?? json['net_total'],
       ),

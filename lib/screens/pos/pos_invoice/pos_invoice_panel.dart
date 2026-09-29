@@ -129,6 +129,17 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
               PosDetailRow(label: 'Customer', value: detail.party),
               PosDetailRow(label: 'POS Profile', value: detail.posProfile),
               PosDetailRow(label: 'Company', value: detail.company),
+              PosDetailRow(
+                label: 'Warehouse',
+                value: detail.warehouse.trim().isNotEmpty
+                    ? detail.warehouse
+                    : (detail.items
+                            .map((item) => item.warehouse.trim())
+                            .firstWhere(
+                              (value) => value.isNotEmpty,
+                              orElse: () => '',
+                            )),
+              ),
               PosDetailRow(label: 'Posting Date', value: detail.postingDate),
               PosDetailRow(label: 'Status', value: detail.statusText),
               PosDetailRow(
@@ -148,8 +159,10 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
                 for (final item in detail.items)
                   PosDetailRow(
                     label: item.itemCode,
-                    value:
-                        '${item.qty} x Rp ${formatErpCurrency(item.rate)} = Rp ${formatErpCurrency(item.amount)}',
+                    value: [
+                      '${item.qty}${item.uom.isEmpty ? '' : ' ${item.uom}'} x Rp ${formatErpCurrency(item.rate)} = Rp ${formatErpCurrency(item.amount)}',
+                      if (item.warehouse.trim().isNotEmpty) item.warehouse,
+                    ].join('\n'),
                   ),
               ],
             ),
