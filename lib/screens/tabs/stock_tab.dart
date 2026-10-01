@@ -92,10 +92,21 @@ class _StockTabState extends State<StockTab> {
   void _scheduleInventorySearch(String value) {
     setState(() {});
     _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+    final query = value.trim();
+    if (query.isEmpty) {
+      unawaited(_refreshInventoryQuery());
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 900), () {
       if (!mounted) return;
       unawaited(_refreshInventoryQuery());
     });
+  }
+
+  void _submitInventorySearch(String value) {
+    _searchDebounce?.cancel();
+    setState(() {});
+    unawaited(_refreshInventoryQuery());
   }
 
   String _statusQuery(_StockStatusFilter filter) {
@@ -320,6 +331,7 @@ class _StockTabState extends State<StockTab> {
           TextField(
             controller: _stockSearchController,
             onChanged: _scheduleInventorySearch,
+            onSubmitted: _submitInventorySearch,
             textInputAction: TextInputAction.search,
             style: const TextStyle(
               fontFamily: 'HankenGrotesk',
@@ -921,31 +933,7 @@ class _StockFilterSheetState extends State<_StockFilterSheet> {
               const SizedBox(height: 12),
               _buildWarehousePickerField(areas),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String?>(
-                initialValue: _itemGroup,
-                isExpanded: true,
-                decoration: _sheetInputDecoration(
-                  label: 'Item Group',
-                  icon: Icons.category_outlined,
-                ),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Semua item group'),
-                  ),
-                  ...itemGroups.map(
-                    (group) => DropdownMenuItem<String?>(
-                      value: group,
-                      child: Text(
-                        group,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: (value) => setState(() => _itemGroup = value),
-              ),
+              _buildItemGroupPickerField(itemGroups),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -1048,6 +1036,46 @@ class _StockFilterSheetState extends State<_StockFilterSheet> {
     setState(() => _warehouse = result.warehouse);
   }
 
+  Widget _buildItemGroupPickerField(List<String> itemGroups) {
+    final selectedLabel = (_itemGroup == null || _itemGroup!.isEmpty)
+        ? 'Semua item group'
+        : _itemGroup!;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _openItemGroupPicker(itemGroups),
+      child: InputDecorator(
+        decoration: _sheetInputDecoration(
+          label: 'Item Group',
+          icon: Icons.category_outlined,
+        ).copyWith(suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded)),
+        child: Text(
+          selectedLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.navy,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openItemGroupPicker(List<String> itemGroups) async {
+    final result = await showModalBottomSheet<_ItemGroupPickerValue>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ItemGroupPickerSheet(
+        itemGroups: itemGroups,
+        selectedItemGroup: _itemGroup,
+      ),
+    );
+    if (!mounted || result == null || result.itemGroup == _itemGroup) return;
+    setState(() => _itemGroup = result.itemGroup);
+  }
+
   String _warehouseTitle(List<StockAreaOption> areas, String? warehouse) {
     if (warehouse == null || warehouse.isEmpty) return 'Semua warehouse';
     for (final area in areas) {
@@ -1077,6 +1105,140 @@ class _StockFilterSheetState extends State<_StockFilterSheet> {
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(
           color: AppColors.primary.withValues(alpha: 0.35),
+        ),
+      ),
+    );
+  }
+}
+
+class _ItemGroupPickerValue {
+  const _ItemGroupPickerValue(this.itemGroup);
+
+  final String? itemGroup;
+}
+
+class _ItemGroupPickerSheet extends StatefulWidget {
+  const _ItemGroupPickerSheet({
+    required this.itemGroups,
+    required this.selectedItemGroup,
+  });
+
+  final List<String> itemGroups;
+  final String? selectedItemGroup;
+
+  @override
+  State<_ItemGroupPickerSheet> createState() => _ItemGroupPickerSheetState();
+}
+
+class _ItemGroupPickerSheetState extends State<_ItemGroupPickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query.trim().toLowerCase();
+    final filteredGroups = query.isEmpty
+        ? widget.itemGroups
+        : widget.itemGroups
+              .where((group) => group.toLowerCase().contains(query))
+              .toList(growable: false);
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+        ),
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: AppColors.cardShadow,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Pilih Item Group',
+                    style: TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _query = value),
+              decoration: InputDecoration(
+                hintText: 'Cari item group...',
+                prefixIcon: const Icon(Icons.search_rounded),
+                filled: true,
+                fillColor: AppColors.background,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _query = '');
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: filteredGroups.length + 1,
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return _WarehousePickerTile(
+                      title: 'Semua item group',
+                      selected: widget.selectedItemGroup == null,
+                      onTap: () => Navigator.of(
+                        context,
+                      ).pop(const _ItemGroupPickerValue(null)),
+                    );
+                  }
+                  final group = filteredGroups[index - 1];
+                  return _WarehousePickerTile(
+                    title: group,
+                    selected: widget.selectedItemGroup == group,
+                    onTap: () => Navigator.of(
+                      context,
+                    ).pop(_ItemGroupPickerValue(group)),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
