@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -20,13 +22,15 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
-  static final Uri _appUpdateUri = Uri.parse(
-    'https://play.google.com/store/apps/details?id=com.tmsxhub&hl=en-US&ah=e76XkbMCe5OQdYkzEWSgI5nwdOQ',
+  static final Uri _playStoreUri = Uri.parse(
+    'https://play.google.com/store/apps/details?id=com.tmsxhub',
+  );
+  static final Uri _appStoreUri = Uri.parse(
+    'https://apps.apple.com/id/app/tmsx-hub/id6790268301',
   );
   static const Color _accentTeal = Color(0xFF14B8A6);
   static const Color _accentBlue = Color(0xFF3B82F6);
   static const Color _accentPurple = Color(0xFF6366F1);
-  static const Color _accentOrange = Color(0xFFF97316);
   static const Color _accentSky = Color(0xFF0EA5E9);
 
   final ImagePicker _imagePicker = ImagePicker();
@@ -68,9 +72,9 @@ class _ProfileScreenState extends State<ProfileScreen>
       _profileError = null;
     });
     try {
-      final profile = await context
-          .read<ProfileState>()
-          .fetchCurrentUserProfile();
+      final profileState = context.read<ProfileState>();
+      final profile = await profileState.fetchCurrentUserProfile();
+      await profileState.loadCurrentEmployeeProfile();
       if (!mounted) return;
       setState(() => _userProfile = profile);
     } catch (error) {
@@ -308,67 +312,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             _ErrorCard(message: _profileError!, onRetry: _loadProfile),
           ],
           const SizedBox(height: 16),
-          _SectionCard(
-            title: 'Informasi Akun',
-            subtitle: 'Data utama akun ERPNext',
-            icon: Icons.account_circle_outlined,
-            accent: _accentBlue,
-            children: [
-              _DetailRow(
-                icon: Icons.person_outline_rounded,
-                label: 'Nama Lengkap',
-                value: _profileValue(
-                  'full_name',
-                  fallback: _profileValue('first_name'),
-                ),
-              ),
-              _DetailRow(
-                icon: Icons.alternate_email_rounded,
-                label: 'Email',
-                value: _profileValue('email', fallback: appState.currentUser),
-              ),
-              _DetailRow(
-                icon: Icons.badge_outlined,
-                label: 'Username',
-                value: _profileValue('username'),
-              ),
-              _DetailRow(
-                icon: Icons.admin_panel_settings_outlined,
-                label: 'Role Profile',
-                value: _profileValue(
-                  'role_profile_name',
-                  fallback: appState.userRole,
-                ),
-              ),
-              _DetailRow(
-                icon: Icons.phone_outlined,
-                label: 'Telepon',
-                value: _profileValue(
-                  'mobile_no',
-                  fallback: _profileValue('phone'),
-                ),
-              ),
-              _DetailRow(
-                icon: Icons.language_rounded,
-                label: 'Bahasa',
-                value: _profileValue('language'),
-              ),
-              _DetailRow(
-                icon: Icons.schedule_rounded,
-                label: 'Zona Waktu',
-                value: _profileValue('time_zone'),
-                isLast: true,
-              ),
-            ],
-          ),
-          if (appState.currentEmployee != null) ...[
-            const SizedBox(height: 14),
-            _buildEmployeeCard(appState),
-          ],
-          if (appState.mobileAccess.isSalesUser) ...[
-            const SizedBox(height: 14),
-            _buildSalesMappingCard(appState),
-          ],
+          _buildEmployeeCard(appState),
           const SizedBox(height: 14),
           _SectionCard(
             title: 'Printer Bluetooth',
@@ -463,9 +407,12 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _openAppUpdate() async {
+    final uri = defaultTargetPlatform == TargetPlatform.iOS
+        ? _appStoreUri
+        : _playStoreUri;
     try {
       final opened = await launchUrl(
-        _appUpdateUri,
+        uri,
         mode: LaunchMode.externalApplication,
       );
       if (!opened && mounted) {
@@ -610,79 +557,173 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildEmployeeCard(ProfileState appState) {
     final employee = appState.currentEmployeeProfile;
+    final hasEmployee = (appState.currentEmployee ?? '').trim().isNotEmpty;
+    final loadError = appState.employeeError;
+    final salesPerson = (appState.currentSalesPerson ?? '').trim();
+
     return _SectionCard(
       title: 'Informasi Karyawan',
-      subtitle: appState.currentEmployee ?? 'Data Employee',
+      subtitle: hasEmployee
+          ? (appState.currentEmployee ?? 'Data Employee')
+          : 'Data Employee dari ERPNext',
       icon: Icons.business_center_outlined,
       accent: _accentPurple,
+      action: hasEmployee && appState.canEditEmployee
+          ? TextButton.icon(
+              onPressed: () => _openEditEmployee(appState),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit'),
+            )
+          : null,
       children: [
-        _DetailRow(
-          icon: Icons.person_pin_outlined,
-          label: 'Nama Karyawan',
-          value: _mapValue(
-            employee,
-            'employee_name',
-            fallback: appState.currentEmployee,
+        if (loadError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              _friendlyError(loadError),
+              style: const TextStyle(
+                color: AppColors.warning,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          )
+        else if (!hasEmployee)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: Text(
+              'Akun ini belum terhubung ke Employee. Hubungkan field User ID di ERPNext, lalu tarik untuk refresh.',
+              style: TextStyle(
+                color: AppColors.slate,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
           ),
-        ),
-        _DetailRow(
-          icon: Icons.work_outline_rounded,
-          label: 'Jabatan',
-          value: _mapValue(employee, 'designation'),
-        ),
-        _DetailRow(
-          icon: Icons.account_tree_outlined,
-          label: 'Departemen',
-          value: _mapValue(employee, 'department'),
-        ),
-        _DetailRow(
-          icon: Icons.apartment_rounded,
-          label: 'Perusahaan',
-          value: _mapValue(employee, 'company'),
-        ),
-        _DetailRow(
-          icon: Icons.location_city_outlined,
-          label: 'Cabang',
-          value: _mapValue(employee, 'branch'),
-          isLast: true,
-        ),
+        if (hasEmployee) ...[
+          _DetailRow(
+            icon: Icons.badge_outlined,
+            label: 'ID Karyawan',
+            value: appState.currentEmployee ?? '-',
+          ),
+          _DetailRow(
+            icon: Icons.person_pin_outlined,
+            label: 'Nama Karyawan',
+            value: _employeeFullName(employee),
+          ),
+          _DetailRow(
+            icon: Icons.wc_outlined,
+            label: 'Jenis Kelamin',
+            value: _mapValue(employee, 'gender'),
+          ),
+          _DetailRow(
+            icon: Icons.cake_outlined,
+            label: 'Tanggal Lahir',
+            value: _formatDateValue(
+              _mapValue(employee, 'date_of_birth', fallback: _mapValue(employee, 'dob', fallback: '')),
+            ),
+          ),
+          _DetailRow(
+            icon: Icons.event_available_outlined,
+            label: 'Tanggal Masuk',
+            value: _formatDateValue(
+              _mapValue(
+                employee,
+                'date_of_joining',
+                fallback: _mapValue(employee, 'joining_date', fallback: ''),
+              ),
+            ),
+          ),
+          _DetailRow(
+            icon: Icons.toggle_on_outlined,
+            label: 'Status',
+            value: _mapValue(employee, 'status'),
+          ),
+          _DetailRow(
+            icon: Icons.work_outline_rounded,
+            label: 'Jabatan',
+            value: _mapValue(employee, 'designation'),
+          ),
+          _DetailRow(
+            icon: Icons.account_tree_outlined,
+            label: 'Departemen',
+            value: _mapValue(employee, 'department'),
+          ),
+          _DetailRow(
+            icon: Icons.apartment_rounded,
+            label: 'Perusahaan',
+            value: _mapValue(employee, 'company'),
+          ),
+          _DetailRow(
+            icon: Icons.location_city_outlined,
+            label: 'Cabang',
+            value: _mapValue(employee, 'branch'),
+          ),
+          _DetailRow(
+            icon: Icons.group_outlined,
+            label: 'Atasan',
+            value: _mapValue(employee, 'reports_to'),
+          ),
+          _DetailRow(
+            icon: Icons.handshake_outlined,
+            label: 'Tipe Pekerjaan',
+            value: _mapValue(employee, 'employment_type'),
+          ),
+          _DetailRow(
+            icon: Icons.phone_outlined,
+            label: 'No. HP',
+            value: _mapValue(employee, 'cell_number'),
+            isLast: salesPerson.isEmpty && !appState.mobileAccess.isSalesUser,
+          ),
+          if (salesPerson.isNotEmpty || appState.mobileAccess.isSalesUser)
+            _DetailRow(
+              icon: Icons.sell_outlined,
+              label: 'Sales Person',
+              value: salesPerson.isEmpty ? '-' : salesPerson,
+              isLast: true,
+            ),
+        ],
       ],
     );
   }
 
-  Widget _buildSalesMappingCard(ProfileState appState) {
-    final hasError = appState.salesIdentityError != null;
-    return _SectionCard(
-      title: hasError ? 'Mapping Sales Perlu Dicek' : 'Mapping Sales',
-      subtitle: hasError
-          ? appState.salesIdentityError!
-          : 'Akun sudah terhubung ke Sales Person',
-      icon: hasError ? Icons.warning_amber_rounded : Icons.handshake_outlined,
-      accent: hasError ? AppColors.warning : _accentOrange,
-      action: IconButton(
-        tooltip: 'Cek ulang mapping',
-        onPressed: appState.resolveCurrentSalesIdentity,
-        icon: const Icon(Icons.refresh_rounded),
+  String _employeeFullName(Map<String, dynamic> employee) {
+    final full = employee['employee_name']?.toString().trim() ?? '';
+    if (full.isNotEmpty && full.toLowerCase() != 'null') return full;
+    final joined = [
+      employee['first_name']?.toString().trim() ?? '',
+      employee['last_name']?.toString().trim() ?? '',
+    ].where((part) => part.isNotEmpty).join(' ');
+    return joined.isEmpty ? '-' : joined;
+  }
+
+  String _formatDateValue(String value) {
+    if (value.isEmpty || value == '-') return '-';
+    final parsed = DateTime.tryParse(value);
+    if (parsed != null) return DateFormat('dd-MM-yyyy').format(parsed);
+    for (final pattern in ['dd-MM-yyyy', 'dd/MM/yyyy', 'yyyy-MM-dd']) {
+      try {
+        return DateFormat('dd-MM-yyyy').format(DateFormat(pattern).parseStrict(value));
+      } catch (_) {}
+    }
+    return value;
+  }
+
+  Future<void> _openEditEmployee(ProfileState appState) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: AppColors.white,
+      builder: (context) => _EmployeeEditSheet(
+        employee: appState.currentEmployeeProfile,
+        employeeId: appState.currentEmployee ?? '',
       ),
-      children: [
-        _DetailRow(
-          icon: Icons.person_outline_rounded,
-          label: 'User',
-          value: appState.currentUser ?? '-',
-        ),
-        _DetailRow(
-          icon: Icons.badge_outlined,
-          label: 'Employee',
-          value: appState.currentEmployee ?? '-',
-        ),
-        _DetailRow(
-          icon: Icons.sell_outlined,
-          label: 'Sales Person',
-          value: appState.currentSalesPerson ?? '-',
-          isLast: true,
-        ),
-      ],
     );
+    if (saved == true && mounted) {
+      await context.read<ProfileState>().loadCurrentEmployeeProfile();
+      if (mounted) _showMessage('Data karyawan berhasil diperbarui.');
+    }
   }
 
   Widget _buildSecurityTab() {
@@ -1347,6 +1388,288 @@ class _SecurityIcon extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
       ),
       child: Icon(Icons.security_rounded, color: color, size: 26),
+    );
+  }
+}
+
+class _EmployeeEditSheet extends StatefulWidget {
+  final Map<String, dynamic> employee;
+  final String employeeId;
+
+  const _EmployeeEditSheet({
+    required this.employee,
+    required this.employeeId,
+  });
+
+  @override
+  State<_EmployeeEditSheet> createState() => _EmployeeEditSheetState();
+}
+
+class _EmployeeEditSheetState extends State<_EmployeeEditSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _firstName;
+  late final TextEditingController _lastName;
+  late final TextEditingController _company;
+  late final TextEditingController _designation;
+  late final TextEditingController _department;
+  late final TextEditingController _branch;
+  late final TextEditingController _reportsTo;
+  late final TextEditingController _employmentType;
+  late final TextEditingController _cellNumber;
+  String _gender = 'Male';
+  String _status = 'Active';
+  DateTime? _dateOfBirth;
+  DateTime? _dateOfJoining;
+  bool _saving = false;
+  String? _error;
+
+  static const _genders = ['Male', 'Female', 'Other'];
+  static const _statuses = ['Active', 'Inactive', 'Left', 'Suspended'];
+
+  String _value(String key) => widget.employee[key]?.toString().trim() ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    _firstName = TextEditingController(text: _value('first_name'));
+    _lastName = TextEditingController(text: _value('last_name'));
+    _company = TextEditingController(text: _value('company'));
+    _designation = TextEditingController(text: _value('designation'));
+    _department = TextEditingController(text: _value('department'));
+    _branch = TextEditingController(text: _value('branch'));
+    _reportsTo = TextEditingController(text: _value('reports_to'));
+    _employmentType = TextEditingController(text: _value('employment_type'));
+    _cellNumber = TextEditingController(text: _value('cell_number'));
+    final gender = _value('gender');
+    _gender = _genders.contains(gender) ? gender : 'Male';
+    final status = _value('status');
+    _status = _statuses.contains(status) ? status : 'Active';
+    _dateOfBirth = DateTime.tryParse(_value('date_of_birth'));
+    _dateOfJoining = DateTime.tryParse(_value('date_of_joining'));
+  }
+
+  @override
+  void dispose() {
+    _firstName.dispose();
+    _lastName.dispose();
+    _company.dispose();
+    _designation.dispose();
+    _department.dispose();
+    _branch.dispose();
+    _reportsTo.dispose();
+    _employmentType.dispose();
+    _cellNumber.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate({required bool joining}) async {
+    final initial = joining
+        ? (_dateOfJoining ?? DateTime.now())
+        : (_dateOfBirth ?? DateTime(2000, 1, 1));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(1950),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (joining) {
+        _dateOfJoining = picked;
+      } else {
+        _dateOfBirth = picked;
+      }
+    });
+  }
+
+  String _formatDate(DateTime? value) {
+    if (value == null) return 'Pilih tanggal';
+    return DateFormat('dd-MM-yyyy').format(value);
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate() || _saving) return;
+    if (_dateOfJoining == null) {
+      setState(() => _error = 'Tanggal masuk wajib diisi.');
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await context.read<ProfileState>().updateCurrentEmployeeProfile({
+        'first_name': _firstName.text.trim(),
+        'last_name': _lastName.text.trim(),
+        'gender': _gender,
+        'status': _status,
+        'company': _company.text.trim(),
+        'designation': _designation.text.trim(),
+        'department': _department.text.trim(),
+        'branch': _branch.text.trim(),
+        'reports_to': _reportsTo.text.trim(),
+        'employment_type': _employmentType.text.trim(),
+        'cell_number': _cellNumber.text.trim(),
+        if (_dateOfBirth != null)
+          'date_of_birth': DateFormat('yyyy-MM-dd').format(_dateOfBirth!),
+        'date_of_joining': DateFormat('yyyy-MM-dd').format(_dateOfJoining!),
+      });
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = error
+            .toString()
+            .replaceFirst(RegExp(r'^(Exception|Error):\s*'), '')
+            .trim();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        20 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Edit Karyawan',
+                style: const TextStyle(
+                  color: AppColors.navy,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.employeeId,
+                style: const TextStyle(
+                  color: AppColors.slate,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _firstName,
+                decoration: const InputDecoration(labelText: 'Nama Depan'),
+                validator: (value) =>
+                    (value == null || value.trim().isEmpty) ? 'Wajib diisi' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _lastName,
+                decoration: const InputDecoration(labelText: 'Nama Belakang'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _gender,
+                decoration: const InputDecoration(labelText: 'Jenis Kelamin'),
+                items: [
+                  for (final gender in _genders)
+                    DropdownMenuItem(value: gender, child: Text(gender)),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => _gender = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _status,
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: [
+                  for (final status in _statuses)
+                    DropdownMenuItem(value: status, child: Text(status)),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => _status = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Tanggal Lahir'),
+                subtitle: Text(_formatDate(_dateOfBirth)),
+                trailing: const Icon(Icons.calendar_today_outlined),
+                onTap: () => _pickDate(joining: false),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Tanggal Masuk'),
+                subtitle: Text(_formatDate(_dateOfJoining)),
+                trailing: const Icon(Icons.event_available_outlined),
+                onTap: () => _pickDate(joining: true),
+              ),
+              TextFormField(
+                controller: _company,
+                decoration: const InputDecoration(labelText: 'Perusahaan'),
+                validator: (value) =>
+                    (value == null || value.trim().isEmpty) ? 'Wajib diisi' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _designation,
+                decoration: const InputDecoration(labelText: 'Jabatan'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _department,
+                decoration: const InputDecoration(labelText: 'Departemen'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _branch,
+                decoration: const InputDecoration(labelText: 'Cabang'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _reportsTo,
+                decoration: const InputDecoration(
+                  labelText: 'Atasan (ID Employee)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _employmentType,
+                decoration: const InputDecoration(labelText: 'Tipe Pekerjaan'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _cellNumber,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'No. HP'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: const TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? 'Menyimpan...' : 'Simpan Perubahan'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

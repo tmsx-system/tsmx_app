@@ -35,9 +35,32 @@ class ProfileState extends AppStateProxyNotifier {
       appState.currentEmployeeProfile;
   String? get currentSalesPerson => appState.currentSalesPerson;
   String? get salesIdentityError => appState.salesIdentityError;
+  bool _canEditEmployee = false;
+  String? _employeeError;
+  bool get canEditEmployee => _canEditEmployee;
+  String? get employeeError => _employeeError;
 
   Future<Map<String, dynamic>> fetchCurrentUserProfile() {
     return appState.fetchCurrentUserProfile();
+  }
+
+  Future<void> loadCurrentEmployeeProfile() async {
+    _employeeError = null;
+    notifyListeners();
+    try {
+      await appState.refreshCurrentEmployeeProfile();
+      _canEditEmployee = await appState.canWriteDoctype('Employee');
+    } catch (error) {
+      _employeeError = error.toString();
+      _canEditEmployee = false;
+    }
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> updateCurrentEmployeeProfile(
+    Map<String, dynamic> fields,
+  ) {
+    return appState.updateCurrentEmployeeProfile(fields);
   }
 
   Future<String> uploadCurrentUserImage(String filePath) {
@@ -62,9 +85,5 @@ class ProfileState extends AppStateProxyNotifier {
 
   Future<void> resetLocalAppCache() {
     return appState.resetLocalAppCache();
-  }
-
-  Future<String?> resolveCurrentSalesIdentity() {
-    return appState.resolveCurrentSalesIdentity();
   }
 }

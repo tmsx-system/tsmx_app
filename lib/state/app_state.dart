@@ -398,7 +398,10 @@ class AppState with ChangeNotifier {
     try {
       final identity = await _authService.resolveSalesIdentity(user);
       _currentEmployee = identity.employee;
-      _currentEmployeeProfile = identity.employeeProfile;
+      _currentEmployeeProfile = {
+        ..._currentEmployeeProfile,
+        ...identity.employeeProfile,
+      };
       _currentSalesPerson = identity.salesPerson;
     } catch (error) {
       _salesIdentityError = error.toString();
@@ -409,59 +412,87 @@ class AppState with ChangeNotifier {
 
   Future<Map<String, dynamic>> _ensureCurrentEmployee() async {
     final existing = _currentEmployee?.trim() ?? '';
-    if (existing.isNotEmpty) return _currentEmployeeProfile;
-
-    final user = _currentUser?.trim() ?? '';
-    if (user.isEmpty) {
-      throw Exception('User login belum tersedia.');
+    if (existing.isNotEmpty && _hasEmployeeProfileDetails(_currentEmployeeProfile)) {
+      return _currentEmployeeProfile;
     }
 
-    List<Map<String, dynamic>> rows;
-    try {
+    final profile = await refreshCurrentEmployeeProfile();
+    if ((_currentEmployee ?? '').trim().isEmpty) {
+      throw Exception(
+        'User ${_currentUser ?? ''} belum terhubung ke Employee melalui field User ID.',
+      );
+    }
+    return profile;
+  }
+
+  bool _hasEmployeeProfileDetails(Map<String, dynamic> profile) {
+    const keys = [
+      'gender',
+      'date_of_birth',
+      'date_of_joining',
+      'first_name',
+    ];
+    return keys.any((key) {
+      final value = profile[key]?.toString().trim() ?? '';
+      return value.isNotEmpty && value.toLowerCase() != 'null';
+    });
+  }
+
+  static const _employeeProfileFields = [
+    'name',
+    'employee_name',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'user_id',
+    'gender',
+    'date_of_birth',
+    'date_of_joining',
+    'status',
+    'company',
+    'designation',
+    'department',
+    'branch',
+    'reports_to',
+    'employment_type',
+    'cell_number',
+    'grade',
+    'salutation',
+  ];
+
+  Future<List<Map<String, dynamic>>> _fetchEmployeeRows({
+    required List<List<dynamic>> filters,
+    int limit = 1,
+  }) async {
+    var remainingFields = List<String>.from(_employeeProfileFields);
+    while (remainingFields.isNotEmpty) {
       try {
-        rows = await _frappeService.fetchResource(
+        return await _frappeService.fetchResource(
           'Employee',
-          fields: const [
-            'name',
-            'employee_name',
-            'user_id',
-            'status',
-            'company',
-            'designation',
-            'department',
-            'branch',
-          ],
-          filters: [
-            ['user_id', '=', user],
-          ],
-          limit: 1,
+          fields: remainingFields,
+          filters: filters,
+          limit: limit,
         );
-      } catch (_) {
-        rows = await _frappeService.fetchResource(
-          'Employee',
-          fields: const ['name', 'employee_name', 'user_id'],
-          filters: [
-            ['user_id', '=', user],
-          ],
-          limit: 1,
-        );
+      } catch (error) {
+        final text = error.toString();
+        final badField = RegExp(
+          r'Field not permitted in query:\s*([a-zA-Z0-9_]+)',
+        ).firstMatch(text)?.group(1);
+        if (badField != null && remainingFields.contains(badField)) {
+          remainingFields.remove(badField);
+          continue;
+        }
+        final unknownColumn = RegExp(
+          r"Unknown column ['`]?(?:tabEmployee\.)?([a-zA-Z0-9_]+)",
+        ).firstMatch(text)?.group(1);
+        if (unknownColumn != null && remainingFields.contains(unknownColumn)) {
+          remainingFields.remove(unknownColumn);
+          continue;
+        }
+        rethrow;
       }
-    } catch (error) {
-      throw Exception(
-        'Role tidak memiliki izin membaca Employee.user_id. Detail: $error',
-      );
     }
-
-    if (rows.isEmpty) {
-      throw Exception(
-        'User $user belum terhubung ke Employee melalui field User ID.',
-      );
-    }
-
-    _currentEmployeeProfile = Map<String, dynamic>.from(rows.first);
-    _currentEmployee = _currentEmployeeProfile['name']?.toString() ?? '';
-    notifyListeners();
-    return _currentEmployeeProfile;
+    return const [];
   }
 
   List<SalesOrder> _salesOrders = [];
@@ -887,6 +918,55 @@ class AppState with ChangeNotifier {
     final user = _currentUser?.trim() ?? '';
     if (user.isEmpty) throw Exception('User login tidak tersedia.');
     return _authService.fetchCurrentUserProfile(user);
+  }
+
+  Future<Map<String, dynamic>> refreshCurrentEmployeeProfile() async {
+    final user = _currentUser?.trim() ?? '';
+    if (user.isEmpty) {
+      throw Exception('User login belum tersedia.');
+    }
+
+    final rows = await _fetchEmployeeRows(
+      filters: [
+        ['user_id', '=', user],
+      ],
+    );
+    if (rows.isEmpty) {
+      _currentEmployee = null;
+      _currentEmployeeProfile = const {};
+      notifyListeners();
+      return const {};
+    }
+
+    final profile = Map<String, dynamic>.from(rows.first);
+    final name = profile['name']?.toString().trim() ?? '';
+    if (name.isEmpty) {
+      _currentEmployee = null;
+      _currentEmployeeProfile = const {};
+      notifyListeners();
+      return const {};
+    }
+
+    try {
+      final doc = await _frappeService.fetchDocument('Employee', name);
+      profile.addAll(doc);
+    } catch (_) {}
+
+    _currentEmployee = name;
+    _currentEmployeeProfile = profile;
+    notifyListeners();
+    return profile;
+  }
+
+  Future<Map<String, dynamic>> updateCurrentEmployeeProfile(
+    Map<String, dynamic> fields,
+  ) async {
+    final name = _currentEmployee?.trim() ?? '';
+    if (name.isEmpty) {
+      throw Exception('Akun ini belum terhubung ke Employee.');
+    }
+    await _frappeService.updateDocument('Employee', name, fields);
+    return refreshCurrentEmployeeProfile();
   }
 
   Future<String> uploadCurrentUserImage(String filePath) {

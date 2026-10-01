@@ -195,13 +195,17 @@ class AuthService {
           fields: const [
             'name',
             'employee_name',
+            'first_name',
+            'last_name',
             'user_id',
+            'gender',
+            'date_of_birth',
+            'date_of_joining',
             'status',
             'company',
             'designation',
             'department',
             'branch',
-            'date_of_joining',
           ],
           filters: [
             ['user_id', '=', currentUser],
