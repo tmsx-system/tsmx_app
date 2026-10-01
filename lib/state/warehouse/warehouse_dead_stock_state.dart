@@ -24,17 +24,29 @@ class WarehouseDeadStockState extends ChangeNotifier {
   }
 
   List<WarehouseInfo> get warehouses => _stockState.warehouses;
+  List<DeadStockItem> get deadStockItems => _deadStockCache ?? const [];
+  List<StockMovementVelocityItem> get velocityItems =>
+      _velocityCache ?? const [];
+  bool get hasDeadStockLoaded => _deadStockCache != null;
+  bool get hasVelocityLoaded => _velocityCache != null;
 
   Future<void> refreshWarehouses() => _stockState.refreshWarehouses();
+
+  List<DeadStockItem>? _deadStockCache;
+  List<StockMovementVelocityItem>? _velocityCache;
+  int? _velocityPeriodDays;
 
   Future<List<DeadStockItem>> fetchDeadStock({
     int lookbackDays = 365,
     bool forceRefresh = false,
   }) async {
-    final inventory = await _stockState.fetchInventorySnapshot();
+    if (!forceRefresh && _deadStockCache != null) return _deadStockCache!;
+    final inventory = await _stockState.fetchInventorySnapshot(
+      forceRefresh: forceRefresh,
+    );
     final latestMovement = await _latestMovementDates(lookbackDays);
     final today = DateTime.now();
-    return [
+    final rows = [
       for (final item in inventory)
         if (item.quantity > 0)
           DeadStockItem(
@@ -54,13 +66,23 @@ class WarehouseDeadStockState extends ChangeNotifier {
                       .inDays,
           ),
     ];
+    _deadStockCache = rows;
+    notifyListeners();
+    return rows;
   }
 
   Future<List<StockMovementVelocityItem>> fetchStockMovementVelocity({
     int periodDays = 30,
     bool forceRefresh = false,
   }) async {
-    final inventory = await _stockState.fetchInventorySnapshot();
+    if (!forceRefresh &&
+        _velocityCache != null &&
+        _velocityPeriodDays == periodDays) {
+      return _velocityCache!;
+    }
+    final inventory = await _stockState.fetchInventorySnapshot(
+      forceRefresh: forceRefresh,
+    );
     await _stockState.appState.frappeService.ensureLoggedIn();
 
     final today = DateTime.now();
@@ -100,7 +122,7 @@ class WarehouseDeadStockState extends ChangeNotifier {
           NumParse.asDouble(row['actual_qty']).abs().round();
     }
 
-    return [
+    final items = [
       for (final item in inventory)
         if (item.quantity > 0)
           StockMovementVelocityItem(
@@ -119,6 +141,10 @@ class WarehouseDeadStockState extends ChangeNotifier {
                 : 0,
           ),
     ];
+    _velocityCache = items;
+    _velocityPeriodDays = periodDays;
+    notifyListeners();
+    return items;
   }
 
   Future<Map<String, DateTime>> _latestMovementDates(int lookbackDays) async {

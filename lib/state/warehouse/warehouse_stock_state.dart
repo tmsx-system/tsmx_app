@@ -52,6 +52,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
   Map<String, _WarehouseItemMeta> _inventorySearchItemMeta = const {};
   Future<void>? _warehousesFetchInFlight;
   Future<void>? _inventoryFetchInFlight;
+  List<InventoryItem>? _inventorySnapshotCache;
   Future<List<WarehouseBatchRecord>>? _warehouseBatchInFlight;
   Future<List<WarehouseSerialRecord>>? _warehouseSerialInFlight;
   final Map<String, Future<List<QualityInspectionRecord>>>
@@ -81,6 +82,12 @@ class WarehouseStockState extends AppStateProxyNotifier {
   List<StockEntryType> get stockEntryTypes => _stockEntryTypes;
   List<StockReconciliationSummary> get stockReconciliations =>
       _stockReconciliations;
+  String? get inventoryCompanyFilter => _inventoryCompanyFilter;
+  String? get inventoryWarehouseFilter => _inventoryWarehouseFilter;
+  String? get inventoryItemGroupFilter => _inventoryItemGroupFilter;
+  String get inventorySearch => _inventorySearch;
+  String get inventoryStatusFilter => _inventoryStatusFilter;
+  String get inventorySort => _inventorySort;
   bool get isInventoryLoading => _isInventoryLoading;
   bool get isMoreInventoryLoading => _isMoreInventoryLoading;
   bool get hasMoreInventory => _hasMoreInventory;
@@ -173,6 +180,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     _warehouseBatchCache = null;
     _warehouseSerialCache = null;
     _qualityInspectionCache.clear();
+    _inventorySnapshotCache = null;
   }
 
   Future<void> refreshWarehouses() {
@@ -356,8 +364,14 @@ class WarehouseStockState extends AppStateProxyNotifier {
     int maxRows = _inventorySnapshotLimit,
     List<List<dynamic>>? filters,
     String? orderBy,
+    bool forceRefresh = false,
   }) async {
     if (appState.isSampleMode) return appState.inventory;
+    if (!forceRefresh &&
+        _inventorySnapshotCache != null &&
+        _inventorySnapshotCache!.isNotEmpty) {
+      return _inventorySnapshotCache!;
+    }
 
     await appState.frappeService.ensureLoggedIn();
     if (_warehouses.isEmpty) {
@@ -370,7 +384,11 @@ class WarehouseStockState extends AppStateProxyNotifier {
       limitStart: 0,
       orderBy: orderBy ?? 'modified desc',
     );
-    return _inventoryItemsFromRows(rows);
+    final items = await _inventoryItemsFromRows(rows);
+    if (filters == null) {
+      _inventorySnapshotCache = items;
+    }
+    return items;
   }
 
   Future<void> setInventoryQuery({
@@ -380,23 +398,47 @@ class WarehouseStockState extends AppStateProxyNotifier {
     String? search,
     String? status,
     String? sort,
+    bool forceRefresh = false,
   }) async {
-    _inventoryCompanyFilter = company?.trim().isEmpty == true
+    final nextCompany = company?.trim().isEmpty == true
         ? null
         : company?.trim();
-    _inventoryWarehouseFilter = warehouse?.trim().isEmpty == true
+    final nextWarehouse = warehouse?.trim().isEmpty == true
         ? null
         : warehouse?.trim();
-    _inventoryItemGroupFilter = itemGroup?.trim().isEmpty == true
+    final nextItemGroup = itemGroup?.trim().isEmpty == true
         ? null
         : itemGroup?.trim();
-    _inventorySearch = search?.trim() ?? '';
-    _inventoryStatusFilter = status?.trim().isEmpty == true
+    final nextSearch = search?.trim() ?? '';
+    final nextStatus = status?.trim().isEmpty == true
         ? 'all'
         : status?.trim() ?? 'all';
-    _inventorySort = sort?.trim().isEmpty == true
+    final nextSort = sort?.trim().isEmpty == true
         ? 'urgent_first'
         : sort?.trim() ?? 'urgent_first';
+
+    final unchanged =
+        nextCompany == _inventoryCompanyFilter &&
+        nextWarehouse == _inventoryWarehouseFilter &&
+        nextItemGroup == _inventoryItemGroupFilter &&
+        nextSearch == _inventorySearch &&
+        nextStatus == _inventoryStatusFilter &&
+        nextSort == _inventorySort;
+
+    _inventoryCompanyFilter = nextCompany;
+    _inventoryWarehouseFilter = nextWarehouse;
+    _inventoryItemGroupFilter = nextItemGroup;
+    _inventorySearch = nextSearch;
+    _inventoryStatusFilter = nextStatus;
+    _inventorySort = nextSort;
+
+    if (!forceRefresh &&
+        unchanged &&
+        _inventory.isNotEmpty &&
+        !_isInventoryLoading) {
+      return;
+    }
+
     _inventoryFetchInFlight = null;
     await _refreshInventoryPage(reset: true);
   }

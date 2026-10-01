@@ -19,7 +19,8 @@ class WarehouseStockAgingView extends StatefulWidget {
       _WarehouseStockAgingViewState();
 }
 
-class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
+class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView>
+    with AutomaticKeepAliveClientMixin {
   static const int _visiblePageSize = 50;
 
   final _search = TextEditingController();
@@ -31,12 +32,29 @@ class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
   String? _error;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _search.addListener(() {
       setState(() => _visibleLimit = _visiblePageSize);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateOrLoad());
+  }
+
+  Future<void> _hydrateOrLoad({bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      final cached = context.read<WarehouseAgingState>().items;
+      if (cached.isNotEmpty) {
+        setState(() {
+          _rows = cached;
+          _loading = false;
+        });
+        return;
+      }
+    }
+    await _load(forceRefresh: forceRefresh);
   }
 
   @override
@@ -46,6 +64,7 @@ class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
   }
 
   Future<void> _load({bool forceRefresh = false}) async {
+    if (!forceRefresh && _rows.isNotEmpty) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -64,6 +83,7 @@ class _WarehouseStockAgingViewState extends State<WarehouseStockAgingView> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final rows = _filteredRows();
     final visibleRows = rows.take(_visibleLimit).toList();
     final oldCount = _rows.where((row) => row.ageDays > 90).length;

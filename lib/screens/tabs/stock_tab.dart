@@ -19,7 +19,8 @@ class StockTab extends StatefulWidget {
   State<StockTab> createState() => _StockTabState();
 }
 
-class _StockTabState extends State<StockTab> {
+class _StockTabState extends State<StockTab>
+    with AutomaticKeepAliveClientMixin {
   String? _selectedCompany;
   String? _selectedWarehouse;
   final TextEditingController _stockSearchController = TextEditingController();
@@ -28,6 +29,9 @@ class _StockTabState extends State<StockTab> {
   String? _selectedItemGroup;
   bool _selectionInitialized = false;
   Timer? _searchDebounce;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -47,26 +51,44 @@ class _StockTabState extends State<StockTab> {
     if (appState.warehouses.isEmpty) {
       await appState.refreshWarehouses();
     }
-    await appState.refreshItemGroups();
+    if (appState.itemGroups.isEmpty) {
+      await appState.refreshItemGroups();
+    }
     if (!mounted) return;
 
-    _applyDefaultSelection(appState);
-
+    _hydrateSelection(appState);
+    if (appState.inventory.isNotEmpty) return;
     await _refreshInventoryQuery();
   }
 
-  void _applyDefaultSelection(WarehouseStockState appState) {
+  void _hydrateSelection(WarehouseStockState appState) {
     final companies = appState.stockCompanies;
     if (companies.isEmpty) return;
 
+    final savedCompany = appState.inventoryCompanyFilter;
     final company =
-        _selectedCompany ??
-        appState.preferredCompany(companies.map((entry) => entry.key)) ??
-        companies.first.key;
+        (savedCompany != null &&
+            companies.any((entry) => entry.key == savedCompany))
+        ? savedCompany
+        : appState.preferredCompany(companies.map((entry) => entry.key)) ??
+              companies.first.key;
+
     setState(() {
       _selectedCompany = company;
+      _selectedWarehouse = appState.inventoryWarehouseFilter;
+      _selectedItemGroup = appState.inventoryItemGroupFilter;
+      _stockStatusFilter = _statusFromQuery(appState.inventoryStatusFilter);
+      _stockSortOption = _sortFromQuery(appState.inventorySort);
       _selectionInitialized = true;
     });
+    if (appState.inventorySearch.isNotEmpty &&
+        _stockSearchController.text != appState.inventorySearch) {
+      _stockSearchController.text = appState.inventorySearch;
+    }
+  }
+
+  void _applyDefaultSelection(WarehouseStockState appState) {
+    _hydrateSelection(appState);
   }
 
   Future<void> _onPullRefresh() async {
@@ -74,11 +96,11 @@ class _StockTabState extends State<StockTab> {
     await appState.refreshWarehouses();
     await appState.refreshItemGroups();
     if (!mounted) return;
-    _applyDefaultSelection(appState);
-    await _refreshInventoryQuery();
+    _hydrateSelection(appState);
+    await _refreshInventoryQuery(forceRefresh: true);
   }
 
-  Future<void> _refreshInventoryQuery() {
+  Future<void> _refreshInventoryQuery({bool forceRefresh = false}) {
     return context.read<WarehouseStockState>().setInventoryQuery(
       company: _selectedCompany,
       warehouse: _selectedWarehouse,
@@ -86,6 +108,7 @@ class _StockTabState extends State<StockTab> {
       search: _stockSearchController.text,
       status: _statusQuery(_stockStatusFilter),
       sort: _sortQuery(_stockSortOption),
+      forceRefresh: forceRefresh,
     );
   }
 
@@ -127,8 +150,27 @@ class _StockTabState extends State<StockTab> {
     };
   }
 
+  _StockStatusFilter _statusFromQuery(String value) {
+    return switch (value) {
+      'urgent' => _StockStatusFilter.urgent,
+      'low_stock' => _StockStatusFilter.lowStock,
+      'in_stock' => _StockStatusFilter.inStock,
+      _ => _StockStatusFilter.all,
+    };
+  }
+
+  _StockSortOption _sortFromQuery(String value) {
+    return switch (value) {
+      'quantity_low' => _StockSortOption.quantityLow,
+      'quantity_high' => _StockSortOption.quantityHigh,
+      'name' => _StockSortOption.name,
+      _ => _StockSortOption.urgentFirst,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final appState = Provider.of<WarehouseStockState>(context);
     final companies = appState.stockCompanies;
 

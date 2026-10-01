@@ -30,14 +30,17 @@ class WarehouseValuationState extends ChangeNotifier {
 
   Future<void> refreshWarehouses() => _stockState.refreshWarehouses();
 
-  Future<void> refreshInventory() async {
+  Future<void> refreshInventory({bool forceRefresh = false}) async {
+    if (!forceRefresh && _inventory.isNotEmpty) return;
     if (_isInventoryLoading) return;
     _isInventoryLoading = true;
     _inventoryError = null;
     notifyListeners();
 
     try {
-      _inventory = await _stockState.fetchInventorySnapshot();
+      _inventory = await _stockState.fetchInventorySnapshot(
+        forceRefresh: forceRefresh,
+      );
     } catch (error) {
       _inventoryError = error.toString();
     } finally {

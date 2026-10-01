@@ -23,19 +23,26 @@ class WarehouseAgingState extends ChangeNotifier {
   }
 
   List<WarehouseInfo> get warehouses => _stockState.warehouses;
+  List<StockAgingItem> get items => _agingCache ?? const [];
+  bool get hasLoaded => _agingCache != null;
 
   Future<void> refreshWarehouses() => _stockState.refreshWarehouses();
+
+  List<StockAgingItem>? _agingCache;
 
   Future<List<StockAgingItem>> fetchStockAging({
     int lookbackDays = 365,
     bool forceRefresh = false,
   }) async {
-    final inventory = await _stockState.fetchInventorySnapshot();
+    if (!forceRefresh && _agingCache != null) return _agingCache!;
+    final inventory = await _stockState.fetchInventorySnapshot(
+      forceRefresh: forceRefresh,
+    );
     await _stockState.appState.frappeService.ensureLoggedIn();
 
     final today = DateTime.now();
     final from = today.subtract(Duration(days: lookbackDays));
-    final rows = await walkFrappePages(
+    final ledgerRows = await walkFrappePages(
       pageSize: 500,
       maxRows: 5000,
       fetchPage: (start, limit) =>
@@ -60,7 +67,7 @@ class WarehouseAgingState extends ChangeNotifier {
     );
 
     final latestIncoming = <String, DateTime>{};
-    for (final row in rows) {
+    for (final row in ledgerRows) {
       final item = row['item_code']?.toString() ?? '';
       final warehouse = row['warehouse']?.toString() ?? '';
       final date = DateTime.tryParse(row['posting_date']?.toString() ?? '');
@@ -68,7 +75,7 @@ class WarehouseAgingState extends ChangeNotifier {
       latestIncoming.putIfAbsent('$item|$warehouse', () => date);
     }
 
-    return [
+    final items = [
       for (final item in inventory)
         if (item.quantity > 0)
           StockAgingItem(
@@ -87,6 +94,9 @@ class WarehouseAgingState extends ChangeNotifier {
                       .inDays,
           ),
     ];
+    _agingCache = items;
+    notifyListeners();
+    return items;
   }
 
   @override

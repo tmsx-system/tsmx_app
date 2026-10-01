@@ -16,7 +16,8 @@ class WarehouseDeadStockView extends StatefulWidget {
   State<WarehouseDeadStockView> createState() => _WarehouseDeadStockViewState();
 }
 
-class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
+class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView>
+    with AutomaticKeepAliveClientMixin {
   static const int _visiblePageSize = 50;
 
   final _search = TextEditingController();
@@ -28,12 +29,29 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
   String? _error;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _search.addListener(() {
       setState(() => _visibleLimit = _visiblePageSize);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _hydrateOrLoad());
+  }
+
+  Future<void> _hydrateOrLoad({bool forceRefresh = false}) async {
+    if (!forceRefresh) {
+      final cached = context.read<WarehouseDeadStockState>().deadStockItems;
+      if (cached.isNotEmpty) {
+        setState(() {
+          _rows = cached;
+          _loading = false;
+        });
+        return;
+      }
+    }
+    await _load(forceRefresh: forceRefresh);
   }
 
   @override
@@ -43,6 +61,7 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
   }
 
   Future<void> _load({bool forceRefresh = false}) async {
+    if (!forceRefresh && _rows.isNotEmpty) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -61,6 +80,7 @@ class _WarehouseDeadStockViewState extends State<WarehouseDeadStockView> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final rows = _filteredRows();
     final visibleRows = rows.take(_visibleLimit).toList();
     final totalValue = rows.fold<double>(0, (sum, row) => sum + row.stockValue);

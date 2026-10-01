@@ -20,7 +20,8 @@ class WarehouseInventoryValuationView extends StatefulWidget {
 }
 
 class _WarehouseInventoryValuationViewState
-    extends State<WarehouseInventoryValuationView> {
+    extends State<WarehouseInventoryValuationView>
+    with AutomaticKeepAliveClientMixin {
   static const int _visiblePageSize = 50;
 
   final _search = TextEditingController();
@@ -31,12 +32,17 @@ class _WarehouseInventoryValuationViewState
   String? _error;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _search.addListener(() {
       setState(() => _visibleLimit = _visiblePageSize);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _refresh(forceRefresh: false),
+    );
   }
 
   @override
@@ -45,13 +51,19 @@ class _WarehouseInventoryValuationViewState
     super.dispose();
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool forceRefresh = true}) async {
+    if (!forceRefresh &&
+        context.read<WarehouseValuationState>().inventory.isNotEmpty) {
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      await context.read<WarehouseValuationState>().refreshInventory();
+      await context.read<WarehouseValuationState>().refreshInventory(
+        forceRefresh: forceRefresh,
+      );
     } catch (error) {
       if (!mounted) return;
       _error = captureErpError(context, error);
@@ -62,6 +74,7 @@ class _WarehouseInventoryValuationViewState
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final state = context.watch<WarehouseValuationState>();
     final rows = _filteredRows(state.inventory);
     final visibleRows = rows.take(_visibleLimit).toList();
