@@ -1,4 +1,3 @@
-import '../../models/inventory_item.dart';
 import '../../models/material_request.dart';
 import '../../models/warehouse_info.dart';
 import '../../services/frappe_service.dart';
@@ -30,7 +29,6 @@ class MaterialRequestState extends AppStateProxyNotifier {
   List<Object?> get watchFields => [
     appState.isAuthenticated,
     appState.isSampleMode,
-    appState.inventory,
     appState.warehouses,
     appState.buyingCompanies,
     appState.selectedSiteBaseUrl,
@@ -39,7 +37,6 @@ class MaterialRequestState extends AppStateProxyNotifier {
 
   int get buyingPeriodYear => filterState.buyingPeriodYear;
   int get buyingPeriodMonth => filterState.buyingPeriodMonth;
-  List<InventoryItem> get inventory => appState.inventory;
   List<WarehouseInfo> get warehouses => appState.warehouses;
   List<String> get buyingCompanies => appState.buyingCompanies;
   FrappeService get frappeService => appState.frappeService;
@@ -60,8 +57,8 @@ class MaterialRequestState extends AppStateProxyNotifier {
       previous,
       next,
       authIndex: 0,
-      siteIndex: 5,
-      userIndex: 6,
+      siteIndex: 4,
+      userIndex: 5,
     )) {
       _resetLocalDocuments();
     }
@@ -77,7 +74,6 @@ class MaterialRequestState extends AppStateProxyNotifier {
     _materialRequestsFetchInFlight = null;
   }
 
-  Future<void> refreshInventory() => appState.refreshInventory();
   Future<void> refreshWarehouses() => appState.refreshWarehouses();
   Future<void> loadBuyingFilterOptions() => appState.loadBuyingFilterOptions();
   Future<void> refreshMaterialRequests() {
@@ -91,8 +87,6 @@ class MaterialRequestState extends AppStateProxyNotifier {
       }
     });
   }
-
-  Future<void> refreshPurchaseOrders() => appState.refreshPurchaseOrders();
 
   Future<void> loadMoreMaterialRequests() async {
     if (_isMaterialRequestsLoading ||

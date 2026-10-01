@@ -95,11 +95,7 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
   Future<void> _ensureEntryLoaded(BuildContext context, String key) async {
     if (key == 'home') return;
     if (!_loadedDoctypeKeys.add(key)) return;
-    await _refreshPurchaseDoctype(
-      context,
-      key,
-      includeInventoryForMaterialRequest: true,
-    );
+    await _refreshPurchaseDoctype(context, key);
   }
 
   List<PurchaseOverviewAction> _buildOverviewActions(
@@ -243,10 +239,7 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
           ),
           builder: (_) => _PurchasePane(
             doctypeKey: 'mr',
-            child: MaterialRequestPanel(
-              canCreateMaterialRequest: permissions.canCreateMaterialRequest,
-              canCreatePurchaseOrder: permissions.canCreatePurchaseOrder,
-            ),
+            child: const MaterialRequestPanel(),
           ),
           canCreate: permissions.canCreateMaterialRequest,
         ),
@@ -330,11 +323,7 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
   }
 }
 
-Future<void> _refreshPurchaseDoctype(
-  BuildContext context,
-  String key, {
-  bool includeInventoryForMaterialRequest = false,
-}) async {
+Future<void> _refreshPurchaseDoctype(BuildContext context, String key) async {
   switch (key) {
     case 'pr':
       await context.read<PurchaseReceiptState>().refreshPurchaseReceipts();
@@ -343,11 +332,7 @@ Future<void> _refreshPurchaseDoctype(
       await context.read<PurchaseInvoiceState>().refreshPurchaseInvoices();
       break;
     case 'mr':
-      final state = context.read<MaterialRequestState>();
-      await state.refreshMaterialRequests();
-      if (includeInventoryForMaterialRequest && state.inventory.isEmpty) {
-        await state.refreshInventory();
-      }
+      await context.read<MaterialRequestState>().refreshMaterialRequests();
       break;
     default:
       await context.read<PurchaseOrderState>().refreshPurchaseOrders();

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../models/inventory_item.dart';
 import '../../../models/material_request.dart';
 import '../../../../state/purchasing/material_request_state.dart';
 import '../../../../state/purchasing/purchasing_summary_state.dart';
@@ -11,34 +10,15 @@ import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/document_trend_card.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
 import '../../../widgets/erp/erp_status_badge.dart';
 import '../../../widgets/erp/erp_status_chip_bar.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
-import 'create_material_request_screen.dart';
-import '../purchase_order/create_purchase_order_screen.dart';
 import '../shared/buying_document_detail_sheet.dart';
 import '../shared/purchase_ui.dart';
 
-enum _MaterialRequestFocusFilter {
-  all,
-  purchase,
-  transfer,
-  active,
-  draft,
-  ordered,
-}
-
 class MaterialRequestPanel extends StatefulWidget {
-  final bool canCreateMaterialRequest;
-  final bool canCreatePurchaseOrder;
-
-  const MaterialRequestPanel({
-    super.key,
-    this.canCreateMaterialRequest = true,
-    this.canCreatePurchaseOrder = true,
-  });
+  const MaterialRequestPanel({super.key});
 
   @override
   State<MaterialRequestPanel> createState() => _MaterialRequestPanelState();
@@ -47,7 +27,6 @@ class MaterialRequestPanel extends StatefulWidget {
 class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
   String _search = '';
   String? _statusFilter;
-  _MaterialRequestFocusFilter _focusFilter = _MaterialRequestFocusFilter.all;
   Timer? _searchDebounce;
 
   static const _allStatusFilter = '__all__';
@@ -96,42 +75,8 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
       final matchStatus =
           _statusFilter == null ||
           doc.statusText.toLowerCase() == _statusFilter!.toLowerCase();
-      return matchSearch && matchStatus && _matchesFocusFilter(doc);
+      return matchSearch && matchStatus;
     }).toList();
-  }
-
-  bool _matchesFocusFilter(MaterialRequest doc) {
-    final type = doc.type.toLowerCase();
-    final status = doc.statusText.toLowerCase();
-    return switch (_focusFilter) {
-      _MaterialRequestFocusFilter.all => true,
-      _MaterialRequestFocusFilter.purchase => type.contains('purchase'),
-      _MaterialRequestFocusFilter.transfer =>
-        type.contains('transfer') || type.contains('material transfer'),
-      _MaterialRequestFocusFilter.active =>
-        !status.contains('cancel') &&
-            !status.contains('stopped') &&
-            !status.contains('ordered'),
-      _MaterialRequestFocusFilter.draft => isDocDraft(doc.docStatus),
-      _MaterialRequestFocusFilter.ordered => status.contains('ordered'),
-    };
-  }
-
-  String _emptyMessage() {
-    return switch (_focusFilter) {
-      _MaterialRequestFocusFilter.all =>
-        'Gunakan tombol Buat Request untuk mengajukan kebutuhan.',
-      _MaterialRequestFocusFilter.purchase =>
-        'Tidak ada Material Request pembelian pada filter ini.',
-      _MaterialRequestFocusFilter.transfer =>
-        'Tidak ada Material Request antar departemen pada filter ini.',
-      _MaterialRequestFocusFilter.active =>
-        'Tidak ada kebutuhan barang aktif pada filter ini.',
-      _MaterialRequestFocusFilter.draft =>
-        'Tidak ada draft Material Request pada filter ini.',
-      _MaterialRequestFocusFilter.ordered =>
-        'Tidak ada Material Request yang sudah ordered pada filter ini.',
-    };
   }
 
   bool _isPermissionError(String? message) {
@@ -149,83 +94,6 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
       return 'Akses Material Request ditolak ERPNext. Cek Role Permission untuk Material Request dan Material Request Item, lalu cek User Permission Company jika role sudah benar.';
     }
     return message.replaceFirst('Exception: ', '');
-  }
-
-  List<InventoryItem> _planningItems(MaterialRequestState purchasingState) {
-    final rows =
-        purchasingState.inventory
-            .where(
-              (item) =>
-                  item.quantity <= 0 ||
-                  (item.minStockThreshold > 0 &&
-                      item.quantity <= item.minStockThreshold),
-            )
-            .toList()
-          ..sort((a, b) {
-            final aScore = a.minStockThreshold > 0
-                ? a.quantity / a.minStockThreshold
-                : a.quantity;
-            final bScore = b.minStockThreshold > 0
-                ? b.quantity / b.minStockThreshold
-                : b.quantity;
-            return aScore.compareTo(bScore);
-          });
-    return rows.take(5).toList();
-  }
-
-  Future<void> _openCreate({InventoryItem? item}) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CreateMaterialRequestScreen(initialItem: item),
-      ),
-    );
-    if (mounted) {
-      await context.read<MaterialRequestState>().refreshMaterialRequests();
-    }
-  }
-
-  int _recommendedQty(InventoryItem item) {
-    if (item.minStockThreshold <= 0) {
-      return item.quantity <= 0 ? 1 : item.quantity;
-    }
-    final deficit = item.minStockThreshold - item.quantity;
-    return deficit <= 0 ? 1 : deficit;
-  }
-
-  Future<void> _createDraftMrFor(InventoryItem item) async {
-    final qty = _recommendedQty(item).toDouble();
-    final purchasingState = context.read<MaterialRequestState>();
-    try {
-      await purchasingState.createMaterialRequest(
-        materialRequestType: 'Purchase',
-        itemCode: item.sku,
-        qty: qty,
-        transactionDate: DateTime.now(),
-        scheduleDate: DateTime.now(),
-        warehouse: item.warehouseId,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Draft Material Request untuk ${item.name} dibuat.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      await showErpError(context, error: error, action: 'membuat draft MR');
-    }
-  }
-
-  Future<void> _openDraftPoFor(InventoryItem item) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CreatePurchaseOrderScreen(initialItem: item),
-      ),
-    );
-    if (mounted) {
-      await context.read<MaterialRequestState>().refreshPurchaseOrders();
-    }
   }
 
   Future<void> _openDetail(MaterialRequest doc) async {
@@ -428,10 +296,6 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
     final purchasingState = context.watch<MaterialRequestState>();
     final summaryState = context.watch<PurchasingSummaryState>();
     final filtered = _filter(purchasingState.materialRequests);
-    final planningItems = _planningItems(purchasingState);
-    final focusSummary = _MaterialRequestFocusSummary.from(
-      purchasingState.materialRequests,
-    );
     final materialRequestError = purchasingState.materialRequestsError;
     final hasBlockingError =
         materialRequestError != null &&
@@ -450,31 +314,6 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
           valuePrefix: '',
           valueSuffix: ' qty',
           sourceLabel: 'Sumber: Material Request ERPNext',
-        ),
-
-        const SizedBox(height: 12),
-
-        _MaterialRequestSummaryCard(requests: filtered),
-
-        const SizedBox(height: 12),
-
-        _MaterialRequestFocusCard(
-          summary: focusSummary,
-          selected: _focusFilter,
-          onSelected: (filter) => setState(() => _focusFilter = filter),
-        ),
-
-        const SizedBox(height: 12),
-
-        _PlanningCard(
-          items: planningItems,
-          onPick: (item) => _openCreate(item: item),
-          onCreateMaterialRequest: widget.canCreateMaterialRequest
-              ? _createDraftMrFor
-              : null,
-          onCreatePurchaseOrder: widget.canCreatePurchaseOrder
-              ? _openDraftPoFor
-              : null,
         ),
 
         const SizedBox(height: 12),
@@ -514,11 +353,10 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
           if (filtered.isEmpty &&
               !purchasingState.isMaterialRequestsLoading &&
               purchasingState.materialRequestsError == null)
-            ErpEmptyState(
-              title: _focusFilter == _MaterialRequestFocusFilter.all
-                  ? 'Belum ada request'
-                  : 'Request tidak ditemukan',
-              message: _emptyMessage(),
+            const ErpEmptyState(
+              title: 'Belum ada request',
+              message:
+                  'Gunakan tombol Buat Request untuk mengajukan kebutuhan.',
             )
           else
             TmsxResponsiveCardGrid(
@@ -665,278 +503,6 @@ class _MaterialRequestCard extends StatelessWidget {
   }
 }
 
-class _MaterialRequestSummaryCard extends StatelessWidget {
-  final List<MaterialRequest> requests;
-
-  const _MaterialRequestSummaryCard({required this.requests});
-
-  @override
-  Widget build(BuildContext context) {
-    final draftCount = requests
-        .where((doc) => isDocDraft(doc.docStatus))
-        .length;
-    final activeQty = requests.fold<double>(
-      0,
-      (sum, doc) => sum + doc.totalQty,
-    );
-    final activeCount = requests.where((doc) {
-      final status = doc.statusText.toLowerCase();
-      return !status.contains('cancel') &&
-          !status.contains('stopped') &&
-          !status.contains('ordered');
-    }).length;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppColors.softGreen,
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Icon(
-                  Icons.assignment_turned_in_outlined,
-                  color: AppColors.primary,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Kebutuhan Barang',
-                      style: TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Ringkasan request sesuai filter aktif.',
-                      style: TextStyle(
-                        color: AppColors.slate,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          PurchaseMetricGrid(
-            children: [
-              PurchaseMetricTile(
-                label: 'Aktif',
-                value: '$activeCount request',
-                icon: Icons.pending_actions_rounded,
-                color: AppColors.primary,
-              ),
-              PurchaseMetricTile(
-                label: 'Draft',
-                value: '$draftCount draft',
-                icon: Icons.edit_note_rounded,
-                color: AppColors.warning,
-              ),
-              PurchaseMetricTile(
-                label: 'Qty',
-                value: formatErpCurrency(activeQty),
-                icon: Icons.inventory_2_outlined,
-                color: AppColors.slate,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MaterialRequestFocusSummary {
-  final int total;
-  final int purchase;
-  final int transfer;
-  final int active;
-  final int draft;
-  final int ordered;
-
-  const _MaterialRequestFocusSummary({
-    required this.total,
-    required this.purchase,
-    required this.transfer,
-    required this.active,
-    required this.draft,
-    required this.ordered,
-  });
-
-  factory _MaterialRequestFocusSummary.from(List<MaterialRequest> requests) {
-    var purchase = 0;
-    var transfer = 0;
-    var active = 0;
-    var draft = 0;
-    var ordered = 0;
-    for (final doc in requests) {
-      final type = doc.type.toLowerCase();
-      final status = doc.statusText.toLowerCase();
-      if (type.contains('purchase')) purchase++;
-      if (type.contains('transfer') || type.contains('material transfer')) {
-        transfer++;
-      }
-      if (!status.contains('cancel') &&
-          !status.contains('stopped') &&
-          !status.contains('ordered')) {
-        active++;
-      }
-      if (isDocDraft(doc.docStatus)) draft++;
-      if (status.contains('ordered')) ordered++;
-    }
-    return _MaterialRequestFocusSummary(
-      total: requests.length,
-      purchase: purchase,
-      transfer: transfer,
-      active: active,
-      draft: draft,
-      ordered: ordered,
-    );
-  }
-
-  int countFor(_MaterialRequestFocusFilter filter) {
-    return switch (filter) {
-      _MaterialRequestFocusFilter.all => total,
-      _MaterialRequestFocusFilter.purchase => purchase,
-      _MaterialRequestFocusFilter.transfer => transfer,
-      _MaterialRequestFocusFilter.active => active,
-      _MaterialRequestFocusFilter.draft => draft,
-      _MaterialRequestFocusFilter.ordered => ordered,
-    };
-  }
-}
-
-class _MaterialRequestFocusCard extends StatelessWidget {
-  final _MaterialRequestFocusSummary summary;
-  final _MaterialRequestFocusFilter selected;
-  final ValueChanged<_MaterialRequestFocusFilter> onSelected;
-
-  const _MaterialRequestFocusCard({
-    required this.summary,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  String _label(_MaterialRequestFocusFilter filter) {
-    return switch (filter) {
-      _MaterialRequestFocusFilter.all => 'Semua',
-      _MaterialRequestFocusFilter.purchase => 'Purchase',
-      _MaterialRequestFocusFilter.transfer => 'Transfer',
-      _MaterialRequestFocusFilter.active => 'Aktif',
-      _MaterialRequestFocusFilter.draft => 'Draft',
-      _MaterialRequestFocusFilter.ordered => 'Ordered',
-    };
-  }
-
-  IconData _icon(_MaterialRequestFocusFilter filter) {
-    return switch (filter) {
-      _MaterialRequestFocusFilter.all => Icons.list_alt_rounded,
-      _MaterialRequestFocusFilter.purchase => Icons.shopping_cart_outlined,
-      _MaterialRequestFocusFilter.transfer => Icons.swap_horiz_rounded,
-      _MaterialRequestFocusFilter.active => Icons.pending_actions_rounded,
-      _MaterialRequestFocusFilter.draft => Icons.edit_note_rounded,
-      _MaterialRequestFocusFilter.ordered => Icons.task_alt_rounded,
-    };
-  }
-
-  Color _color(_MaterialRequestFocusFilter filter) {
-    return switch (filter) {
-      _MaterialRequestFocusFilter.all => AppColors.primary,
-      _MaterialRequestFocusFilter.purchase => AppColors.primary,
-      _MaterialRequestFocusFilter.transfer => AppColors.navy,
-      _MaterialRequestFocusFilter.active => AppColors.warning,
-      _MaterialRequestFocusFilter.draft => AppColors.slate,
-      _MaterialRequestFocusFilter.ordered => AppColors.success,
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Filter Kebutuhan Barang',
-            style: TextStyle(
-              color: AppColors.navy,
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 3),
-          const Text(
-            'Pisahkan request pembelian, transfer antar departemen, dan status kebutuhan.',
-            style: TextStyle(
-              color: AppColors.slate,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _MaterialRequestFocusFilter.values.map((filter) {
-              final active = selected == filter;
-              final color = _color(filter);
-              return ChoiceChip(
-                selected: active,
-                onSelected: (_) => onSelected(filter),
-                avatar: Icon(
-                  _icon(filter),
-                  size: 16,
-                  color: active ? AppColors.white : color,
-                ),
-                label: Text('${_label(filter)} ${summary.countFor(filter)}'),
-                labelStyle: TextStyle(
-                  color: active ? AppColors.white : color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                ),
-                selectedColor: color,
-                backgroundColor: color.withValues(alpha: 0.08),
-                side: BorderSide(color: color.withValues(alpha: 0.18)),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _MaterialRequestApprovalInfoCard extends StatelessWidget {
   const _MaterialRequestApprovalInfoCard();
 
@@ -974,192 +540,3 @@ class _MaterialRequestApprovalInfoCard extends StatelessWidget {
   }
 }
 
-class _PlanningCard extends StatelessWidget {
-  final List<InventoryItem> items;
-  final ValueChanged<InventoryItem> onPick;
-  final ValueChanged<InventoryItem>? onCreateMaterialRequest;
-  final ValueChanged<InventoryItem>? onCreatePurchaseOrder;
-
-  const _PlanningCard({
-    required this.items,
-    required this.onPick,
-    required this.onCreateMaterialRequest,
-    required this.onCreatePurchaseOrder,
-  });
-
-  int _recommendedQty(InventoryItem item) {
-    if (item.minStockThreshold <= 0) {
-      return item.quantity <= 0 ? 1 : item.quantity;
-    }
-    final deficit = item.minStockThreshold - item.quantity;
-    return deficit <= 0 ? 1 : deficit;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_motion_outlined,
-                  color: AppColors.warning,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Rekomendasi Pembelian',
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              if (items.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${items.length} item',
-                    style: const TextStyle(
-                      color: AppColors.warning,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            items.isEmpty
-                ? 'Belum ada item di bawah reorder level dari data inventory saat ini.'
-                : 'Item stok kosong atau di bawah reorder level bisa langsung dibuatkan request.',
-            style: const TextStyle(
-              color: AppColors.slate,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          if (items.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            ...items.map(
-              (item) => Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  color: AppColors.navy,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                '${item.sku} | Stok ${item.quantity}'
-                                '${item.minStockThreshold > 0 ? ' / Reorder ${item.minStockThreshold}' : ''}',
-                                style: const TextStyle(
-                                  color: AppColors.slate,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.warning.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            'Saran ${_recommendedQty(item)}',
-                            style: const TextStyle(
-                              color: AppColors.warning,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        if (onCreateMaterialRequest != null)
-                          OutlinedButton.icon(
-                            onPressed: () => onPick(item),
-                            icon: const Icon(Icons.edit_note_rounded, size: 18),
-                            label: const Text('Form MR'),
-                          ),
-                        if (onCreateMaterialRequest != null)
-                          OutlinedButton.icon(
-                            onPressed: () => onCreateMaterialRequest!(item),
-                            icon: const Icon(Icons.assignment_add, size: 18),
-                            label: const Text('Draft MR'),
-                          ),
-                        if (onCreatePurchaseOrder != null)
-                          FilledButton.icon(
-                            onPressed: () => onCreatePurchaseOrder!(item),
-                            icon: const Icon(Icons.add_shopping_cart, size: 18),
-                            label: const Text('Draft PO'),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}

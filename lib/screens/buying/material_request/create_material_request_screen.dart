@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../../../models/inventory_item.dart';
 import '../../../models/warehouse_info.dart';
 import '../../../state/purchasing/material_request_state.dart';
 import '../../../theme/app_colors.dart';
@@ -11,9 +10,7 @@ import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/purchase_ui.dart';
 
 class CreateMaterialRequestScreen extends StatefulWidget {
-  final InventoryItem? initialItem;
-
-  const CreateMaterialRequestScreen({super.key, this.initialItem});
+  const CreateMaterialRequestScreen({super.key});
 
   @override
   State<CreateMaterialRequestScreen> createState() =>
@@ -43,8 +40,6 @@ class _CreateMaterialRequestScreenState
   @override
   void initState() {
     super.initState();
-    _selectedItem = widget.initialItem?.sku;
-    _selectedWarehouse = widget.initialItem?.warehouseId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -415,10 +410,6 @@ class _CreateMaterialRequestScreenState
                         accentColor: Color(0xFFF59E0B),
                       ),
                       const SizedBox(height: 16),
-                      if (widget.initialItem != null) ...[
-                        _InfoCard(initialItem: widget.initialItem),
-                        const SizedBox(height: 16),
-                      ],
                       _sectionCard(
                         title: 'Request Information',
                         icon: Icons.assignment_outlined,
@@ -579,38 +570,6 @@ class _CreateMaterialRequestScreenState
             onPressed: _loading || _error != null ? null : _save,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _InfoCard extends StatelessWidget {
-  final InventoryItem? initialItem;
-
-  const _InfoCard({required this.initialItem});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.softGreen,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.14)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.assignment_add, color: AppColors.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              initialItem == null
-                  ? 'Buat request barang untuk kebutuhan stok.'
-                  : 'Prefill dari low stock: ${initialItem!.name}',
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
       ),
     );
   }
