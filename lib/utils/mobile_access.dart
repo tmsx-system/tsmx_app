@@ -59,7 +59,11 @@ class MobileAccess {
       modules = {MobileModule.dashboard};
     }
 
-    const locked = {MobileModule.finance, MobileModule.accounting};
+    const locked = {
+      MobileModule.finance,
+      MobileModule.accounting,
+      MobileModule.logistics,
+    };
     if (MobileRoleRegistry.canUseFinanceAccounting(normalizedRole)) {
       modules = {...modules, ...locked};
     } else {

@@ -81,7 +81,8 @@ class MobileRole {
 
   static const fullAccessRoles = {administrator};
 
-  /// Temporary: Finance/Accounting app modules are admin/developer only.
+  /// Temporary: Finance, Accounting, and Logistics app modules are
+  /// admin/developer only.
   static const financeAccountingRoles = {administrator, developer};
 }
 
