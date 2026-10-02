@@ -6,12 +6,13 @@ import 'package:provider/provider.dart';
 import '../../../../../models/stock_entry.dart';
 import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
-import '../../../../../utils/erp_format.dart';
+import '../../../../../widgets/erp/erp_document_card.dart';
 import '../../../../../widgets/erp/erp_empty_state.dart';
 import '../../../../../widgets/erp/erp_error_dialog.dart';
-import '../../../../../widgets/erp/erp_status_badge.dart';
+import '../../../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../shared/warehouse_widgets.dart';
 import 'create_stock_reconciliation_screen.dart';
+import 'stock_reconciliation_detail_screen.dart';
 
 class StockReconciliationPanel extends StatefulWidget {
   const StockReconciliationPanel({super.key});
@@ -30,6 +31,7 @@ class _StockReconciliationPanelState extends State<StockReconciliationPanel> {
   String? _company;
   String? _expenseAccount;
   String? _costCenter;
+  bool _isOpeningDetail = false;
 
   @override
   void initState() {
@@ -109,6 +111,7 @@ class _StockReconciliationPanelState extends State<StockReconciliationPanel> {
           costCenter: _costCenter,
         ),
         companies: companies,
+        preferredCompany: state.preferredCompany(companies),
       ),
     );
     if (result == null || !mounted) return;
@@ -128,6 +131,26 @@ class _StockReconciliationPanelState extends State<StockReconciliationPanel> {
       ),
     );
     if (created == true && mounted) await _load();
+  }
+
+  Future<void> _openDetail(StockReconciliationSummary row) async {
+    if (_isOpeningDetail) return;
+    _isOpeningDetail = true;
+    setState(() {});
+    try {
+      if (!mounted) return;
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              StockReconciliationDetailScreen(reconciliationId: row.id),
+        ),
+      );
+      if (mounted) await _load();
+    } finally {
+      _isOpeningDetail = false;
+      if (mounted) setState(() {});
+    }
   }
 
   @override
@@ -152,7 +175,7 @@ class _StockReconciliationPanelState extends State<StockReconciliationPanel> {
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Create'),
+              label: const Text('Create Reconciliation'),
             )
           : null,
       body: RefreshIndicator(
@@ -164,8 +187,9 @@ class _StockReconciliationPanelState extends State<StockReconciliationPanel> {
             WarehouseSectionHeader(
               title: 'Stock Reconciliation',
               subtitle: [
+                'Penyesuaian stok fisik vs sistem',
                 if ((_company ?? '').isNotEmpty) _company!,
-                'ERPNext 15',
+                '${rows.length} dokumen',
               ].join(' · '),
               icon: Icons.fact_check_outlined,
             ),
@@ -227,50 +251,22 @@ class _StockReconciliationPanelState extends State<StockReconciliationPanel> {
   }
 
   Widget _card(StockReconciliationSummary row) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: WarehouseModernCard(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const CircleAvatar(
-              backgroundColor: Color(0xFFF3E8FF),
-              foregroundColor: warehousePurple,
-              child: Icon(Icons.fact_check_outlined),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    row.id,
-                    style: const TextStyle(
-                      color: AppColors.navy,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    [
-                      if (row.company.isNotEmpty) row.company,
-                      if (row.date.isNotEmpty) row.date,
-                      if (row.postingTime.isNotEmpty) row.postingTime,
-                      'Diff Rp ${formatErpCurrency(row.differenceAmount)}',
-                    ].join(' · '),
-                    style: const TextStyle(
-                      color: AppColors.slate,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ErpStatusBadge(statusText: row.statusText),
-          ],
-        ),
-      ),
+    final dateLabel = [
+      if (row.date.isNotEmpty) row.date,
+      if (row.postingTime.isNotEmpty) row.postingTime,
+    ].join(' · ');
+    final extras = [
+      if (row.expenseAccount.isNotEmpty) row.expenseAccount,
+      if (row.costCenter.isNotEmpty) row.costCenter,
+    ].join(' · ');
+    return ErpDocumentCard(
+      id: row.id,
+      party: row.company.isEmpty ? 'Stock Reconciliation' : row.company,
+      statusText: row.statusText,
+      date: dateLabel.isEmpty ? '-' : dateLabel,
+      value: row.differenceAmount,
+      trailing: extras.isEmpty ? null : extras,
+      onTap: _isOpeningDetail ? null : () => unawaited(_openDetail(row)),
     );
   }
 }
@@ -286,8 +282,13 @@ class _RecoFilters {
 class _RecoFilterSheet extends StatefulWidget {
   final _RecoFilters initial;
   final List<String> companies;
+  final String? preferredCompany;
 
-  const _RecoFilterSheet({required this.initial, required this.companies});
+  const _RecoFilterSheet({
+    required this.initial,
+    required this.companies,
+    this.preferredCompany,
+  });
 
   @override
   State<_RecoFilterSheet> createState() => _RecoFilterSheetState();
@@ -295,89 +296,240 @@ class _RecoFilterSheet extends StatefulWidget {
 
 class _RecoFilterSheetState extends State<_RecoFilterSheet> {
   late String? _company;
-  late final TextEditingController _account;
-  late final TextEditingController _costCenter;
+  String? _expenseAccount;
+  String? _costCenter;
 
   @override
   void initState() {
     super.initState();
     _company = widget.initial.company;
-    _account = TextEditingController(text: widget.initial.expenseAccount ?? '');
-    _costCenter = TextEditingController(text: widget.initial.costCenter ?? '');
+    _expenseAccount = widget.initial.expenseAccount;
+    _costCenter = widget.initial.costCenter;
   }
 
-  @override
-  void dispose() {
-    _account.dispose();
-    _costCenter.dispose();
-    super.dispose();
+  InputDecoration _fieldDecoration(String label, {IconData? icon}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: 'Pilih $label',
+      prefixIcon: icon == null ? null : Icon(icon),
+      filled: true,
+      fillColor: AppColors.background,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    );
+  }
+
+  Future<List<ErpItemOption>> _fetchAccounts([String query = '']) async {
+    final filters = <List<dynamic>>[
+      ['is_group', '=', 0],
+      if ((_company ?? '').trim().isNotEmpty) ['company', '=', _company],
+    ];
+    final q = query.trim();
+    final orFilters = q.isEmpty
+        ? null
+        : [
+            ['name', 'like', '%$q%'],
+            ['account_name', 'like', '%$q%'],
+          ];
+    final rows = await context.read<WarehouseStockState>().frappeService
+        .fetchResource(
+          'Account',
+          fields: const ['name'],
+          filters: filters,
+          orFilters: orFilters,
+          orderBy: 'name asc',
+          limit: 50,
+        );
+    return [
+      for (final row in rows)
+        if ((row['name']?.toString() ?? '').trim().isNotEmpty)
+          ErpItemOption(
+            id: row['name'].toString().trim(),
+            label: row['name'].toString().trim(),
+          ),
+    ];
+  }
+
+  Future<List<ErpItemOption>> _fetchCostCenters([String query = '']) async {
+    final filters = <List<dynamic>>[
+      ['is_group', '=', 0],
+      if ((_company ?? '').trim().isNotEmpty) ['company', '=', _company],
+    ];
+    final q = query.trim();
+    final orFilters = q.isEmpty
+        ? null
+        : [
+            ['name', 'like', '%$q%'],
+            ['cost_center_name', 'like', '%$q%'],
+          ];
+    final rows = await context.read<WarehouseStockState>().frappeService
+        .fetchResource(
+          'Cost Center',
+          fields: const ['name'],
+          filters: filters,
+          orFilters: orFilters,
+          orderBy: 'name asc',
+          limit: 50,
+        );
+    return [
+      for (final row in rows)
+        if ((row['name']?.toString() ?? '').trim().isNotEmpty)
+          ErpItemOption(
+            id: row['name'].toString().trim(),
+            label: row['name'].toString().trim(),
+          ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
         decoration: const BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Filter Stock Reconciliation',
-              style: TextStyle(
-                color: AppColors.navy,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<String?>(
-              initialValue: widget.companies.contains(_company)
-                  ? _company
-                  : null,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Company'),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Semua company akses'),
-                ),
-                for (final company in widget.companies)
-                  DropdownMenuItem(value: company, child: Text(company)),
-              ],
-              onChanged: (value) => setState(() => _company = value),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _account,
-              decoration: const InputDecoration(labelText: 'Difference Account'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _costCenter,
-              decoration: const InputDecoration(labelText: 'Cost Center'),
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => Navigator.pop(
-                context,
-                _RecoFilters(
-                  company: _company,
-                  expenseAccount: _account.text.trim().isEmpty
-                      ? null
-                      : _account.text.trim(),
-                  costCenter: _costCenter.text.trim().isEmpty
-                      ? null
-                      : _costCenter.text.trim(),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
                 ),
               ),
-              child: const Text('Terapkan'),
-            ),
-          ],
+              const SizedBox(height: 14),
+              const Text(
+                'Filter Stock Reconciliation',
+                style: TextStyle(
+                  color: AppColors.navy,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Saring dokumen berdasarkan company, akun selisih, dan cost center.',
+                style: TextStyle(
+                  color: AppColors.slate,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String?>(
+                initialValue: widget.companies.contains(_company)
+                    ? _company
+                    : null,
+                isExpanded: true,
+                decoration: _fieldDecoration(
+                  'Company',
+                  icon: Icons.apartment_outlined,
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('Semua company akses'),
+                  ),
+                  for (final company in widget.companies)
+                    DropdownMenuItem(value: company, child: Text(company)),
+                ],
+                onChanged: (value) => setState(() {
+                  _company = value;
+                  _expenseAccount = null;
+                  _costCenter = null;
+                }),
+              ),
+              const SizedBox(height: 12),
+              ErpItemAutocompleteField(
+                key: ValueKey('filter-acc:${_company ?? ''}:${_expenseAccount ?? ''}'),
+                label: 'Difference Account',
+                selectedId: _expenseAccount,
+                decoration: _fieldDecoration(
+                  'Difference Account',
+                  icon: Icons.account_balance_outlined,
+                ),
+                options: [
+                  if ((_expenseAccount ?? '').isNotEmpty)
+                    ErpItemOption(
+                      id: _expenseAccount!,
+                      label: _expenseAccount!,
+                    ),
+                ],
+                onSearch: _fetchAccounts,
+                onSelected: (value) => setState(() => _expenseAccount = value),
+              ),
+              const SizedBox(height: 12),
+              ErpItemAutocompleteField(
+                key: ValueKey('filter-cc:${_company ?? ''}:${_costCenter ?? ''}'),
+                label: 'Cost Center',
+                selectedId: _costCenter,
+                decoration: _fieldDecoration(
+                  'Cost Center',
+                  icon: Icons.hub_outlined,
+                ),
+                options: [
+                  if ((_costCenter ?? '').isNotEmpty)
+                    ErpItemOption(id: _costCenter!, label: _costCenter!),
+                ],
+                onSearch: _fetchCostCenters,
+                onSelected: (value) => setState(() => _costCenter = value),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _company = widget.preferredCompany;
+                          _expenseAccount = null;
+                          _costCenter = null;
+                        });
+                      },
+                      child: const Text('Reset'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(
+                        context,
+                        _RecoFilters(
+                          company: _company,
+                          expenseAccount: (_expenseAccount ?? '').trim().isEmpty
+                              ? null
+                              : _expenseAccount!.trim(),
+                          costCenter: (_costCenter ?? '').trim().isEmpty
+                              ? null
+                              : _costCenter!.trim(),
+                        ),
+                      ),
+                      child: const Text('Terapkan'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

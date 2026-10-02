@@ -209,3 +209,110 @@ class StockReconciliationSummary {
     );
   }
 }
+
+class StockReconciliationItemLine {
+  final String itemCode;
+  final String itemName;
+  final String warehouse;
+  final double currentQty;
+  final double qty;
+  final String uom;
+  final double valuationRate;
+  final double amount;
+  final double currentAmount;
+  final String batchNo;
+
+  const StockReconciliationItemLine({
+    required this.itemCode,
+    required this.itemName,
+    required this.warehouse,
+    required this.currentQty,
+    required this.qty,
+    required this.uom,
+    this.valuationRate = 0,
+    this.amount = 0,
+    this.currentAmount = 0,
+    this.batchNo = '',
+  });
+
+  double get qtyDifference => qty - currentQty;
+
+  factory StockReconciliationItemLine.fromJson(Map<String, dynamic> json) {
+    return StockReconciliationItemLine(
+      itemCode: json['item_code']?.toString() ?? '',
+      itemName: json['item_name']?.toString() ?? '',
+      warehouse: json['warehouse']?.toString() ?? '',
+      currentQty: NumParse.asDouble(json['current_qty']),
+      qty: NumParse.asDouble(json['qty']),
+      uom: json['stock_uom']?.toString() ?? json['uom']?.toString() ?? '',
+      valuationRate: NumParse.asDouble(json['valuation_rate']),
+      amount: NumParse.asDouble(json['amount']),
+      currentAmount: NumParse.asDouble(json['current_amount']),
+      batchNo: json['batch_no']?.toString() ?? '',
+    );
+  }
+}
+
+class StockReconciliationDetail {
+  final String id;
+  final String purpose;
+  final String company;
+  final String postingDate;
+  final String postingTime;
+  final String warehouse;
+  final String expenseAccount;
+  final String costCenter;
+  final String remarks;
+  final String statusText;
+  final int docStatus;
+  final double differenceAmount;
+  final List<StockReconciliationItemLine> items;
+
+  const StockReconciliationDetail({
+    required this.id,
+    required this.purpose,
+    required this.company,
+    required this.postingDate,
+    required this.postingTime,
+    required this.warehouse,
+    required this.expenseAccount,
+    required this.costCenter,
+    required this.remarks,
+    required this.statusText,
+    required this.docStatus,
+    required this.differenceAmount,
+    required this.items,
+  });
+
+  factory StockReconciliationDetail.fromJson(Map<String, dynamic> json) {
+    final docstatus = NumParse.asInt(json['docstatus']);
+    final rawItems = json['items'];
+    return StockReconciliationDetail(
+      id: json['name']?.toString() ?? '',
+      purpose: json['purpose']?.toString() ?? '',
+      company: json['company']?.toString() ?? '',
+      postingDate: json['posting_date']?.toString() ?? '',
+      postingTime: json['posting_time']?.toString() ?? '',
+      warehouse: json['set_warehouse']?.toString() ?? '',
+      expenseAccount: json['expense_account']?.toString() ?? '',
+      costCenter: json['cost_center']?.toString() ?? '',
+      remarks: json['remarks']?.toString() ?? '',
+      statusText: normalizeStatusText(
+        json['status']?.toString(),
+        docstatus: docstatus,
+      ),
+      docStatus: docstatus,
+      differenceAmount: NumParse.asDouble(json['difference_amount']),
+      items: rawItems is List
+          ? rawItems
+                .whereType<Map>()
+                .map(
+                  (row) => StockReconciliationItemLine.fromJson(
+                    Map<String, dynamic>.from(row),
+                  ),
+                )
+                .toList()
+          : const [],
+    );
+  }
+}

@@ -145,6 +145,13 @@ class WarehouseStockState extends AppStateProxyNotifier {
     );
   }
 
+  Future<List<int>> downloadStockReconciliationPdf(String name) {
+    return appState.frappeService.downloadPrintPdf(
+      doctype: 'Stock Reconciliation',
+      name: name,
+    );
+  }
+
   @override
   void handleWatchedFieldsChanged(List<Object?> previous, List<Object?> next) {
     if (didAuthScopeChange(
@@ -1189,6 +1196,21 @@ class WarehouseStockState extends AppStateProxyNotifier {
     );
     await refreshStockReconciliations(company: company);
     return created;
+  }
+
+  Future<StockReconciliationDetail> fetchStockReconciliationDetail(
+    String name,
+  ) async {
+    await appState.frappeService.ensureLoggedIn();
+    final id = name.trim();
+    if (id.isEmpty) {
+      throw Exception('Stock Reconciliation tidak valid.');
+    }
+    final doc = await appState.frappeService.fetchDocument(
+      'Stock Reconciliation',
+      id,
+    );
+    return StockReconciliationDetail.fromJson(doc);
   }
 
   Future<void> refreshStockReconciliations({
