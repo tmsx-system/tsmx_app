@@ -40,6 +40,7 @@ class MobileAccess {
   bool get isPlantationSupervisor =>
       normalizedRole == MobileRole.plantationSupervisor;
   bool get shouldScopeSalesData => isSalesUser;
+
   bool get canSelectAnyEmployee =>
       MobileRoleRegistry.isFullAccessRole(normalizedRole);
 

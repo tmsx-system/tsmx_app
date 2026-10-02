@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -1395,9 +1396,9 @@ class WarehouseStockState extends AppStateProxyNotifier {
   Future<void> submitDocument(String doctype, String name) async {
     await appState.frappeService.submitDocument(doctype, name);
     if (doctype == 'Stock Entry') {
-      await refreshStockEntries();
+      unawaited(refreshStockEntries());
     } else if (doctype == 'Stock Reconciliation') {
-      await refreshStockReconciliations();
+      unawaited(refreshStockReconciliations());
     }
   }
 

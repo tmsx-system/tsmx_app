@@ -496,8 +496,8 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       successMessage: 'Sales Order: $action berhasil',
     );
     if (ok && mounted) {
-      await context.read<SalesOrderState>().refreshSalesOrders();
-      if (mounted) Navigator.pop(context);
+      unawaited(context.read<SalesOrderState>().refreshSalesOrders());
+      Navigator.pop(context);
     }
   }
 
@@ -741,8 +741,8 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       successMessage: 'Sales Order submitted',
     );
     if (ok && mounted) {
-      await context.read<SalesOrderState>().refreshSalesOrders();
-      if (mounted) Navigator.pop(context);
+      unawaited(context.read<SalesOrderState>().refreshSalesOrders());
+      Navigator.pop(context);
     }
   }
 

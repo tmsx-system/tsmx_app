@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/purchase_invoice.dart';
 import '../../models/purchase_order.dart';
 import '../../models/purchase_receipt.dart';
@@ -252,7 +254,7 @@ class PurchaseOrderState extends AppStateProxyNotifier {
   Future<void> submitDocument(String doctype, String name) async {
     await appState.frappeService.submitDocument(doctype, name);
     if (doctype == 'Purchase Order') {
-      await refreshPurchaseOrders();
+      unawaited(refreshPurchaseOrders());
     }
   }
 

@@ -106,23 +106,25 @@ class _AppMainScreenState extends State<AppMainScreen> {
     ];
 
     final todoCount = _totalTodoCount(todoState);
-    tabs.add(
-      _MainTabItem(
-        keyName: MobileModule.approvals,
-        child: const SalesOrderApprovalScreen(
-          embedded: true,
-          title: 'Approval Dokumen',
+    if (state.canUseApprovals) {
+      tabs.add(
+        _MainTabItem(
+          keyName: MobileModule.approvals,
+          child: const SalesOrderApprovalScreen(
+            embedded: true,
+            title: 'Approval Dokumen',
+          ),
+          destination: NavigationDestination(
+            icon: _todoIcon(Icons.assignment_outlined, todoCount),
+            selectedIcon: _todoIcon(Icons.assignment_rounded, todoCount),
+            label: _moduleLabel(state, MobileModule.approvals, 'Todo'),
+          ),
+          navIcon: Icons.assignment_outlined,
+          selectedNavIcon: Icons.assignment_rounded,
+          badgeCount: todoCount,
         ),
-        destination: NavigationDestination(
-          icon: _todoIcon(Icons.assignment_outlined, todoCount),
-          selectedIcon: _todoIcon(Icons.assignment_rounded, todoCount),
-          label: _moduleLabel(state, MobileModule.approvals, 'Todo'),
-        ),
-        navIcon: Icons.assignment_outlined,
-        selectedNavIcon: Icons.assignment_rounded,
-        badgeCount: todoCount,
-      ),
-    );
+      );
+    }
 
     tabs.add(
       const _MainTabItem(

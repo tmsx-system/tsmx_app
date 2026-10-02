@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/delivery_note.dart';
 import '../../models/sales_invoice.dart';
 import '../../models/sales_order.dart';
@@ -437,12 +439,12 @@ class SalesOrderState extends AppStateProxyNotifier {
       action: action,
       reason: reason ?? '',
     );
-    await refreshSalesOrders();
+    unawaited(refreshSalesOrders());
   }
 
   Future<void> submitDocument(String doctype, String name) async {
     await appState.frappeService.submitDocument(doctype, name);
-    await refreshSalesOrders();
+    unawaited(refreshSalesOrders());
   }
 
   Future<CustomerSalesInsight> fetchCustomerSalesInsight(

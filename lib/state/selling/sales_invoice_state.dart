@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/sales_invoice.dart';
 import '../app_state_proxy_notifier.dart';
 import 'selling_document_query_mixin.dart';
@@ -212,6 +214,6 @@ class SalesInvoiceState extends AppStateProxyNotifier
 
   Future<void> submitDocument(String doctype, String name) async {
     await appState.frappeService.submitDocument(doctype, name);
-    await refreshSalesInvoices();
+    unawaited(refreshSalesInvoices());
   }
 }

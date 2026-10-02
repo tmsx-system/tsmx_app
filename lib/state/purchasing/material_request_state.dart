@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/material_request.dart';
 import '../../models/warehouse_info.dart';
 import '../../services/frappe_service.dart';
@@ -202,7 +204,7 @@ class MaterialRequestState extends AppStateProxyNotifier {
   Future<void> submitDocument(String doctype, String name) async {
     await appState.frappeService.submitDocument(doctype, name);
     if (doctype == 'Material Request') {
-      await refreshMaterialRequests();
+      unawaited(refreshMaterialRequests());
     }
   }
 

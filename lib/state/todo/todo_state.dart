@@ -174,8 +174,8 @@ class TodoState extends AppStateProxyNotifier {
     required String name,
     required String action,
     String reason = '',
-    bool refreshAfterApply = true,
-    bool waitForComment = true,
+    bool refreshAfterApply = false,
+    bool waitForComment = false,
     Map<String, dynamic>? currentDocument,
   }) async {
     await _approvalService.applyDocumentWorkflow(
@@ -204,8 +204,8 @@ class TodoState extends AppStateProxyNotifier {
     required SalesOrderApproval approval,
     required String action,
     String reason = '',
-    bool refreshAfterApply = true,
-    bool waitForComment = true,
+    bool refreshAfterApply = false,
+    bool waitForComment = false,
     Map<String, dynamic>? currentDocument,
   }) async {
     await _approvalService.applySalesOrderWorkflow(

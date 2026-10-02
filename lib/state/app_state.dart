@@ -9174,7 +9174,7 @@ class AppState with ChangeNotifier {
 
   Future<void> submitDocument(String doctype, String name) async {
     await _frappeService.submitDocument(doctype, name);
-    await _refreshAfterDocChange(doctype);
+    unawaited(_refreshAfterDocChange(doctype).catchError((_) {}));
   }
 
   Future<List<int>> downloadSalesOrderPdf(String name) {
@@ -10273,6 +10273,10 @@ class AppState with ChangeNotifier {
         final todos = cachedRows
             .map(_approvalTodoFromCacheJson)
             .where((todo) => todo.doctype.isNotEmpty && todo.name.isNotEmpty)
+            .map(
+              (todo) => todo.withActions(approvalDecisionActions(todo.actions)),
+            )
+            .where((todo) => todo.actions.isNotEmpty)
             .toList(growable: false);
         _setApprovalTodoSnapshot(todos);
         return cachedApprovalTodos;
@@ -10405,7 +10409,9 @@ class AppState with ChangeNotifier {
       for (final row in candidateRows) {
         final name = row['name']?.toString() ?? '';
         if (name.isEmpty) continue;
-        final actions = actionsByName[name] ?? const <String>[];
+        final actions = approvalDecisionActions(
+          actionsByName[name] ?? const <String>[],
+        );
         if (actions.isEmpty) continue;
         todos.add(
           ErpApprovalTodo.fromJson(config.doctype, row, actions: actions),
@@ -10981,11 +10987,12 @@ class AppState with ChangeNotifier {
     required SalesOrderApproval approval,
     required String action,
     String reason = '',
-    bool refreshAfterApply = true,
-    bool waitForComment = true,
+    bool refreshAfterApply = false,
+    bool waitForComment = false,
     Map<String, dynamic>? currentDocument,
   }) async {
     await _frappeService.ensureLoggedIn();
+    final total = Stopwatch()..start();
     final normalizedAction = action.trim();
     final actionLower = normalizedAction.toLowerCase();
     final isReject =
@@ -10995,12 +11002,24 @@ class AppState with ChangeNotifier {
     if (isReject && reason.trim().isEmpty) {
       throw Exception('Alasan reject wajib diisi.');
     }
+    final getWatch = Stopwatch()..start();
     final doc =
         currentDocument ??
         await _frappeService.fetchDocument('Sales Order', approval.name);
+    getWatch.stop();
+    FrappeService.logTiming(
+      'GET document Sales Order ${approval.name} (apply $normalizedAction)',
+      getWatch.elapsedMilliseconds,
+    );
+    final postWatch = Stopwatch()..start();
     await _frappeService.callMethod(
       'frappe.model.workflow.apply_workflow',
       args: {'doc': doc, 'action': normalizedAction},
+    );
+    postWatch.stop();
+    FrappeService.logTiming(
+      'POST apply_workflow Sales Order ${approval.name} action=$normalizedAction',
+      postWatch.elapsedMilliseconds,
     );
     final decision = isReject ? 'REJECT' : 'APPROVE';
     final content = [
@@ -11034,6 +11053,10 @@ class AppState with ChangeNotifier {
     } else {
       unawaited(refresh.then<void>((_) {}).catchError((_) {}));
     }
+    FrappeService.logTiming(
+      'applySalesOrderWorkflow total Sales Order ${approval.name} action=$normalizedAction',
+      total.elapsedMilliseconds,
+    );
   }
 
   Future<List<String>> fetchDocumentWorkflowActions({
@@ -11113,11 +11136,12 @@ class AppState with ChangeNotifier {
     required String name,
     required String action,
     String reason = '',
-    bool refreshAfterApply = true,
-    bool waitForComment = true,
+    bool refreshAfterApply = false,
+    bool waitForComment = false,
     Map<String, dynamic>? currentDocument,
   }) async {
     await _frappeService.ensureLoggedIn();
+    final total = Stopwatch()..start();
     final normalizedAction = action.trim();
     final actionLower = normalizedAction.toLowerCase();
     final isReject =
@@ -11128,11 +11152,23 @@ class AppState with ChangeNotifier {
     if (isReject && reason.trim().isEmpty) {
       throw Exception('Alasan reject/return wajib diisi.');
     }
+    final getWatch = Stopwatch()..start();
     final doc =
         currentDocument ?? await _frappeService.fetchDocument(doctype, name);
+    getWatch.stop();
+    FrappeService.logTiming(
+      'GET document $doctype $name (apply $normalizedAction)',
+      getWatch.elapsedMilliseconds,
+    );
+    final postWatch = Stopwatch()..start();
     await _frappeService.callMethod(
       'frappe.model.workflow.apply_workflow',
       args: {'doc': doc, 'action': normalizedAction},
+    );
+    postWatch.stop();
+    FrappeService.logTiming(
+      'POST apply_workflow $doctype $name action=$normalizedAction',
+      postWatch.elapsedMilliseconds,
     );
     final decision = isReject ? 'REJECT' : 'APPROVE';
     final content = [
@@ -11173,6 +11209,10 @@ class AppState with ChangeNotifier {
     } else {
       unawaited(refresh.then<void>((_) {}).catchError((_) {}));
     }
+    FrappeService.logTiming(
+      'applyDocumentWorkflow total $doctype $name action=$normalizedAction',
+      total.elapsedMilliseconds,
+    );
   }
 
   Future<void> refreshSalesOrders() => fetchSalesOrdersFromFrappe();

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import '../../models/erp_approval_todo.dart';
 import '../../models/sales_order_approval.dart';
+import '../../utils/erp_doc_utils.dart';
 import '../../utils/frappe_page_walker.dart';
 import '../frappe_service.dart';
 import '../local_app_database.dart';
@@ -45,6 +46,10 @@ class ApprovalService {
         return cachedRows
             .map(_approvalTodoFromCacheJson)
             .where((todo) => todo.doctype.isNotEmpty && todo.name.isNotEmpty)
+            .map(
+              (todo) => todo.withActions(approvalDecisionActions(todo.actions)),
+            )
+            .where((todo) => todo.actions.isNotEmpty)
             .toList(growable: false);
       }
     }
@@ -355,7 +360,7 @@ class ApprovalService {
     required String appDisplayName,
     required String? currentUser,
     String reason = '',
-    bool waitForComment = true,
+    bool waitForComment = false,
     Map<String, dynamic>? currentDocument,
   }) async {
     await applyDocumentWorkflow(
@@ -377,10 +382,11 @@ class ApprovalService {
     required String appDisplayName,
     required String? currentUser,
     String reason = '',
-    bool waitForComment = true,
+    bool waitForComment = false,
     Map<String, dynamic>? currentDocument,
   }) async {
     await frappe.ensureLoggedIn();
+    final total = Stopwatch()..start();
     final normalizedAction = action.trim();
     final actionLower = normalizedAction.toLowerCase();
     final isReject =
@@ -392,10 +398,22 @@ class ApprovalService {
       throw Exception('Alasan reject/return wajib diisi.');
     }
 
+    final getWatch = Stopwatch()..start();
     final doc = currentDocument ?? await frappe.fetchDocument(doctype, name);
+    getWatch.stop();
+    FrappeService.logTiming(
+      'GET document $doctype $name (apply $normalizedAction)',
+      getWatch.elapsedMilliseconds,
+    );
+    final postWatch = Stopwatch()..start();
     await frappe.callMethod(
       'frappe.model.workflow.apply_workflow',
       args: {'doc': doc, 'action': normalizedAction},
+    );
+    postWatch.stop();
+    FrappeService.logTiming(
+      'POST apply_workflow $doctype $name action=$normalizedAction',
+      postWatch.elapsedMilliseconds,
     );
 
     final decision = isReject ? 'REJECT' : 'APPROVE';
@@ -420,6 +438,10 @@ class ApprovalService {
       unawaited(commentRequest.then<void>((_) {}).catchError((_) {}));
     }
     await _deleteCachedDocument(doctype, name);
+    FrappeService.logTiming(
+      'applyDocumentWorkflow total $doctype $name action=$normalizedAction',
+      total.elapsedMilliseconds,
+    );
   }
 
   Future<List<ErpApprovalTodo>> _fetchApprovalTodosFromErp() async {
@@ -526,7 +548,9 @@ class ApprovalService {
       for (final row in candidateRows) {
         final name = row['name']?.toString() ?? '';
         if (name.isEmpty) continue;
-        final actions = actionsByName[name] ?? const <String>[];
+        final actions = approvalDecisionActions(
+          actionsByName[name] ?? const <String>[],
+        );
         if (actions.isEmpty) continue;
         todos.add(
           ErpApprovalTodo.fromJson(config.doctype, row, actions: actions),

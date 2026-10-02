@@ -619,12 +619,32 @@ class FrappeService {
         .toList();
   }
 
+  static void logTiming(String label, int milliseconds) {
+    developer.log('$milliseconds ms $label', name: 'tmsx.timing');
+    debugPrint('[tmsx.timing] $milliseconds ms $label');
+  }
+
   Future<Map<String, dynamic>> submitDocument(
     String doctype,
     String name,
   ) async {
+    final total = Stopwatch()..start();
+    final getWatch = Stopwatch()..start();
     final doc = await fetchDocument(doctype, name);
+    getWatch.stop();
+    logTiming('GET document $doctype $name', getWatch.elapsedMilliseconds);
+
+    final postWatch = Stopwatch()..start();
     final result = await callMethod('frappe.client.submit', args: {'doc': doc});
+    postWatch.stop();
+    logTiming(
+      'POST frappe.client.submit $doctype $name',
+      postWatch.elapsedMilliseconds,
+    );
+    logTiming(
+      'submitDocument total $doctype $name',
+      total.elapsedMilliseconds,
+    );
     if (result is Map<String, dynamic>) return result;
     if (result is Map) return Map<String, dynamic>.from(result);
     return fetchDocument(doctype, name);

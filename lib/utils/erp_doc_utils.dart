@@ -22,6 +22,29 @@ String docStatusLabel(int docstatus) {
   }
 }
 
+bool isApprovalDecisionAction(String action) {
+  final text = action.trim().toLowerCase();
+  if (text.isEmpty) return false;
+  const submitLike = ['submit', 'save', 'amend', 'update'];
+  if (submitLike.any(text.contains)) return false;
+  const decisionLike = [
+    'approve',
+    'reject',
+    'tolak',
+    'setujui',
+    'decline',
+  ];
+  return decisionLike.any(text.contains);
+}
+
+List<String> approvalDecisionActions(Iterable<String> actions) {
+  return actions
+      .map((action) => action.trim())
+      .where(isApprovalDecisionAction)
+      .toSet()
+      .toList(growable: false);
+}
+
 double _pendingQty(Map<String, dynamic> row, String deliveredField) {
   final qty = NumParse.asDouble(row['qty'] ?? row['stock_qty']);
   final done = NumParse.asDouble(row[deliveredField]);

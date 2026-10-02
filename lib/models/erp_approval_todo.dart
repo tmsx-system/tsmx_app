@@ -101,4 +101,21 @@ class ErpApprovalTodo {
       actions: actions,
     );
   }
+
+  ErpApprovalTodo withActions(List<String> actions) {
+    return ErpApprovalTodo(
+      doctype: doctype,
+      name: name,
+      party: party,
+      partyName: partyName,
+      workflowState: workflowState,
+      status: status,
+      owner: owner,
+      date: date,
+      amount: amount,
+      secondaryAmount: secondaryAmount,
+      docStatus: docStatus,
+      actions: actions,
+    );
+  }
 }
