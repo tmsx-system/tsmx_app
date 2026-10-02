@@ -567,6 +567,9 @@ class AppState with ChangeNotifier {
   List<ErpApprovalTodo> _sampleApprovalTodos = const [];
   List<ErpApprovalTodo> _approvalTodoSnapshot = const [];
   Future<List<ErpApprovalTodo>>? _approvalTodoFetchInFlight;
+  Future<Map<String, int>>? _workflowStateDocStatusInFlight;
+  Map<String, int> _workflowStateDocStatus = const {};
+  DateTime? _workflowStateDocStatusAt;
   List<ErpApprovalTodo> get cachedApprovalTodos => _isSampleMode
       ? _sampleApprovalTodos
       : List<ErpApprovalTodo>.unmodifiable(_approvalTodoSnapshot);
@@ -588,7 +591,7 @@ class AppState with ChangeNotifier {
   _qualityInspectionInFlight = {};
   static const Duration _notificationPollInterval = Duration(minutes: 2);
   static const Duration _documentCacheTtl = Duration(minutes: 2);
-  static const Duration _approvalTodoCacheTtl = Duration(minutes: 1);
+  static const Duration _approvalTodoCacheTtl = Duration(minutes: 5);
   static const String _approvalTodoDbCachePrefix = 'approval_todo_cache';
   static const Duration _salesVisitCacheTtl = Duration(seconds: 45);
   static const Duration _collectionCacheTtl = Duration(minutes: 10);
@@ -1926,7 +1929,9 @@ class AppState with ChangeNotifier {
       final sp = await SharedPreferences.getInstance();
       final previous = sp.getInt(_approvalNotificationCountPrefsKey);
       final todos = await fetchApprovalTodos();
-      final count = todos.where((todo) => todo.actions.isNotEmpty).length;
+      final count = todos
+          .where((todo) => approvalDecisionActions(todo.actions).isNotEmpty)
+          .length;
       await sp.setInt(_approvalNotificationCountPrefsKey, count);
       if (count <= 0) return;
       if (previous != null && count <= previous) return;
@@ -10117,24 +10122,14 @@ class AppState with ChangeNotifier {
     return rows.map(QualityInspectionRecord.fromJson).toList();
   }
 
-  bool _isApprovalCandidateRow(Map<String, dynamic> row) {
-    final docstatus = int.tryParse(row['docstatus']?.toString() ?? '') ?? 0;
-    if (docstatus >= 2) return false;
-    final state = [
-      row['workflow_state'],
-      row['status'],
-    ].map((value) => value?.toString().trim().toLowerCase() ?? '').join(' ');
-    if (state.isEmpty) return true;
-    const terminalWords = [
-      'approved',
-      'completed',
-      'cancelled',
-      'canceled',
-      'closed',
-      'rejected',
-      'stopped',
-    ];
-    return !terminalWords.any(state.contains);
+  bool _isApprovalCandidateRow(
+    Map<String, dynamic> row, {
+    Map<String, int> workflowStateDocStatus = const {},
+  }) {
+    return isApprovalInboxCandidateRow(
+      row,
+      workflowStateDocStatus: workflowStateDocStatus,
+    );
   }
 
   Future<List<SalesOrderApproval>> fetchSalesOrderApprovals() async {
@@ -10152,17 +10147,24 @@ class AppState with ChangeNotifier {
         'grand_total',
         'docstatus',
       ],
-      filters: [
-        ['docstatus', '<', 2],
-      ],
+      filters: approvalInboxListFilters(),
       orderBy: 'modified desc',
       maxRows: 200,
     );
+    final workflowStateDocStatus = await _workflowStateDocStatusMap();
     final approvals = <SalesOrderApproval>[];
-    final candidateRows = rows.where(_isApprovalCandidateRow).toList();
+    final candidateRows = rows
+        .where(
+          (row) => _isApprovalCandidateRow(
+            row,
+            workflowStateDocStatus: workflowStateDocStatus,
+          ),
+        )
+        .toList();
     final actionsByName = await _fetchWorkflowActionsForRows(
       doctype: 'Sales Order',
       rows: candidateRows,
+      workflowStateDocStatus: workflowStateDocStatus,
     );
     for (final row in candidateRows) {
       final name = row['name']?.toString() ?? '';
@@ -10273,12 +10275,19 @@ class AppState with ChangeNotifier {
         final todos = cachedRows
             .map(_approvalTodoFromCacheJson)
             .where((todo) => todo.doctype.isNotEmpty && todo.name.isNotEmpty)
-            .map(
-              (todo) => todo.withActions(approvalDecisionActions(todo.actions)),
-            )
-            .where((todo) => todo.actions.isNotEmpty)
             .toList(growable: false);
-        _setApprovalTodoSnapshot(todos);
+        final workflowStateDocStatus = await _workflowStateDocStatusMap();
+        final filtered = todos
+            .where(
+              (todo) => isOpenWorkflowInbox(
+                docStatus: todo.docStatus,
+                workflowState: todo.workflowState,
+                actions: todo.actions,
+                workflowStateDocStatus: workflowStateDocStatus,
+              ),
+            )
+            .toList(growable: false);
+        _setApprovalTodoSnapshot(filtered);
         return cachedApprovalTodos;
       }
     }
@@ -10313,6 +10322,7 @@ class AppState with ChangeNotifier {
           'name',
           'customer',
           'customer_name',
+          'company',
           'workflow_state',
           'status',
           'owner',
@@ -10327,6 +10337,7 @@ class AppState with ChangeNotifier {
           'name',
           'supplier',
           'supplier_name',
+          'company',
           'workflow_state',
           'status',
           'owner',
@@ -10341,6 +10352,7 @@ class AppState with ChangeNotifier {
           'name',
           'supplier',
           'supplier_name',
+          'company',
           'workflow_state',
           'status',
           'owner',
@@ -10383,43 +10395,62 @@ class AppState with ChangeNotifier {
     ];
 
     final todos = <ErpApprovalTodo>[];
-    for (final config in configs) {
-      final List<Map<String, dynamic>> rows;
-      try {
-        rows = await _fetchAllResourcePages(
+    final totalWatch = Stopwatch()..start();
+    var transitionCalls = 0;
+    final workflowStateDocStatus = await _workflowStateDocStatusMap();
+    await Future.wait(
+      configs.map((config) async {
+        final List<Map<String, dynamic>> rows;
+        try {
+          rows = await _fetchAllResourcePages(
+            doctype: config.doctype,
+            fields: config.fields,
+            filters: approvalInboxListFilters(),
+            orderBy: 'modified desc',
+            maxRows: 200,
+          );
+        } catch (_) {
+          return;
+        }
+        final candidateRows = rows
+            .where(
+              (row) => _isApprovalCandidateRow(
+                row,
+                workflowStateDocStatus: workflowStateDocStatus,
+              ),
+            )
+            .toList();
+        if (candidateRows.isEmpty) return;
+        final actionsByName = await _fetchWorkflowActionsForRows(
           doctype: config.doctype,
-          fields: config.fields,
-          filters: [
-            ['docstatus', '<', 2],
-          ],
-          orderBy: 'modified desc',
-          maxRows: 200,
+          rows: candidateRows,
+          workflowStateDocStatus: workflowStateDocStatus,
         );
-      } catch (_) {
-        // Approval Todo is an aggregate screen. If the current role cannot read
-        // one document type, keep showing approval items from the allowed types.
-        continue;
-      }
-      final candidateRows = rows.where(_isApprovalCandidateRow).toList();
-      if (candidateRows.isEmpty) continue;
-      final actionsByName = await _fetchWorkflowActionsForRows(
-        doctype: config.doctype,
-        rows: candidateRows,
-      );
-      for (final row in candidateRows) {
-        final name = row['name']?.toString() ?? '';
-        if (name.isEmpty) continue;
-        final actions = approvalDecisionActions(
-          actionsByName[name] ?? const <String>[],
-        );
-        if (actions.isEmpty) continue;
-        todos.add(
-          ErpApprovalTodo.fromJson(config.doctype, row, actions: actions),
-        );
-      }
-    }
+        transitionCalls += candidateRows.length;
+        for (final row in candidateRows) {
+          final name = row['name']?.toString() ?? '';
+          if (name.isEmpty) continue;
+          final actions = actionsByName[name] ?? const <String>[];
+          if (!isOpenWorkflowInbox(
+            docStatus: NumParse.asInt(row['docstatus']),
+            workflowState: row['workflow_state']?.toString() ?? '',
+            actions: actions,
+            workflowStateDocStatus: workflowStateDocStatus,
+          )) {
+            continue;
+          }
+          todos.add(
+            ErpApprovalTodo.fromJson(config.doctype, row, actions: actions),
+          );
+        }
+      }),
+    );
 
     todos.sort((a, b) => b.date.compareTo(a.date));
+    FrappeService.logTiming(
+      'AppState fetchApprovalTodos items=${todos.length} transitions=$transitionCalls',
+      totalWatch.elapsedMilliseconds,
+    );
     return todos;
   }
 
@@ -11065,44 +11096,103 @@ class AppState with ChangeNotifier {
   }) async {
     await _frappeService.ensureLoggedIn();
     final doc = await _fetchCachedDocument(doctype, name);
-    return _fetchWorkflowActionsForDocument(doc);
+    final workflowStateDocStatus = await _workflowStateDocStatusMap();
+    return _fetchWorkflowActionsForDocument(
+      doc,
+      workflowStateDocStatus: workflowStateDocStatus,
+    );
+  }
+
+  Future<Map<String, int>> _workflowStateDocStatusMap() async {
+    final cachedAt = _workflowStateDocStatusAt;
+    if (cachedAt != null &&
+        DateTime.now().difference(cachedAt) < const Duration(minutes: 10) &&
+        _workflowStateDocStatus.isNotEmpty) {
+      return _workflowStateDocStatus;
+    }
+    final inFlight = _workflowStateDocStatusInFlight;
+    if (inFlight != null) return inFlight;
+    final request = () async {
+      final mapped = <String, int>{};
+      try {
+        final rows = await _fetchAllResourcePages(
+          doctype: 'Workflow Document State',
+          fields: const ['state', 'doc_status'],
+          maxRows: 2000,
+        );
+        mapped.addAll(workflowStateDocStatusByName(rows));
+      } catch (_) {}
+      try {
+        final rows = await _fetchAllResourcePages(
+          doctype: 'Workflow State',
+          fields: const ['name', 'workflow_state_name', 'doc_status'],
+          maxRows: 500,
+        );
+        for (final entry in workflowStateDocStatusByName(rows).entries) {
+          final previous = mapped[entry.key] ?? 0;
+          if (entry.value > previous) mapped[entry.key] = entry.value;
+        }
+      } catch (_) {}
+      return mapped;
+    }();
+    _workflowStateDocStatusInFlight = request;
+    try {
+      final mapped = await request;
+      _workflowStateDocStatus = mapped;
+      _workflowStateDocStatusAt = DateTime.now();
+      return mapped;
+    } finally {
+      if (identical(_workflowStateDocStatusInFlight, request)) {
+        _workflowStateDocStatusInFlight = null;
+      }
+    }
   }
 
   Future<Map<String, List<String>>> _fetchWorkflowActionsForRows({
     required String doctype,
     required List<Map<String, dynamic>> rows,
-    int batchSize = 8,
+    required Map<String, int> workflowStateDocStatus,
+    int batchSize = 12,
   }) async {
-    final names = rows
-        .map((row) => row['name']?.toString() ?? '')
-        .where((name) => name.isNotEmpty)
-        .toList();
-    final documents = await _fetchDocumentsInBatches(
-      doctype,
-      names,
-      batchSize: batchSize,
-    );
-    final entries = documents.entries.toList();
     final actionsByName = <String, List<String>>{};
-    for (var start = 0; start < entries.length; start += batchSize) {
-      final end = start + batchSize > entries.length
-          ? entries.length
+    for (var start = 0; start < rows.length; start += batchSize) {
+      final end = start + batchSize > rows.length
+          ? rows.length
           : start + batchSize;
-      final batch = entries.sublist(start, end);
+      final batch = rows.sublist(start, end);
       final results = await Future.wait(
-        batch.map((entry) async {
+        batch.map((row) async {
+          final name = row['name']?.toString() ?? '';
+          if (name.isEmpty) {
+            return (name: name, actions: const <String>[]);
+          }
           try {
-            return (
-              name: entry.key,
-              actions: await _fetchWorkflowActionsForDocument(entry.value),
-            );
+            final doc = Map<String, dynamic>.from(row);
+            doc['doctype'] = doctype;
+            List<String> actions;
+            try {
+              actions = await _fetchWorkflowActionsForDocument(
+                doc,
+                workflowStateDocStatus: workflowStateDocStatus,
+              );
+            } catch (_) {
+              actions = const [];
+            }
+            if (actions.isEmpty) {
+              final full = await _frappeService.fetchDocument(doctype, name);
+              actions = await _fetchWorkflowActionsForDocument(
+                full,
+                workflowStateDocStatus: workflowStateDocStatus,
+              );
+            }
+            return (name: name, actions: actions);
           } catch (_) {
-            return (name: entry.key, actions: const <String>[]);
+            return (name: name, actions: const <String>[]);
           }
         }),
       );
       for (final result in results) {
-        if (result.actions.isNotEmpty) {
+        if (result.name.isNotEmpty && result.actions.isNotEmpty) {
           actionsByName[result.name] = result.actions;
         }
       }
@@ -11111,24 +11201,17 @@ class AppState with ChangeNotifier {
   }
 
   Future<List<String>> _fetchWorkflowActionsForDocument(
-    Map<String, dynamic> doc,
-  ) async {
+    Map<String, dynamic> doc, {
+    required Map<String, int> workflowStateDocStatus,
+  }) async {
     final rawTransitions = await _frappeService.callMethod(
       'frappe.model.workflow.get_transitions',
       args: {'doc': doc},
     );
-    return _parseWorkflowActions(rawTransitions);
-  }
-
-  static List<String> _parseWorkflowActions(dynamic rawTransitions) {
-    return rawTransitions is List
-        ? rawTransitions
-              .whereType<Map>()
-              .map((transition) => transition['action']?.toString() ?? '')
-              .where((action) => action.trim().isNotEmpty)
-              .toSet()
-              .toList()
-        : <String>[];
+    return inboxActionsFromWorkflowTransitions(
+      rawTransitions,
+      workflowStateDocStatus: workflowStateDocStatus,
+    );
   }
 
   Future<void> applyDocumentWorkflow({

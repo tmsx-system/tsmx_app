@@ -45,6 +45,93 @@ List<String> approvalDecisionActions(Iterable<String> actions) {
       .toList(growable: false);
 }
 
+bool isApprovalInboxCandidateRow(
+  Map<String, dynamic> row, {
+  Map<String, int> workflowStateDocStatus = const {},
+}) {
+  final docstatus = NumParse.asInt(row['docstatus']);
+  if (docstatus != 0) return false;
+  final workflowState = (row['workflow_state']?.toString() ?? '').trim();
+  if (workflowState.isEmpty) return false;
+  final mapped = workflowStateDocStatus[workflowState];
+  if (mapped != null && mapped != 0) return false;
+  return true;
+}
+
+bool isOpenWorkflowInbox({
+  required int docStatus,
+  required String workflowState,
+  required Iterable<String> actions,
+  Map<String, int> workflowStateDocStatus = const {},
+}) {
+  if (docStatus != 0 || !actions.any((action) => action.trim().isNotEmpty)) {
+    return false;
+  }
+  final mapped = workflowStateDocStatus[workflowState.trim()];
+  if (mapped != null && mapped != 0) return false;
+  return true;
+}
+
+List<List<dynamic>> approvalInboxListFilters() => [
+  ['docstatus', '=', 0],
+  ['workflow_state', 'is', 'set'],
+];
+
+Map<String, int> workflowStateDocStatusByName(
+  Iterable<Map<String, dynamic>> rows,
+) {
+  final mapped = <String, int>{};
+  for (final row in rows) {
+    final docStatus = NumParse.asInt(row['doc_status']);
+    for (final key in [
+      row['state'],
+      row['name'],
+      row['workflow_state_name'],
+    ]) {
+      final name = key?.toString().trim() ?? '';
+      if (name.isEmpty) continue;
+      final previous = mapped[name] ?? 0;
+      if (docStatus > previous) mapped[name] = docStatus;
+    }
+  }
+  return mapped;
+}
+
+bool isCancelPathWorkflowTransition(
+  Map transition,
+  Map<String, int> workflowStateDocStatus,
+) {
+  final nextState = (transition['next_state'] ?? transition['Next State'] ?? '')
+      .toString()
+      .trim();
+  if (nextState.isEmpty) return false;
+  return workflowStateDocStatus[nextState] == 2;
+}
+
+List<String> inboxActionsFromWorkflowTransitions(
+  dynamic rawTransitions, {
+  Map<String, int> workflowStateDocStatus = const {},
+}) {
+  var payload = rawTransitions;
+  if (payload is Map) {
+    payload = payload['message'] ?? payload['data'] ?? payload['transitions'];
+  }
+  if (payload is! List) return const [];
+  final actions = <String>{};
+  for (final row in payload) {
+    if (row is Map) {
+      if (isCancelPathWorkflowTransition(row, workflowStateDocStatus)) {
+        continue;
+      }
+      final action = (row['action'] ?? row['Action'] ?? '').toString().trim();
+      if (action.isNotEmpty) actions.add(action);
+    } else if (row is String && row.trim().isNotEmpty) {
+      actions.add(row.trim());
+    }
+  }
+  return actions.toList(growable: false);
+}
+
 double _pendingQty(Map<String, dynamic> row, String deliveredField) {
   final qty = NumParse.asDouble(row['qty'] ?? row['stock_qty']);
   final done = NumParse.asDouble(row[deliveredField]);

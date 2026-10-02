@@ -63,7 +63,7 @@ class TodoState extends AppStateProxyNotifier {
     }
 
     final inFlight = _approvalTodoFetchInFlight;
-    if (inFlight != null && !forceRefresh) return inFlight;
+    if (inFlight != null) return inFlight;
 
     final request = _approvalService.fetchApprovalTodos(
       currentUser: currentUser,
@@ -109,6 +109,12 @@ class TodoState extends AppStateProxyNotifier {
       name: name,
       forceRefresh: forceRefresh,
     );
+  }
+
+  Future<List<String>> fetchDocumentWorkflowActions(
+    Map<String, dynamic> doc,
+  ) {
+    return _approvalService.fetchWorkflowActionsForDocument(doc);
   }
 
   Future<List<SalesOrderApprovalHistory>> fetchApprovalDocumentActivity({

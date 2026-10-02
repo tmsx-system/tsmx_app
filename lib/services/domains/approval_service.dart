@@ -5,12 +5,13 @@ import '../../models/erp_approval_todo.dart';
 import '../../models/sales_order_approval.dart';
 import '../../utils/erp_doc_utils.dart';
 import '../../utils/frappe_page_walker.dart';
+import '../../utils/num_parse.dart';
 import '../frappe_service.dart';
 import '../local_app_database.dart';
 
 class ApprovalService {
   static const _frappePageSize = 500;
-  static const _approvalTodoCacheTtl = Duration(minutes: 1);
+  static const _approvalTodoCacheTtl = Duration(minutes: 5);
   static const _documentCacheTtl = Duration(minutes: 2);
   static const _approvalTodoDbCachePrefix = 'approval_todo_cache';
   static const _documentDbCachePrefix = 'document_cache';
@@ -32,6 +33,9 @@ class ApprovalService {
   final FrappeService frappe;
   final Map<String, _CachedDocument> _documentCache = {};
   Future<List<ErpApprovalTodo>>? _approvalTodoFetchInFlight;
+  Future<Map<String, int>>? _workflowStateDocStatusInFlight;
+  Map<String, int> _workflowStateDocStatus = const {};
+  DateTime? _workflowStateDocStatusAt;
 
   ApprovalService({required this.frappe});
 
@@ -43,13 +47,18 @@ class ApprovalService {
     if (!forceRefresh) {
       final cachedRows = await _readDbRowList(key);
       if (cachedRows != null) {
+        final workflowStateDocStatus = await _workflowStateDocStatusMap();
         return cachedRows
             .map(_approvalTodoFromCacheJson)
             .where((todo) => todo.doctype.isNotEmpty && todo.name.isNotEmpty)
-            .map(
-              (todo) => todo.withActions(approvalDecisionActions(todo.actions)),
+            .where(
+              (todo) => isOpenWorkflowInbox(
+                docStatus: todo.docStatus,
+                workflowState: todo.workflowState,
+                actions: todo.actions,
+                workflowStateDocStatus: workflowStateDocStatus,
+              ),
             )
-            .where((todo) => todo.actions.isNotEmpty)
             .toList(growable: false);
       }
     }
@@ -183,49 +192,45 @@ class ApprovalService {
     await frappe.ensureLoggedIn();
 
     final activity = <SalesOrderApprovalHistory>[];
-    try {
-      final comments = await _fetchAllResourcePages(
-        doctype: 'Comment',
-        fields: const [
-          'name',
-          'reference_doctype',
-          'reference_name',
-          'content',
-          'comment_type',
-          'comment_by',
-          'owner',
-          'creation',
-        ],
-        filters: [
-          ['reference_doctype', '=', normalizedDoctype],
-          ['reference_name', '=', normalizedName],
-        ],
-        orderBy: 'creation desc',
-        maxRows: 500,
-      );
+    final commentFuture = _fetchAllResourcePages(
+      doctype: 'Comment',
+      fields: const [
+        'name',
+        'reference_doctype',
+        'reference_name',
+        'content',
+        'comment_type',
+        'comment_by',
+        'owner',
+        'creation',
+      ],
+      filters: [
+        ['reference_doctype', '=', normalizedDoctype],
+        ['reference_name', '=', normalizedName],
+      ],
+      orderBy: 'creation desc',
+      maxRows: 40,
+    ).then((comments) {
       activity.addAll(comments.map(SalesOrderApprovalHistory.fromJson));
-    } catch (_) {
-      // Comment permission is optional for the approval detail page.
-    }
+    }).catchError((_) {});
 
-    try {
-      final versions = await _fetchAllResourcePages(
-        doctype: 'Version',
-        fields: const [
-          'name',
-          'ref_doctype',
-          'docname',
-          'data',
-          'owner',
-          'creation',
-        ],
-        filters: [
-          ['ref_doctype', '=', normalizedDoctype],
-          ['docname', '=', normalizedName],
-        ],
-        orderBy: 'creation desc',
-        maxRows: 500,
-      );
+    final versionFuture = _fetchAllResourcePages(
+      doctype: 'Version',
+      fields: const [
+        'name',
+        'ref_doctype',
+        'docname',
+        'data',
+        'owner',
+        'creation',
+      ],
+      filters: [
+        ['ref_doctype', '=', normalizedDoctype],
+        ['docname', '=', normalizedName],
+      ],
+      orderBy: 'creation desc',
+      maxRows: 20,
+    ).then((versions) {
       activity.addAll(
         versions
             .map(
@@ -237,26 +242,9 @@ class ApprovalService {
             )
             .where((row) => row.content.trim().isNotEmpty),
       );
-    } catch (_) {
-      // Some roles can read comments but not Version.
-    }
+    }).catchError((_) {});
 
-    try {
-      final document = await _fetchCachedDocument(
-        normalizedDoctype,
-        normalizedName,
-      );
-      activity.addAll(
-        _approvalDocumentAuditHistory(
-          document,
-          doctype: normalizedDoctype,
-          name: normalizedName,
-          existing: activity,
-        ),
-      );
-    } catch (_) {
-      // Audit fields are useful but not critical for the detail page.
-    }
+    await Future.wait([commentFuture, versionFuture]);
 
     activity.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return activity;
@@ -399,17 +387,29 @@ class ApprovalService {
     }
 
     final getWatch = Stopwatch()..start();
-    final doc = currentDocument ?? await frappe.fetchDocument(doctype, name);
+    var doc = currentDocument;
+    if (doc == null || (doc['name']?.toString() ?? '').trim().isEmpty) {
+      doc = await frappe.fetchDocument(doctype, name);
+    }
     getWatch.stop();
     FrappeService.logTiming(
       'GET document $doctype $name (apply $normalizedAction)',
       getWatch.elapsedMilliseconds,
     );
     final postWatch = Stopwatch()..start();
-    await frappe.callMethod(
-      'frappe.model.workflow.apply_workflow',
-      args: {'doc': doc, 'action': normalizedAction},
-    );
+    try {
+      await frappe.callMethod(
+        'frappe.model.workflow.apply_workflow',
+        args: {'doc': doc, 'action': normalizedAction},
+      );
+    } catch (_) {
+      if (currentDocument == null) rethrow;
+      doc = await frappe.fetchDocument(doctype, name);
+      await frappe.callMethod(
+        'frappe.model.workflow.apply_workflow',
+        args: {'doc': doc, 'action': normalizedAction},
+      );
+    }
     postWatch.stop();
     FrappeService.logTiming(
       'POST apply_workflow $doctype $name action=$normalizedAction',
@@ -437,7 +437,7 @@ class ApprovalService {
     } else {
       unawaited(commentRequest.then<void>((_) {}).catchError((_) {}));
     }
-    await _deleteCachedDocument(doctype, name);
+    unawaited(_deleteCachedDocument(doctype, name).catchError((_) {}));
     FrappeService.logTiming(
       'applyDocumentWorkflow total $doctype $name action=$normalizedAction',
       total.elapsedMilliseconds,
@@ -453,6 +453,7 @@ class ApprovalService {
           'name',
           'customer',
           'customer_name',
+          'company',
           'workflow_state',
           'status',
           'owner',
@@ -467,6 +468,7 @@ class ApprovalService {
           'name',
           'supplier',
           'supplier_name',
+          'company',
           'workflow_state',
           'status',
           'owner',
@@ -481,6 +483,7 @@ class ApprovalService {
           'name',
           'supplier',
           'supplier_name',
+          'company',
           'workflow_state',
           'status',
           'owner',
@@ -523,100 +526,202 @@ class ApprovalService {
     ];
 
     final todos = <ErpApprovalTodo>[];
-    for (final config in configs) {
-      final List<Map<String, dynamic>> rows;
-      try {
-        rows = await _fetchAllResourcePages(
+    final totalWatch = Stopwatch()..start();
+    final workflowStateDocStatusFuture = _workflowStateDocStatusMap();
+    final listed = await Future.wait(
+      configs.map((config) async {
+        final rows = await _fetchInboxRows(
           doctype: config.doctype,
           fields: config.fields,
-          filters: [
-            ['docstatus', '<', 2],
-          ],
-          orderBy: 'modified desc',
-          maxRows: 200,
         );
-      } catch (_) {
-        continue;
-      }
-      final candidateRows = rows.where(_isApprovalCandidateRow).toList();
-      if (candidateRows.isEmpty) continue;
+        return (config: config, rows: rows);
+      }),
+    );
+    final workflowStateDocStatus = await workflowStateDocStatusFuture;
+    await Future.wait(
+      listed.map((entry) async {
+        final rows = entry.rows
+            .where(
+              (row) => isApprovalInboxCandidateRow(
+                row,
+                workflowStateDocStatus: workflowStateDocStatus,
+              ),
+            )
+            .toList(growable: false);
+        if (rows.isEmpty) return;
 
-      final actionsByName = await _fetchWorkflowActionsForRows(
-        doctype: config.doctype,
-        rows: candidateRows,
-      );
-      for (final row in candidateRows) {
-        final name = row['name']?.toString() ?? '';
-        if (name.isEmpty) continue;
-        final actions = approvalDecisionActions(
-          actionsByName[name] ?? const <String>[],
+        final transitionWatch = Stopwatch()..start();
+        final actionsByName = await _fetchWorkflowActionsForRows(
+          doctype: entry.config.doctype,
+          rows: rows,
+          workflowStateDocStatus: workflowStateDocStatus,
         );
-        if (actions.isEmpty) continue;
-        todos.add(
-          ErpApprovalTodo.fromJson(config.doctype, row, actions: actions),
+        FrappeService.logTiming(
+          'Todo transitions ${entry.config.doctype} candidates=${rows.length}',
+          transitionWatch.elapsedMilliseconds,
         );
-      }
-    }
+        for (final row in rows) {
+          final name = row['name']?.toString() ?? '';
+          if (name.isEmpty) continue;
+          final actions = actionsByName[name] ?? const <String>[];
+          if (!isOpenWorkflowInbox(
+            docStatus: NumParse.asInt(row['docstatus']),
+            workflowState: row['workflow_state']?.toString() ?? '',
+            actions: actions,
+            workflowStateDocStatus: workflowStateDocStatus,
+          )) {
+            continue;
+          }
+          todos.add(
+            ErpApprovalTodo.fromJson(
+              entry.config.doctype,
+              row,
+              actions: actions,
+            ),
+          );
+        }
+      }),
+    );
 
     todos.sort((a, b) => b.date.compareTo(a.date));
+    FrappeService.logTiming(
+      'fetchApprovalTodos total items=${todos.length}',
+      totalWatch.elapsedMilliseconds,
+    );
     return todos;
   }
 
-  bool _isApprovalCandidateRow(Map<String, dynamic> row) {
-    final docstatus = int.tryParse(row['docstatus']?.toString() ?? '') ?? 0;
-    if (docstatus >= 2) return false;
-    final state = [
-      row['workflow_state'],
-      row['status'],
-    ].map((value) => value?.toString().trim().toLowerCase() ?? '').join(' ');
-    if (state.isEmpty) return true;
-    const terminalWords = [
-      'approved',
-      'completed',
-      'cancelled',
-      'canceled',
-      'closed',
-      'rejected',
-      'stopped',
-    ];
-    return !terminalWords.any(state.contains);
+  Future<List<Map<String, dynamic>>> _fetchInboxRows({
+    required String doctype,
+    required List<String> fields,
+  }) async {
+    final listWatch = Stopwatch()..start();
+    try {
+      final rows = await _fetchAllResourcePages(
+        doctype: doctype,
+        fields: fields,
+        filters: approvalInboxListFilters(),
+        orderBy: 'modified desc',
+        maxRows: 80,
+      );
+      FrappeService.logTiming(
+        'Todo list $doctype ${rows.length} workflow rows',
+        listWatch.elapsedMilliseconds,
+      );
+      return rows;
+    } catch (_) {}
+    try {
+      final rows = await _fetchAllResourcePages(
+        doctype: doctype,
+        fields: fields,
+        filters: [
+          ['docstatus', '=', 0],
+        ],
+        orderBy: 'modified desc',
+        maxRows: 80,
+      );
+      FrappeService.logTiming(
+        'Todo list $doctype fallback ${rows.length} workflow rows',
+        listWatch.elapsedMilliseconds,
+      );
+      return rows;
+    } catch (_) {
+      FrappeService.logTiming(
+        'Todo list $doctype 0 workflow rows',
+        listWatch.elapsedMilliseconds,
+      );
+      return const [];
+    }
+  }
+
+  Future<List<String>> fetchWorkflowActionsForDocument(
+    Map<String, dynamic> doc,
+  ) async {
+    final workflowStateDocStatus = await _workflowStateDocStatusMap();
+    return _fetchWorkflowActionsForDocument(
+      doc,
+      workflowStateDocStatus: workflowStateDocStatus,
+    );
+  }
+
+  Future<Map<String, int>> _workflowStateDocStatusMap() async {
+    final cachedAt = _workflowStateDocStatusAt;
+    if (cachedAt != null &&
+        DateTime.now().difference(cachedAt) < const Duration(minutes: 10) &&
+        _workflowStateDocStatus.isNotEmpty) {
+      return _workflowStateDocStatus;
+    }
+    final inFlight = _workflowStateDocStatusInFlight;
+    if (inFlight != null) return inFlight;
+    final request = () async {
+      final mapped = <String, int>{};
+      try {
+        final rows = await _fetchAllResourcePages(
+          doctype: 'Workflow Document State',
+          fields: const ['state', 'doc_status'],
+          maxRows: 2000,
+        );
+        mapped.addAll(workflowStateDocStatusByName(rows));
+      } catch (_) {}
+      try {
+        final rows = await _fetchAllResourcePages(
+          doctype: 'Workflow State',
+          fields: const ['name', 'workflow_state_name', 'doc_status'],
+          maxRows: 500,
+        );
+        for (final entry in workflowStateDocStatusByName(rows).entries) {
+          final previous = mapped[entry.key] ?? 0;
+          if (entry.value > previous) mapped[entry.key] = entry.value;
+        }
+      } catch (_) {}
+      return mapped;
+    }();
+    _workflowStateDocStatusInFlight = request;
+    try {
+      final mapped = await request;
+      _workflowStateDocStatus = mapped;
+      _workflowStateDocStatusAt = DateTime.now();
+      return mapped;
+    } finally {
+      if (identical(_workflowStateDocStatusInFlight, request)) {
+        _workflowStateDocStatusInFlight = null;
+      }
+    }
   }
 
   Future<Map<String, List<String>>> _fetchWorkflowActionsForRows({
     required String doctype,
     required List<Map<String, dynamic>> rows,
-    int batchSize = 8,
+    required Map<String, int> workflowStateDocStatus,
+    int batchSize = 16,
   }) async {
-    final names = rows
-        .map((row) => row['name']?.toString() ?? '')
-        .where((name) => name.isNotEmpty)
-        .toList();
-    final documents = await _fetchDocumentsInBatches(
-      doctype,
-      names,
-      batchSize: batchSize,
-    );
-    final entries = documents.entries.toList();
     final actionsByName = <String, List<String>>{};
-    for (var start = 0; start < entries.length; start += batchSize) {
-      final end = start + batchSize > entries.length
-          ? entries.length
+    for (var start = 0; start < rows.length; start += batchSize) {
+      final end = start + batchSize > rows.length
+          ? rows.length
           : start + batchSize;
-      final batch = entries.sublist(start, end);
+      final batch = rows.sublist(start, end);
       final results = await Future.wait(
-        batch.map((entry) async {
+        batch.map((row) async {
+          final name = row['name']?.toString() ?? '';
+          if (name.isEmpty) {
+            return (name: name, actions: const <String>[]);
+          }
           try {
-            return (
-              name: entry.key,
-              actions: await _fetchWorkflowActionsForDocument(entry.value),
+            final doc = Map<String, dynamic>.from(row);
+            doc['doctype'] = doctype;
+            final actions = await _fetchWorkflowActionsForDocument(
+              doc,
+              workflowStateDocStatus: workflowStateDocStatus,
             );
+            return (name: name, actions: actions);
           } catch (_) {
-            return (name: entry.key, actions: const <String>[]);
+            return (name: name, actions: const <String>[]);
           }
         }),
       );
       for (final result in results) {
-        if (result.actions.isNotEmpty) {
+        if (result.name.isNotEmpty) {
           actionsByName[result.name] = result.actions;
         }
       }
@@ -625,20 +730,28 @@ class ApprovalService {
   }
 
   Future<List<String>> _fetchWorkflowActionsForDocument(
-    Map<String, dynamic> doc,
-  ) async {
-    final rawTransitions = await frappe.callMethod(
-      'frappe.model.workflow.get_transitions',
-      args: {'doc': doc},
-    );
-    return rawTransitions is List
-        ? rawTransitions
-              .whereType<Map>()
-              .map((transition) => transition['action']?.toString() ?? '')
-              .where((action) => action.trim().isNotEmpty)
-              .toSet()
-              .toList()
-        : <String>[];
+    Map<String, dynamic> doc, {
+    required Map<String, int> workflowStateDocStatus,
+  }) async {
+    try {
+      final raw = await frappe.callMethod(
+        'frappe.model.workflow.get_transitions',
+        args: {'doc': doc},
+      );
+      return inboxActionsFromWorkflowTransitions(
+        raw,
+        workflowStateDocStatus: workflowStateDocStatus,
+      );
+    } catch (_) {
+      final raw = await frappe.callMethod(
+        'frappe.model.workflow.get_transitions',
+        args: {'doc': jsonEncode(doc)},
+      );
+      return inboxActionsFromWorkflowTransitions(
+        raw,
+        workflowStateDocStatus: workflowStateDocStatus,
+      );
+    }
   }
 
   Future<void> _callSalesOrderApproverServerScript({
@@ -799,61 +912,6 @@ class ApprovalService {
     return document;
   }
 
-  Future<Map<String, Map<String, dynamic>>> _fetchDocumentsInBatches(
-    String doctype,
-    Iterable<String> names, {
-    int batchSize = 8,
-  }) async {
-    final uniqueNames = names.where((name) => name.isNotEmpty).toSet().toList();
-    final documents = <String, Map<String, dynamic>>{};
-    final missingNames = <String>[];
-    for (final name in uniqueNames) {
-      final key = _documentCacheKey(doctype, name);
-      final cached = _documentCache[key];
-      if (cached != null && cached.isFresh) {
-        documents[name] = cached.document;
-      } else {
-        final stored = await LocalAppDatabase.instance.readJson(key);
-        if (stored != null) {
-          documents[name] = stored;
-          _documentCache[key] = _CachedDocument(
-            storedAt: DateTime.now(),
-            document: stored,
-          );
-        } else {
-          missingNames.add(name);
-        }
-      }
-    }
-
-    for (var start = 0; start < missingNames.length; start += batchSize) {
-      final end = start + batchSize > missingNames.length
-          ? missingNames.length
-          : start + batchSize;
-      final batch = missingNames.sublist(start, end);
-      final results = await Future.wait(
-        batch.map((name) async {
-          try {
-            return (
-              name: name,
-              document: await frappe.fetchDocument(doctype, name),
-            );
-          } catch (_) {
-            return (name: name, document: null);
-          }
-        }),
-      );
-      for (final result in results) {
-        final document = result.document;
-        if (document != null) {
-          documents[result.name] = document;
-          await _storeCachedDocument(doctype, result.name, document);
-        }
-      }
-    }
-    return documents;
-  }
-
   Future<void> _storeCachedDocument(
     String doctype,
     String name,
@@ -952,58 +1010,6 @@ class ApprovalService {
       docStatus: _asInt(json['docstatus']),
       actions: actions,
     );
-  }
-
-  List<SalesOrderApprovalHistory> _approvalDocumentAuditHistory(
-    Map<String, dynamic> document, {
-    required String doctype,
-    required String name,
-    required List<SalesOrderApprovalHistory> existing,
-  }) {
-    final rows = <SalesOrderApprovalHistory>[];
-    final hasCreated = existing.any(
-      (row) => row.content.toLowerCase().contains('created this'),
-    );
-    final owner = document['owner']?.toString().trim() ?? '';
-    final creation = document['creation']?.toString().trim() ?? '';
-    if (!hasCreated && (owner.isNotEmpty || creation.isNotEmpty)) {
-      rows.add(
-        SalesOrderApprovalHistory(
-          id: '$doctype::$name::created',
-          doctype: doctype,
-          salesOrder: name,
-          content: 'created this',
-          actor: owner,
-          createdAt: creation,
-        ),
-      );
-    }
-
-    final hasEdited = existing.any((row) {
-      final content = row.content.toLowerCase();
-      return content.contains('last edited this') ||
-          content.contains('changed ');
-    });
-    final modifiedBy = (document['modified_by'] ?? document['owner'])
-        .toString()
-        .trim();
-    final modified = document['modified']?.toString().trim() ?? '';
-    final sameTimestamp = creation.isNotEmpty && creation == modified;
-    if (!hasEdited &&
-        !sameTimestamp &&
-        (modifiedBy.isNotEmpty || modified.isNotEmpty)) {
-      rows.add(
-        SalesOrderApprovalHistory(
-          id: '$doctype::$name::modified',
-          doctype: doctype,
-          salesOrder: name,
-          content: 'last edited this',
-          actor: modifiedBy,
-          createdAt: modified,
-        ),
-      );
-    }
-    return rows;
   }
 
   SalesOrderApprovalHistory _approvalVersionHistoryFromJson(

@@ -84,8 +84,10 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
           _loading = false;
         });
       }
-      unawaited(_load(silent: cachedRows.isNotEmpty, forceRefresh: true));
-      _syncTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      unawaited(
+        _load(silent: cachedRows.isNotEmpty, forceRefresh: cachedRows.isEmpty),
+      );
+      _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
         if (mounted) _load(silent: true, forceRefresh: true);
       });
     });
@@ -132,16 +134,20 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       );
       final filtered = _filterRows(rows);
       if (!mounted) return;
-      setState(() => _rows = filtered);
+      setState(() {
+        _rows = filtered;
+        if (!silent) _loading = false;
+      });
     } catch (error) {
       if (!silent && mounted) {
-        setState(
-          () => _error = captureErpError(
+        setState(() {
+          _error = captureErpError(
             context,
             error,
             action: 'memuat daftar approval',
-          ),
-        );
+          );
+          _loading = false;
+        });
       }
     }
     if (widget.showHistoryTab) {
@@ -160,7 +166,6 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
         }
       }
     }
-    if (!silent && mounted) setState(() => _loading = false);
   }
 
   List<ErpApprovalTodo> _filterRows(List<ErpApprovalTodo> rows) {
@@ -170,6 +175,15 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
   }
 
   Future<void> _selectApproval(ErpApprovalTodo approval) async {
+    unawaited(
+      context
+          .read<TodoState>()
+          .fetchApprovalDocument(
+            doctype: approval.doctype,
+            name: approval.name,
+          )
+          .catchError((_) => <String, dynamic>{}),
+    );
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -1474,6 +1488,7 @@ class _ErpApprovalDetailPage extends StatefulWidget {
 class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
   Map<String, dynamic>? _detail;
   List<SalesOrderApprovalHistory> _activity = const [];
+  List<String> _workflowActions = const [];
   String? _error;
   bool _loading = true;
   bool _processing = false;
@@ -1490,31 +1505,43 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _workflowActions = widget.approval.actions;
     });
     try {
       final appState = context.read<TodoState>();
       Map<String, dynamic>? detail;
-      var activity = const <SalesOrderApprovalHistory>[];
-      Object? documentError;
       try {
         detail = await appState.fetchApprovalDocument(
           doctype: widget.approval.doctype,
           name: widget.approval.name,
-          forceRefresh: true,
         );
+      } catch (_) {}
+      if (detail != null && mounted) {
+        setState(() {
+          _detail = detail;
+          _loading = false;
+        });
+      }
+
+      final freshFuture = appState.fetchApprovalDocument(
+        doctype: widget.approval.doctype,
+        name: widget.approval.name,
+        forceRefresh: true,
+      );
+      final activityFuture = appState.fetchApprovalDocumentActivity(
+        doctype: widget.approval.doctype,
+        name: widget.approval.name,
+      );
+
+      Object? documentError;
+      try {
+        detail = await freshFuture;
       } catch (error) {
         documentError = error;
       }
-      try {
-        activity = await appState.fetchApprovalDocumentActivity(
-          doctype: widget.approval.doctype,
-          name: widget.approval.name,
-        );
-      } catch (_) {}
       if (!mounted) return;
       setState(() {
-        _detail = detail;
-        _activity = activity;
+        if (detail != null) _detail = detail;
         _error = documentError == null
             ? null
             : captureErpError(
@@ -1522,7 +1549,20 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                 documentError,
                 action: 'memuat detail approval',
               );
+        _loading = false;
       });
+      if (detail != null) {
+        try {
+          final loaded = await appState.fetchDocumentWorkflowActions(detail);
+          if (loaded.isNotEmpty && mounted) {
+            setState(() => _workflowActions = loaded);
+          }
+        } catch (_) {}
+      }
+      try {
+        final activity = await activityFuture;
+        if (mounted) setState(() => _activity = activity);
+      } catch (_) {}
     } catch (error) {
       if (mounted) {
         setState(
@@ -1992,7 +2032,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
               ),
             _detailMetaPill(
               icon: Icons.task_alt_rounded,
-              label: '${widget.approval.actions.length} action tersedia',
+              label: '${(_workflowActions.isNotEmpty ? _workflowActions : widget.approval.actions).length} action tersedia',
               color: const Color(0xFF6366F1),
             ),
             _detailMetaPill(
@@ -2234,7 +2274,9 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     final hasPendingAdditional = _hasPendingAdditionalApprovals(detail);
     final actions = hasPendingAdditional
         ? const <String>[]
-        : widget.approval.actions;
+        : (_workflowActions.isNotEmpty
+              ? _workflowActions
+              : widget.approval.actions);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: _cardDecoration(),
