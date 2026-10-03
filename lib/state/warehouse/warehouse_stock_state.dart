@@ -761,11 +761,12 @@ class WarehouseStockState extends AppStateProxyNotifier {
             'docstatus',
             'posting_date',
             'posting_time',
+            'modified',
             'total_qty',
             'from_warehouse',
             'to_warehouse',
           ],
-          orderBy: 'posting_date desc, posting_time desc',
+          orderBy: 'modified desc, name desc',
           filters: filters,
           maxRows: _listLimit,
         );
@@ -782,12 +783,13 @@ class WarehouseStockState extends AppStateProxyNotifier {
               'docstatus',
               'posting_date',
               'posting_time',
+              'modified',
               'from_warehouse',
               'to_warehouse',
             ],
             limit: limit,
             limitStart: start,
-            orderBy: 'posting_date desc, posting_time desc',
+            orderBy: 'modified desc, name desc',
             filters: filters,
           ),
         );
@@ -1080,6 +1082,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     String? fromWarehouse,
     String? toWarehouse,
     String? namingSeries,
+    String? remarks,
   }) async {
     await appState.frappeService.ensureLoggedIn();
 
@@ -1096,6 +1099,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
         'to_warehouse': toWarehouse!.trim(),
       if (namingSeries?.trim().isNotEmpty == true)
         'naming_series': namingSeries!.trim(),
+      'remarks': remarks?.trim() ?? '',
       'items': items,
     };
     final created = await appState.frappeService.createDocument(
@@ -1118,6 +1122,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     String? purpose,
     String? fromWarehouse,
     String? toWarehouse,
+    String? remarks,
   }) async {
     await appState.frappeService.ensureLoggedIn();
     final id = name.trim();
@@ -1139,6 +1144,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
         'to_warehouse': toWarehouse!.trim()
       else
         'to_warehouse': '',
+      'remarks': remarks?.trim() ?? '',
       'items': items,
     });
     await refreshStockEntries();

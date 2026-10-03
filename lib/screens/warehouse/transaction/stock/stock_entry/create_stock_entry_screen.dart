@@ -35,6 +35,7 @@ class CreateStockEntryScreen extends StatefulWidget {
 
 class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _remarksController = TextEditingController();
   final _rows = <_StockEntryItemRow>[];
   List<WarehouseInfo> _warehouses = const [];
   List<ErpItemOption> _itemOptions = const [];
@@ -78,6 +79,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
 
   @override
   void dispose() {
+    _remarksController.dispose();
     for (final row in _rows) {
       row.dispose();
     }
@@ -172,6 +174,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
     if (parsedDate != null) {
       _postingDate = parsedDate;
     }
+    _remarksController.text = detail.remarks;
     for (final row in _rows) {
       row.dispose();
     }
@@ -474,6 +477,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
           postingDate: _postingDate,
           fromWarehouse: _needsSource ? _sourceWarehouse : null,
           toWarehouse: _needsTarget ? _targetWarehouse : null,
+          remarks: _remarksController.text,
           items: payload,
         );
       } else {
@@ -485,6 +489,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
           fromWarehouse: _needsSource ? _sourceWarehouse : null,
           toWarehouse: _needsTarget ? _targetWarehouse : null,
           namingSeries: _series,
+          remarks: _remarksController.text,
           items: payload,
         );
       }
@@ -833,6 +838,35 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                               onPressed: _addRow,
                               icon: const Icon(Icons.add_rounded),
                               label: const Text('Add Row'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        decoration: _cardDecoration,
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Other Info',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.navy,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _remarksController,
+                              minLines: 3,
+                              maxLines: 6,
+                              textInputAction: TextInputAction.newline,
+                              decoration: _fieldDecoration(
+                                'Remarks',
+                                hint: 'Catatan tambahan (opsional)',
+                              ),
                             ),
                           ],
                         ),
