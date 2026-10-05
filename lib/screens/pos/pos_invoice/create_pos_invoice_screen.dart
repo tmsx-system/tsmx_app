@@ -110,6 +110,8 @@ class _LinkOption {
 
 class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
+  final _changeAccountKey = GlobalKey();
   final _discountCtrl = TextEditingController(text: '0');
 
   List<String> _profiles = const [];
@@ -130,6 +132,8 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   String? _warehouse;
   String? _costCenter;
   String? _sellingPriceList;
+  String? _accountForChangeAmount;
+  bool _changeAccountMissing = false;
   DateTime _postingDate = DateTime.now();
   bool _setPostingTime = true;
   bool _updateStock = true;
@@ -175,6 +179,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   @override
   void dispose() {
     _discountCtrl.dispose();
+    _scrollController.dispose();
     for (final row in _itemRows) {
       row.dispose();
     }
@@ -338,6 +343,8 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
               ?.toString()
               .trim() ??
           '';
+      final changeAccount =
+          doc['account_for_change_amount']?.toString().trim() ?? '';
       final profileModes = state.paymentModesFromProfile(doc);
       final updateStock = doc['update_stock'] == 1 ||
           doc['update_stock'] == true ||
@@ -367,6 +374,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
               ..._costCenters,
             ];
           }
+        }
+        if (changeAccount.isNotEmpty) {
+          _accountForChangeAmount = changeAccount;
+          _changeAccountMissing = false;
         }
         if (profileModes.isNotEmpty) {
           _modes = {...profileModes, ..._modes}.toList();
@@ -408,6 +419,8 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     final costCenter = doc['cost_center']?.toString().trim() ?? '';
     final sellingPriceList =
         doc['selling_price_list']?.toString().trim() ?? '';
+    final changeAccount =
+        doc['account_for_change_amount']?.toString().trim() ?? '';
     final postingRaw = doc['posting_date']?.toString() ?? '';
     final postingTimeRaw = doc['posting_time']?.toString() ?? '';
     final setPostingTime = doc['set_posting_time'] == 1 ||
@@ -537,6 +550,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       if (sellingPriceList.isNotEmpty) {
         _sellingPriceList = sellingPriceList;
       }
+      if (changeAccount.isNotEmpty) {
+        _accountForChangeAmount = changeAccount;
+        _changeAccountMissing = false;
+      }
       final postingDate = DateTime.tryParse(postingRaw);
       if (postingDate != null) {
         _postingDate = _combinePostingDateTime(postingDate, postingTimeRaw);
@@ -636,6 +653,73 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     final minute = int.tryParse(parts[1]) ?? date.minute;
     final second = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
     return DateTime(date.year, date.month, date.day, hour, minute, second);
+  }
+
+  Future<void> _ensureChangeAccountFromProfile() async {
+    if ((_accountForChangeAmount ?? '').trim().isNotEmpty) return;
+    final profile = _posProfile?.trim() ?? '';
+    if (profile.isEmpty || !mounted) return;
+    try {
+      final doc = await context.read<PosState>().loadProfileDocument(profile);
+      final account = doc['account_for_change_amount']?.toString().trim() ?? '';
+      if (account.isEmpty || !mounted) return;
+      setState(() {
+        _accountForChangeAmount = account;
+        _changeAccountMissing = false;
+      });
+    } catch (_) {}
+  }
+
+  void _scrollToChangeAccount() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _changeAccountKey.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(
+          target,
+          alignment: 0.2,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeInOut,
+        );
+        return;
+      }
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  Future<List<ErpItemOption>> _searchChangeAccounts(String query) async {
+    final state = context.read<PosState>();
+    final q = query.trim();
+    final rows = await state.fetchLinkOptions(
+      'Account',
+      fields: const ['name', 'account_name'],
+      filters: [
+        ['is_group', '=', 0],
+        if ((_company ?? '').trim().isNotEmpty) ['company', '=', _company],
+      ],
+      orFilters: q.isEmpty
+          ? null
+          : [
+              ['name', 'like', '%$q%'],
+              ['account_name', 'like', '%$q%'],
+            ],
+      orderBy: 'name asc',
+      limit: 40,
+    );
+    return [
+      for (final row in rows)
+        if ((row['name']?.toString().trim() ?? '').isNotEmpty)
+          ErpItemOption(
+            id: row['name'].toString().trim(),
+            label: (row['account_name']?.toString().trim().isNotEmpty == true)
+                ? '${row['account_name']} (${row['name']})'
+                : row['name'].toString().trim(),
+          ),
+    ];
   }
 
   Future<List<_LinkOption>> _searchItems(String query) async {
@@ -924,13 +1008,32 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    await _ensureChangeAccountFromProfile();
+    if (!_formKey.currentState!.validate()) {
+      if ((_accountForChangeAmount ?? '').trim().isEmpty) {
+        setState(() {
+          _error = 'Account for Change Amount wajib diisi.';
+          _changeAccountMissing = true;
+        });
+        _scrollToChangeAccount();
+      }
+      return;
+    }
     if (_posProfile == null || _customer == null || _company == null) {
       setState(() => _error = 'Lengkapi POS Profile, Customer, dan Company.');
       return;
     }
     if (_updateStock && (_warehouse == null || _warehouse!.trim().isEmpty)) {
       setState(() => _error = 'Source Warehouse wajib saat Update Stock aktif.');
+      return;
+    }
+    await _ensureChangeAccountFromProfile();
+    if ((_accountForChangeAmount ?? '').trim().isEmpty) {
+      setState(() {
+        _error = 'Account for Change Amount wajib diisi.';
+        _changeAccountMissing = true;
+      });
+      _scrollToChangeAccount();
       return;
     }
 
@@ -1012,6 +1115,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           'cost_center': _costCenter!.trim(),
         if (_sellingPriceList != null && _sellingPriceList!.isNotEmpty)
           'selling_price_list': _sellingPriceList,
+        'account_for_change_amount': _accountForChangeAmount!.trim(),
         'discount_amount': _discount,
         'items': items,
         'payments': payments,
@@ -1042,7 +1146,16 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) {
-        setState(() => _error = captureErpError(context, error));
+        final message = error.toString().toLowerCase();
+        if (message.contains('account for change amount')) {
+          setState(() {
+            _error = 'Account for Change Amount wajib diisi.';
+            _changeAccountMissing = true;
+          });
+          _scrollToChangeAccount();
+        } else {
+          setState(() => _error = captureErpError(context, error));
+        }
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1081,6 +1194,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           : Form(
               key: _formKey,
               child: SingleChildScrollView(
+                controller: _scrollController,
                 padding: TmsxResponsive.pagePadding(
                   context,
                   top: 16,
@@ -1586,6 +1700,59 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                         label: 'Change Amount',
                         value: 'Rp ${formatErpCurrency(_changeAmount)}',
                         emphasize: true,
+                      ),
+                      const SizedBox(height: 12),
+                      KeyedSubtree(
+                        key: _changeAccountKey,
+                        child: ErpItemAutocompleteField(
+                          key: ValueKey(
+                            'change-account-${_accountForChangeAmount ?? 'none'}',
+                          ),
+                          label: 'Account for Change Amount *',
+                          selectedId: _accountForChangeAmount,
+                          options: [
+                            if ((_accountForChangeAmount ?? '').isNotEmpty)
+                              ErpItemOption(
+                                id: _accountForChangeAmount!,
+                                label: _accountForChangeAmount!,
+                              ),
+                          ],
+                          decoration: posFieldDecoration(
+                            'Account for Change Amount *',
+                            hintText: 'Akun kembalian dari POS Profile',
+                            prefixIcon: Icon(
+                              Icons.account_balance_wallet_outlined,
+                              color: _changeAccountMissing
+                                  ? AppColors.danger
+                                  : AppColors.slate,
+                            ),
+                          ).copyWith(
+                            errorText: _changeAccountMissing
+                                ? 'Wajib diisi'
+                                : null,
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(
+                                color: _changeAccountMissing
+                                    ? AppColors.danger
+                                    : AppColors.primary.withValues(alpha: 0.2),
+                              ),
+                            ),
+                          ),
+                          onSearch: _searchChangeAccounts,
+                          onSelected: (value) => setState(() {
+                            _accountForChangeAmount = value;
+                            _changeAccountMissing = false;
+                            if (_error ==
+                                'Account for Change Amount wajib diisi.') {
+                              _error = null;
+                            }
+                          }),
+                          validator: (value) =>
+                              value == null || value.trim().isEmpty
+                              ? 'Account for Change Amount wajib'
+                              : null,
+                        ),
                       ),
                     ],
                   ),

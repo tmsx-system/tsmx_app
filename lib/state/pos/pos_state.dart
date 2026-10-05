@@ -382,8 +382,9 @@ class PosState extends AppStateProxyNotifier {
           'docstatus',
           'is_pos',
           'owner',
+          'modified',
         ],
-        orderBy: 'posting_date desc, name desc',
+        orderBy: 'modified desc, name desc',
         filters: _mergeFilters([
           _posProfileLinkFilters(assigned),
           _exactProfileFilter(_invoiceProfileFilter),
