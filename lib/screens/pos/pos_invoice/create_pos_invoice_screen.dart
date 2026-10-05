@@ -131,6 +131,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   String? _costCenter;
   String? _sellingPriceList;
   DateTime _postingDate = DateTime.now();
+  bool _setPostingTime = true;
   bool _updateStock = true;
   bool _loading = true;
   bool _saving = false;
@@ -408,6 +409,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
     final sellingPriceList =
         doc['selling_price_list']?.toString().trim() ?? '';
     final postingRaw = doc['posting_date']?.toString() ?? '';
+    final postingTimeRaw = doc['posting_time']?.toString() ?? '';
+    final setPostingTime = doc['set_posting_time'] == 1 ||
+        doc['set_posting_time'] == true ||
+        doc['set_posting_time']?.toString() == '1';
     final discount = (doc['discount_amount'] ?? 0).toString();
     final updateStock = doc['update_stock'] == 1 ||
         doc['update_stock'] == true ||
@@ -533,7 +538,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         _sellingPriceList = sellingPriceList;
       }
       final postingDate = DateTime.tryParse(postingRaw);
-      if (postingDate != null) _postingDate = postingDate;
+      if (postingDate != null) {
+        _postingDate = _combinePostingDateTime(postingDate, postingTimeRaw);
+      }
+      _setPostingTime = setPostingTime;
       _updateStock = updateStock;
       _discountCtrl.text = discount;
       _itemRows = itemRows.isEmpty ? [_ItemRow()] : itemRows;
@@ -600,6 +608,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
   }
 
   Future<void> _pickDate() async {
+    if (!_setPostingTime) return;
     final date = await showDatePicker(
       context: context,
       initialDate: _postingDate,
@@ -607,7 +616,26 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       lastDate: DateTime.now().add(const Duration(days: 1)),
     );
     if (date == null || !mounted) return;
-    setState(() => _postingDate = date);
+    setState(() {
+      _postingDate = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        _postingDate.hour,
+        _postingDate.minute,
+        _postingDate.second,
+      );
+      _setPostingTime = true;
+    });
+  }
+
+  DateTime _combinePostingDateTime(DateTime date, String timeRaw) {
+    final parts = timeRaw.trim().split(':');
+    if (parts.length < 2) return date;
+    final hour = int.tryParse(parts[0]) ?? date.hour;
+    final minute = int.tryParse(parts[1]) ?? date.minute;
+    final second = parts.length > 2 ? int.tryParse(parts[2]) ?? 0 : 0;
+    return DateTime(date.year, date.month, date.day, hour, minute, second);
   }
 
   Future<List<_LinkOption>> _searchItems(String query) async {
@@ -974,7 +1002,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         'pos_profile': _posProfile,
         'customer': _customer,
         'company': _company,
+        'set_posting_time': _setPostingTime ? 1 : 0,
         'posting_date': postingDate,
+        if (_setPostingTime)
+          'posting_time': DateFormat('HH:mm:ss').format(_postingDate),
         'update_stock': _updateStock ? 1 : 0,
         if (_updateStock && _warehouse != null) 'set_warehouse': _warehouse,
         if (_costCenter != null && _costCenter!.trim().isNotEmpty)
@@ -1234,21 +1265,49 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
                             : null,
                       ),
                       const SizedBox(height: 12),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: _setPostingTime,
+                        activeColor: AppColors.primary,
+                        title: const Text(
+                          'Edit Posting Date and Time',
+                          style: TextStyle(
+                            color: AppColors.navy,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            _setPostingTime = value ?? false;
+                            if (!_setPostingTime) {
+                              _postingDate = DateTime.now();
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 4),
                       InkWell(
-                        onTap: _pickDate,
+                        onTap: _setPostingTime ? _pickDate : null,
                         borderRadius: BorderRadius.circular(10),
                         child: InputDecorator(
                           decoration: posFieldDecoration(
                             'Posting Date *',
-                            suffixIcon: const Icon(
+                            suffixIcon: Icon(
                               Icons.event_rounded,
-                              color: AppColors.slate,
+                              color: _setPostingTime
+                                  ? AppColors.slate
+                                  : AppColors.slate.withValues(alpha: 0.45),
                             ),
                           ),
                           child: Text(
                             DateFormat('dd-MM-yyyy').format(_postingDate),
-                            style: const TextStyle(
-                              color: AppColors.navy,
+                            style: TextStyle(
+                              color: _setPostingTime
+                                  ? AppColors.navy
+                                  : AppColors.slate,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
