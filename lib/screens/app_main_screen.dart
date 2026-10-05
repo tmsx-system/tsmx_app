@@ -18,6 +18,7 @@ import '../state/warehouse/warehouse_stock_state.dart';
 import '../theme/app_colors.dart';
 import '../utils/erp_doc_utils.dart';
 import '../utils/erp_format.dart';
+import '../widgets/erp/clear_app_cache_button.dart';
 import '../widgets/erp/erp_error_dialog.dart';
 import '../widgets/responsive/responsive_layout.dart';
 import '../config/mobile_role_registry.dart';
@@ -306,6 +307,8 @@ class _AppMainScreenState extends State<AppMainScreen> {
                 titleSpacing: 18,
                 title: _TmsxHeaderTitle(state: dashboardState),
                 actions: [
+                  const ClearAppCacheButton(),
+                  const SizedBox(width: 8),
                   if (dashboardState.canUseApprovals)
                     _TopBarActionButton(
                       tooltip: _totalTodoCount(todoState) > 0

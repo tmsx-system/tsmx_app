@@ -5,9 +5,9 @@ import 'package:provider/provider.dart';
 
 import '../../state/auth/auth_state.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/erp/clear_app_cache_button.dart';
 import '../../widgets/responsive/responsive_layout.dart';
 import '../auth/login_screen.dart';
-import '../profile/profile_screen.dart';
 
 typedef RoleScreensBuilder =
     List<Widget> Function(ValueChanged<int> onMenuSelected);
@@ -158,19 +158,8 @@ class _RoleMainScreenState extends State<RoleMainScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Profile',
-            icon: const Icon(
-              Icons.person_rounded,
-              color: AppColors.primary,
-              size: 22,
-            ),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProfileScreen()),
-            ),
-          ),
-          const SizedBox(width: 8),
+          const ClearAppCacheButton(boxed: false),
+          const SizedBox(width: 4),
         ],
       ),
       body: Stack(

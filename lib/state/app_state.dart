@@ -1364,50 +1364,28 @@ class AppState with ChangeNotifier {
     return '$_prefsSummaryCacheKey::$site::$user';
   }
 
-  Future<void> resetLocalAppCache({bool keepSiteSelection = true}) async {
-    _stopNotificationPolling();
-    final sp = await SharedPreferences.getInstance();
-    final cfg = keepSiteSelection ? await _loadFrappeConfig() : null;
-    final history = keepSiteSelection
-        ? sp.getString(_prefsFrappeSiteHistoryKey)
-        : null;
+  Future<void> resetLocalAppCache() async {
+    await _clearSummaryCache();
+    try {
+      await LocalAppDatabase.instance.deleteByPrefix('warehouse_master_cache');
+      await LocalAppDatabase.instance.deleteByPrefix('item_group_master_cache');
+      await LocalAppDatabase.instance.deleteByPrefix('sales_overview');
+    } catch (_) {}
 
-    for (final key in sp.getKeys().toList()) {
-      if (key == _prefsFrappeConfigKey && keepSiteSelection) continue;
-      if (key == _prefsFrappeSiteHistoryKey && keepSiteSelection) continue;
-      if (key.startsWith(_prefsSummaryCacheKey) ||
-          key == _prefsUserRoleKey ||
-          key == _prefsFrappeConfigKey ||
-          key == _prefsFrappeSiteHistoryKey) {
-        await sp.remove(key);
-      }
-    }
-    await LocalAppDatabase.instance.deleteByPrefix(_sellingTrendCachePrefix);
-    await LocalAppDatabase.instance.deleteByPrefix(_documentDbCachePrefix);
-    await LocalAppDatabase.instance.deleteByPrefix(_masterDataCachePrefix);
-
-    if (keepSiteSelection && cfg != null) {
-      await sp.setString(_prefsFrappeConfigKey, jsonEncode(cfg));
-    }
-    if (keepSiteSelection && history != null) {
-      await sp.setString(_prefsFrappeSiteHistoryKey, history);
-    }
-
-    _frappeService.username = null;
-    _frappeService.password = null;
-    _mobileBoot = null;
-    _mobileCompatibilityWarning = null;
-    _currentUser = null;
-    _currentEmployee = null;
-    _currentEmployeeProfile = const {};
-    _currentSalesPerson = null;
-    _salesIdentityUser = null;
-    _salesIdentityRequest = null;
-    _salesIdentityError = null;
-    _userRole = 'Unassigned';
-    _isAuthenticated = false;
-    _resetRuntimeDataForTenantSwitch();
+    _documentCache.clear();
+    _doctypeSubmitPermissionCache.clear();
+    _buyingSupplierTypeIdsCacheKey = null;
+    _buyingSupplierTypeIdsCache = null;
+    _warehouses = [];
+    _itemGroups = [];
     notifyListeners();
+
+    try {
+      await fetchWarehousesFromFrappe();
+    } catch (_) {}
+    try {
+      await fetchSalesCustomers(forceRefresh: true);
+    } catch (_) {}
   }
 
   void _resetRuntimeDataForTenantSwitch() {

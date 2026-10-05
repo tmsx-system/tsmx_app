@@ -191,10 +191,10 @@ class WarehouseStockState extends AppStateProxyNotifier {
     _inventorySnapshotCache = null;
   }
 
-  Future<void> refreshWarehouses() {
+  Future<void> refreshWarehouses({bool forceRefresh = false}) {
     final inFlight = _warehousesFetchInFlight;
-    if (inFlight != null) return inFlight;
-    final request = _refreshWarehouses();
+    if (inFlight != null && !forceRefresh) return inFlight;
+    final request = _refreshWarehouses(forceRefresh: forceRefresh);
     _warehousesFetchInFlight = request;
     return request.whenComplete(() {
       if (identical(_warehousesFetchInFlight, request)) {
@@ -203,7 +203,20 @@ class WarehouseStockState extends AppStateProxyNotifier {
     });
   }
 
-  Future<void> _refreshWarehouses() async {
+  Future<void> invalidateAndRefreshMasters() async {
+    try {
+      await LocalAppDatabase.instance.deleteByPrefix(_warehouseCachePrefix);
+      await LocalAppDatabase.instance.deleteByPrefix(_itemGroupCachePrefix);
+    } catch (_) {}
+    _resetLocalStockData();
+    notifyListeners();
+    await Future.wait([
+      refreshWarehouses(forceRefresh: true),
+      refreshItemGroups(forceRefresh: true),
+    ]);
+  }
+
+  Future<void> _refreshWarehouses({bool forceRefresh = false}) async {
     if (appState.isSampleMode) {
       _warehouses = appState.warehouses;
       notifyListeners();
@@ -211,7 +224,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     }
 
     final cacheKey = _cacheKey(_warehouseCachePrefix);
-    if (_warehouses.isEmpty) {
+    if (!forceRefresh && _warehouses.isEmpty) {
       final cachedRows = await _readCachedRows(cacheKey);
       if (cachedRows != null) {
         _warehouses = cachedRows
@@ -275,7 +288,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     }
   }
 
-  Future<void> refreshItemGroups() async {
+  Future<void> refreshItemGroups({bool forceRefresh = false}) async {
     if (appState.isSampleMode) {
       _itemGroups = _groupsFromInventory();
       notifyListeners();
@@ -283,7 +296,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     }
 
     final cacheKey = _cacheKey(_itemGroupCachePrefix);
-    if (_itemGroups.isEmpty) {
+    if (!forceRefresh && _itemGroups.isEmpty) {
       final cachedRows = await _readCachedRows(cacheKey);
       if (cachedRows != null) {
         _itemGroups =

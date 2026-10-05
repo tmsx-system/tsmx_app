@@ -364,25 +364,6 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ),
           const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () => _confirmResetLocalData(appState),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              side: BorderSide(
-                color: AppColors.primary.withValues(alpha: 0.22),
-              ),
-            ),
-            icon: const Icon(Icons.cleaning_services_outlined),
-            label: const Text(
-              'Reset Data Lokal',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-          ),
-          const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: () => _confirmLogout(appState),
             style: FilledButton.styleFrom(
@@ -952,36 +933,6 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
     if (confirmed != true || !mounted) return;
     await appState.logout();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (_) => false,
-    );
-  }
-
-  Future<void> _confirmResetLocalData(ProfileState appState) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reset data lokal?'),
-        content: const Text(
-          'Cache dashboard, notifikasi, company, dan data sementara akan dibersihkan. '
-          'Anda perlu login ulang setelah proses ini.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await appState.resetLocalAppCache();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
