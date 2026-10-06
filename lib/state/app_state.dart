@@ -596,7 +596,7 @@ class AppState with ChangeNotifier {
   static const Duration _salesVisitCacheTtl = Duration(seconds: 45);
   static const Duration _collectionCacheTtl = Duration(minutes: 10);
   static const String _collectionDbCachePrefix = 'collection_cache';
-  static const Duration _stockReportCacheTtl = Duration(minutes: 2);
+  static const Duration _stockReportCacheTtl = Duration(hours: 12);
   static const String _stockReportDbCachePrefix = 'stock_report_cache';
   static const Duration _warehouseTrackingCacheTtl = Duration(minutes: 2);
   static const String _warehouseTrackingDbCachePrefix =
@@ -1347,6 +1347,7 @@ class AppState with ChangeNotifier {
       await LocalAppDatabase.instance.deleteByPrefix(_documentDbCachePrefix);
       await LocalAppDatabase.instance.deleteByPrefix(_collectionDbCachePrefix);
       await LocalAppDatabase.instance.deleteByPrefix(_stockReportDbCachePrefix);
+      await LocalAppDatabase.instance.deleteByPrefix('warehouse_stock_report');
       await LocalAppDatabase.instance.deleteByPrefix(
         _warehouseTrackingDbCachePrefix,
       );
@@ -9461,7 +9462,7 @@ class AppState with ChangeNotifier {
         ...?_warehouseScopeFilters(),
       ],
       orderBy: 'posting_date desc, posting_time desc',
-      maxRows: 5000,
+      maxRows: 1500,
     );
     final latestIncoming = <String, DateTime>{};
     for (final row in rows) {
@@ -9543,7 +9544,7 @@ class AppState with ChangeNotifier {
         ...?_warehouseScopeFilters(),
       ],
       orderBy: 'posting_date desc, posting_time desc',
-      maxRows: 5000,
+      maxRows: 1500,
     );
     final latestMovement = <String, DateTime>{};
     for (final row in rows) {
@@ -9620,7 +9621,7 @@ class AppState with ChangeNotifier {
         ...?_warehouseScopeFilters(),
       ],
       orderBy: 'posting_date desc, posting_time desc',
-      maxRows: 5000,
+      maxRows: 1500,
     );
     final outgoingQuantity = <String, double>{};
     final transactionCount = <String, int>{};

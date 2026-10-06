@@ -26,6 +26,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
   static const int _listLimit = 500;
   static const int _inventoryPageSize = 50;
   static const int _inventorySnapshotLimit = 500;
+  static const int _ledgerPageSize = 1000;
+  static const int _ledgerMaxRows = 1500;
   static const Duration _masterCacheTtl = Duration(hours: 12);
   static const String _warehouseCachePrefix = 'warehouse_master_cache';
   static const String _itemGroupCachePrefix = 'item_group_master_cache';
@@ -410,6 +412,49 @@ class WarehouseStockState extends AppStateProxyNotifier {
       _inventorySnapshotCache = items;
     }
     return items;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchStockLedgerRows({
+    required List<List<dynamic>> filters,
+    int maxRows = _ledgerMaxRows,
+    Set<String>? stopWhenKeysComplete,
+  }) async {
+    await appState.frappeService.ensureLoggedIn();
+    final rows = <Map<String, dynamic>>[];
+    final seenKeys = <String>{};
+    var start = 0;
+    while (rows.length < maxRows) {
+      final remaining = maxRows - rows.length;
+      final limit = remaining < _ledgerPageSize ? remaining : _ledgerPageSize;
+      final page = await appState.frappeService.fetchResource(
+        'Stock Ledger Entry',
+        fields: const [
+          'name',
+          'posting_date',
+          'item_code',
+          'warehouse',
+          'actual_qty',
+        ],
+        filters: filters,
+        limit: limit,
+        limitStart: start,
+        orderBy: 'posting_date desc, posting_time desc',
+      );
+      if (page.isEmpty) break;
+      rows.addAll(page);
+      if (stopWhenKeysComplete != null && stopWhenKeysComplete.isNotEmpty) {
+        for (final row in page) {
+          final item = row['item_code']?.toString() ?? '';
+          final warehouse = row['warehouse']?.toString() ?? '';
+          if (item.isEmpty || warehouse.isEmpty) continue;
+          seenKeys.add('$item|$warehouse');
+        }
+        if (stopWhenKeysComplete.every(seenKeys.contains)) break;
+      }
+      if (page.length < limit) break;
+      start += page.length;
+    }
+    return rows;
   }
 
   Future<void> setInventoryQuery({

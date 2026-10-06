@@ -101,6 +101,30 @@ class StockAgingItem {
   });
 
   double get stockValue => quantity * valuationRate;
+
+  Map<String, dynamic> toJson() => {
+    'item_code': itemCode,
+    'item_name': itemName,
+    'warehouse': warehouse,
+    'quantity': quantity,
+    'valuation_rate': valuationRate,
+    'last_incoming_date': lastIncomingDate?.toIso8601String(),
+    'age_days': ageDays,
+  };
+
+  factory StockAgingItem.fromJson(Map<String, dynamic> json) {
+    return StockAgingItem(
+      itemCode: json['item_code']?.toString() ?? '',
+      itemName: json['item_name']?.toString() ?? '',
+      warehouse: json['warehouse']?.toString() ?? '',
+      quantity: NumParse.asInt(json['quantity']),
+      valuationRate: NumParse.asDouble(json['valuation_rate']),
+      lastIncomingDate: DateTime.tryParse(
+        json['last_incoming_date']?.toString() ?? '',
+      ),
+      ageDays: NumParse.asInt(json['age_days']),
+    );
+  }
 }
 
 class DeadStockItem {
@@ -123,6 +147,30 @@ class DeadStockItem {
   });
 
   double get stockValue => quantity * valuationRate;
+
+  Map<String, dynamic> toJson() => {
+    'item_code': itemCode,
+    'item_name': itemName,
+    'warehouse': warehouse,
+    'quantity': quantity,
+    'valuation_rate': valuationRate,
+    'last_movement_date': lastMovementDate?.toIso8601String(),
+    'inactive_days': inactiveDays,
+  };
+
+  factory DeadStockItem.fromJson(Map<String, dynamic> json) {
+    return DeadStockItem(
+      itemCode: json['item_code']?.toString() ?? '',
+      itemName: json['item_name']?.toString() ?? '',
+      warehouse: json['warehouse']?.toString() ?? '',
+      quantity: NumParse.asInt(json['quantity']),
+      valuationRate: NumParse.asDouble(json['valuation_rate']),
+      lastMovementDate: DateTime.tryParse(
+        json['last_movement_date']?.toString() ?? '',
+      ),
+      inactiveDays: NumParse.asInt(json['inactive_days']),
+    );
+  }
 }
 
 class StockMovementVelocityItem {
@@ -141,4 +189,24 @@ class StockMovementVelocityItem {
     required this.outgoingQuantity,
     required this.transactionCount,
   });
+
+  Map<String, dynamic> toJson() => {
+    'item_code': itemCode,
+    'item_name': itemName,
+    'warehouse': warehouse,
+    'current_quantity': currentQuantity,
+    'outgoing_quantity': outgoingQuantity,
+    'transaction_count': transactionCount,
+  };
+
+  factory StockMovementVelocityItem.fromJson(Map<String, dynamic> json) {
+    return StockMovementVelocityItem(
+      itemCode: json['item_code']?.toString() ?? '',
+      itemName: json['item_name']?.toString() ?? '',
+      warehouse: json['warehouse']?.toString() ?? '',
+      currentQuantity: NumParse.asInt(json['current_quantity']),
+      outgoingQuantity: NumParse.asDouble(json['outgoing_quantity']),
+      transactionCount: NumParse.asInt(json['transaction_count']),
+    );
+  }
 }

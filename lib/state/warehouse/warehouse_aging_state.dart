@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/stock_ledger_movement.dart';
 import '../../models/warehouse_info.dart';
+import '../../services/local_app_database.dart';
 import '../../utils/date_range_presets.dart';
-import '../../utils/frappe_page_walker.dart';
 import 'warehouse_stock_state.dart';
 
 class WarehouseAgingState extends ChangeNotifier {
@@ -12,7 +12,13 @@ class WarehouseAgingState extends ChangeNotifier {
     _stockState.addListener(notifyListeners);
   }
 
+  static const _cachePrefix = 'warehouse_stock_report';
+  static const _cacheTtl = Duration(hours: 12);
+
   late WarehouseStockState _stockState;
+  List<StockAgingItem>? _agingCache;
+  Future<List<StockAgingItem>>? _inFlight;
+  String? _loadedCacheKey;
 
   void updateStockState(WarehouseStockState value) {
     if (identical(_stockState, value)) return;
@@ -28,42 +34,56 @@ class WarehouseAgingState extends ChangeNotifier {
 
   Future<void> refreshWarehouses() => _stockState.refreshWarehouses();
 
-  List<StockAgingItem>? _agingCache;
-
   Future<List<StockAgingItem>> fetchStockAging({
     int lookbackDays = 365,
     bool forceRefresh = false,
   }) async {
-    if (!forceRefresh && _agingCache != null) return _agingCache!;
-    final inventory = await _stockState.fetchInventorySnapshot(
-      forceRefresh: forceRefresh,
-    );
-    await _stockState.appState.frappeService.ensureLoggedIn();
+    final cacheKey = _cacheKey('aging', '$lookbackDays');
+    if (!forceRefresh) {
+      if (_agingCache != null && _loadedCacheKey == cacheKey) {
+        return _agingCache!;
+      }
+      final cached = await _readCachedAging(cacheKey);
+      if (cached != null) {
+        _agingCache = cached;
+        _loadedCacheKey = cacheKey;
+        notifyListeners();
+        return cached;
+      }
+    }
 
+    final running = _inFlight;
+    if (running != null) return running;
+    final request = _fetchStockAgingFromErp(
+      lookbackDays: lookbackDays,
+      cacheKey: cacheKey,
+    );
+    _inFlight = request;
+    try {
+      return await request;
+    } finally {
+      if (identical(_inFlight, request)) _inFlight = null;
+    }
+  }
+
+  Future<List<StockAgingItem>> _fetchStockAgingFromErp({
+    required int lookbackDays,
+    required String cacheKey,
+  }) async {
+    final inventory = await _stockState.fetchInventorySnapshot();
     final today = DateTime.now();
     final from = today.subtract(Duration(days: lookbackDays));
-    final ledgerRows = await walkFrappePages(
-      pageSize: 500,
-      maxRows: 5000,
-      fetchPage: (start, limit) =>
-          _stockState.appState.frappeService.fetchResource(
-            'Stock Ledger Entry',
-            fields: const [
-              'name',
-              'posting_date',
-              'item_code',
-              'warehouse',
-              'actual_qty',
-            ],
-            filters: [
-              ['posting_date', '>=', DateRangePresets.toFrappeDate(from)],
-              ['actual_qty', '>', 0],
-              ...?_warehouseScopeFilters(),
-            ],
-            limit: limit,
-            limitStart: start,
-            orderBy: 'posting_date desc, posting_time desc',
-          ),
+    final stockKeys = {
+      for (final item in inventory)
+        if (item.quantity > 0) '${item.sku}|${item.warehouseId}',
+    };
+    final ledgerRows = await _stockState.fetchStockLedgerRows(
+      filters: [
+        ['posting_date', '>=', DateRangePresets.toFrappeDate(from)],
+        ['actual_qty', '>', 0],
+        ...?_warehouseScopeFilters(),
+      ],
+      stopWhenKeysComplete: stockKeys,
     );
 
     final latestIncoming = <String, DateTime>{};
@@ -95,8 +115,46 @@ class WarehouseAgingState extends ChangeNotifier {
           ),
     ];
     _agingCache = items;
+    _loadedCacheKey = cacheKey;
+    await _writeCachedAging(cacheKey, items);
     notifyListeners();
     return items;
+  }
+
+  String _cacheKey(String report, String parameter) {
+    final warehouses =
+        (_stockState.appState.mobileBoot?.warehouses ?? const <String>[])
+            .map((warehouse) => warehouse.trim())
+            .where((warehouse) => warehouse.isNotEmpty)
+            .toList()
+          ..sort();
+    return [
+      _cachePrefix,
+      _stockState.appState.selectedSiteBaseUrl.trim(),
+      _stockState.appState.currentUser?.trim() ?? '',
+      report,
+      parameter,
+      warehouses.join(','),
+    ].join('|');
+  }
+
+  Future<List<StockAgingItem>?> _readCachedAging(String cacheKey) async {
+    final json = await LocalAppDatabase.instance.readJson(cacheKey);
+    final rows = json?['rows'];
+    if (rows is! List) return null;
+    return rows
+        .whereType<Map>()
+        .map((row) => StockAgingItem.fromJson(Map<String, dynamic>.from(row)))
+        .toList();
+  }
+
+  Future<void> _writeCachedAging(
+    String cacheKey,
+    List<StockAgingItem> items,
+  ) async {
+    await LocalAppDatabase.instance.writeJson(cacheKey, {
+      'rows': items.map((item) => item.toJson()).toList(),
+    }, ttl: _cacheTtl);
   }
 
   @override
