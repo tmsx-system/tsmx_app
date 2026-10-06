@@ -3,22 +3,49 @@ import '../../services/frappe_service.dart';
 import '../../utils/date_range_presets.dart';
 import '../../utils/num_parse.dart';
 
-class SellingSummaryResult {
-  const SellingSummaryResult({
-    required this.salesOrderSummary,
-    required this.deliveryNoteSummary,
-    required this.salesInvoiceSummary,
-    required this.salesOrderTrendPoints,
-    required this.deliveryNoteTrendPoints,
-    required this.salesInvoiceTrendPoints,
+class SellingAnalyticsSection {
+  const SellingAnalyticsSection({
+    required this.summary,
+    required this.trend,
   });
 
-  final DocumentSummary salesOrderSummary;
-  final DocumentSummary deliveryNoteSummary;
-  final DocumentSummary salesInvoiceSummary;
-  final List<DocumentTrendPoint> salesOrderTrendPoints;
-  final List<DocumentTrendPoint> deliveryNoteTrendPoints;
-  final List<DocumentTrendPoint> salesInvoiceTrendPoints;
+  final DocumentSummary summary;
+  final List<DocumentTrendPoint> trend;
+
+  Map<String, dynamic> toJson() => {
+    'summary': summary.toJson(),
+    'trend': trend
+        .map(
+          (point) => {
+            'label': point.label,
+            'value': point.value,
+            'documentCount': point.documentCount,
+          },
+        )
+        .toList(),
+  };
+
+  factory SellingAnalyticsSection.fromJson(Map<String, dynamic> json) {
+    final summaryRaw = json['summary'];
+    final summary = summaryRaw is Map
+        ? DocumentSummary.fromJson(Map<String, dynamic>.from(summaryRaw))
+        : const DocumentSummary();
+    final trendRaw = json['trend'];
+    final trend = trendRaw is List
+        ? trendRaw
+              .whereType<Map>()
+              .map((raw) => Map<String, dynamic>.from(raw))
+              .map(
+                (point) => DocumentTrendPoint(
+                  label: point['label']?.toString() ?? '',
+                  value: (point['value'] as num?)?.toDouble() ?? 0,
+                  documentCount: (point['documentCount'] as num?)?.toInt() ?? 0,
+                ),
+              )
+              .toList()
+        : const <DocumentTrendPoint>[];
+    return SellingAnalyticsSection(summary: summary, trend: trend);
+  }
 }
 
 class SellingSummaryService {
@@ -26,7 +53,8 @@ class SellingSummaryService {
 
   final FrappeService frappe;
 
-  Future<SellingSummaryResult> fetch({
+  Future<SellingAnalyticsSection> fetchSection({
+    required String documentType,
     required int year,
     required int month,
     required DateTime from,
@@ -44,47 +72,47 @@ class SellingSummaryService {
       resolveCurrentSalesIdentity: resolveCurrentSalesIdentity,
       salesIdentityError: salesIdentityError,
     );
+    final basedOn = _normalizeDocumentType(documentType);
+    if (basedOn == 'Sales Order') {
+      return _toPublicSection(
+        await _fetchSalesAnalyticsBySalesPerson(
+          basedOn: basedOn,
+          year: year,
+          month: month,
+          from: from,
+          to: to,
+          company: company,
+          salesPerson: salesPerson,
+        ),
+      );
+    }
+    return _toPublicSection(
+      await _fetchSalesAnalyticsBySalesPersonOrEmpty(
+        basedOn: basedOn,
+        year: year,
+        month: month,
+        from: from,
+        to: to,
+        company: company,
+        salesPerson: salesPerson,
+      ),
+    );
+  }
 
-    final sections = await Future.wait([
-      _fetchSalesAnalyticsBySalesPerson(
-        basedOn: 'Sales Order',
-        year: year,
-        month: month,
-        from: from,
-        to: to,
-        company: company,
-        salesPerson: salesPerson,
-      ),
-      _fetchSalesAnalyticsBySalesPersonOrEmpty(
-        basedOn: 'Delivery Note',
-        year: year,
-        month: month,
-        from: from,
-        to: to,
-        company: company,
-        salesPerson: salesPerson,
-      ),
-      _fetchSalesAnalyticsBySalesPersonOrEmpty(
-        basedOn: 'Sales Invoice',
-        year: year,
-        month: month,
-        from: from,
-        to: to,
-        company: company,
-        salesPerson: salesPerson,
-      ),
-    ]);
+  String _normalizeDocumentType(String documentType) {
+    switch (documentType.trim()) {
+      case 'Delivery Note':
+      case 'Sales Invoice':
+        return documentType.trim();
+      default:
+        return 'Sales Order';
+    }
+  }
 
-    final sales = sections[0];
-    final delivery = sections[1];
-    final invoice = sections[2];
-    return SellingSummaryResult(
-      salesOrderSummary: sales.summary,
-      deliveryNoteSummary: delivery.summary,
-      salesInvoiceSummary: invoice.summary,
-      salesOrderTrendPoints: sales.trend,
-      deliveryNoteTrendPoints: delivery.trend,
-      salesInvoiceTrendPoints: invoice.trend,
+  SellingAnalyticsSection _toPublicSection(_AnalyticsSection section) {
+    return SellingAnalyticsSection(
+      summary: section.summary,
+      trend: section.trend,
     );
   }
 
@@ -161,7 +189,7 @@ class SellingSummaryService {
           if (company.trim().isNotEmpty) 'company': company.trim(),
           if (salesPerson.trim().isNotEmpty) 'sales_person': salesPerson.trim(),
         },
-        'ignore_prepared_report': true,
+        'ignore_prepared_report': false,
         'are_default_filters': false,
       },
     );

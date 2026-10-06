@@ -32,6 +32,7 @@ class _ConsignmentSalesOrderTabState extends State<ConsignmentSalesOrderTab> {
     await Future.wait([
       context.read<SalesOrderState>().refreshSalesOrders(),
       context.read<SellingSummaryState>().refreshSellingSummaries(
+        forceRemote: true,
         documentType: 'Sales Order',
       ),
     ]);

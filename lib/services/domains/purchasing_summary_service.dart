@@ -3,24 +3,49 @@ import '../../services/frappe_service.dart';
 import '../../utils/date_range_presets.dart';
 import '../../utils/num_parse.dart';
 
-class PurchasingSummaryResult {
-  const PurchasingSummaryResult({
-    required this.purchaseOrderSummary,
-    required this.purchaseReceiptSummary,
-    required this.purchaseInvoiceSummary,
-    required this.purchaseOrderTrendPoints,
-    required this.purchaseReceiptTrendPoints,
-    required this.purchaseInvoiceTrendPoints,
-    required this.materialRequestTrendPoints,
+class PurchasingAnalyticsSection {
+  const PurchasingAnalyticsSection({
+    required this.summary,
+    required this.trend,
   });
 
-  final DocumentSummary purchaseOrderSummary;
-  final DocumentSummary purchaseReceiptSummary;
-  final DocumentSummary purchaseInvoiceSummary;
-  final List<DocumentTrendPoint> purchaseOrderTrendPoints;
-  final List<DocumentTrendPoint> purchaseReceiptTrendPoints;
-  final List<DocumentTrendPoint> purchaseInvoiceTrendPoints;
-  final List<DocumentTrendPoint> materialRequestTrendPoints;
+  final DocumentSummary summary;
+  final List<DocumentTrendPoint> trend;
+
+  Map<String, dynamic> toJson() => {
+    'summary': summary.toJson(),
+    'trend': trend
+        .map(
+          (point) => {
+            'label': point.label,
+            'value': point.value,
+            'documentCount': point.documentCount,
+          },
+        )
+        .toList(),
+  };
+
+  factory PurchasingAnalyticsSection.fromJson(Map<String, dynamic> json) {
+    final summaryRaw = json['summary'];
+    final summary = summaryRaw is Map
+        ? DocumentSummary.fromJson(Map<String, dynamic>.from(summaryRaw))
+        : const DocumentSummary();
+    final trendRaw = json['trend'];
+    final trend = trendRaw is List
+        ? trendRaw
+              .whereType<Map>()
+              .map((raw) => Map<String, dynamic>.from(raw))
+              .map(
+                (point) => DocumentTrendPoint(
+                  label: point['label']?.toString() ?? '',
+                  value: (point['value'] as num?)?.toDouble() ?? 0,
+                  documentCount: (point['documentCount'] as num?)?.toInt() ?? 0,
+                ),
+              )
+              .toList()
+        : const <DocumentTrendPoint>[];
+    return PurchasingAnalyticsSection(summary: summary, trend: trend);
+  }
 }
 
 class PurchasingSummaryService {
@@ -28,7 +53,8 @@ class PurchasingSummaryService {
 
   final FrappeService frappe;
 
-  Future<PurchasingSummaryResult> fetch({
+  Future<PurchasingAnalyticsSection> fetchSection({
+    required String documentType,
     required int year,
     required int month,
     required DateTime from,
@@ -37,58 +63,48 @@ class PurchasingSummaryService {
     required String supplierType,
   }) async {
     await frappe.ensureLoggedIn();
+    final docType = _normalizeDocumentType(documentType);
+    if (docType == 'Purchase Order') {
+      return _toPublicSection(
+        await _fetchPurchaseAnalytics(
+          docType: docType,
+          year: year,
+          month: month,
+          from: from,
+          to: to,
+          company: company,
+          supplierType: supplierType,
+        ),
+      );
+    }
+    return _toPublicSection(
+      await _fetchPurchaseAnalyticsOrEmpty(
+        docType: docType,
+        year: year,
+        month: month,
+        from: from,
+        to: to,
+        company: company,
+        supplierType: supplierType,
+      ),
+    );
+  }
 
-    final sections = await Future.wait([
-      _fetchPurchaseAnalytics(
-        docType: 'Purchase Order',
-        year: year,
-        month: month,
-        from: from,
-        to: to,
-        company: company,
-        supplierType: supplierType,
-      ),
-      _fetchPurchaseAnalyticsOrEmpty(
-        docType: 'Purchase Receipt',
-        year: year,
-        month: month,
-        from: from,
-        to: to,
-        company: company,
-        supplierType: supplierType,
-      ),
-      _fetchPurchaseAnalyticsOrEmpty(
-        docType: 'Purchase Invoice',
-        year: year,
-        month: month,
-        from: from,
-        to: to,
-        company: company,
-        supplierType: supplierType,
-      ),
-      _fetchPurchaseAnalyticsOrEmpty(
-        docType: 'Material Request',
-        year: year,
-        month: month,
-        from: from,
-        to: to,
-        company: company,
-        supplierType: supplierType,
-      ),
-    ]);
+  String _normalizeDocumentType(String documentType) {
+    switch (documentType.trim()) {
+      case 'Purchase Receipt':
+      case 'Purchase Invoice':
+      case 'Material Request':
+        return documentType.trim();
+      default:
+        return 'Purchase Order';
+    }
+  }
 
-    final purchaseOrder = sections[0];
-    final purchaseReceipt = sections[1];
-    final purchaseInvoice = sections[2];
-    final materialRequest = sections[3];
-    return PurchasingSummaryResult(
-      purchaseOrderSummary: purchaseOrder.summary,
-      purchaseReceiptSummary: purchaseReceipt.summary,
-      purchaseInvoiceSummary: purchaseInvoice.summary,
-      purchaseOrderTrendPoints: purchaseOrder.trend,
-      purchaseReceiptTrendPoints: purchaseReceipt.trend,
-      purchaseInvoiceTrendPoints: purchaseInvoice.trend,
-      materialRequestTrendPoints: materialRequest.trend,
+  PurchasingAnalyticsSection _toPublicSection(_AnalyticsSection section) {
+    return PurchasingAnalyticsSection(
+      summary: section.summary,
+      trend: section.trend,
     );
   }
 
@@ -148,7 +164,7 @@ class PurchasingSummaryService {
             'supplier_type': selectedSupplierType,
           'show_aggregate_value_from_subsidiary_companies': 0,
         },
-        'ignore_prepared_report': true,
+        'ignore_prepared_report': false,
         'are_default_filters': false,
       },
     );

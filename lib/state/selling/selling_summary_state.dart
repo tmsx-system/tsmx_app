@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../models/erp_summary.dart';
 import '../../services/domains/selling_summary_service.dart';
+import '../../services/local_app_database.dart';
 import '../app_state.dart';
 import '../app_state_proxy_notifier.dart';
 import 'selling_filter_state.dart';
@@ -13,6 +14,9 @@ class SellingSummaryState extends AppStateProxyNotifier {
     startWatchingAppState();
   }
 
+  static const _cachePrefix = 'selling_trend';
+  static const _cacheTtl = Duration(hours: 12);
+
   SellingFilterState filterState;
   late SellingSummaryService _service;
   bool _isOrderSummaryLoading = false;
@@ -23,7 +27,10 @@ class SellingSummaryState extends AppStateProxyNotifier {
   List<DocumentTrendPoint> _salesOrderTrendPoints = const [];
   List<DocumentTrendPoint> _deliveryNoteTrendPoints = const [];
   List<DocumentTrendPoint> _salesInvoiceTrendPoints = const [];
-  int _requestToken = 0;
+  final Map<String, int> _sectionTokens = {};
+  final Set<String> _loadedCacheKeys = {};
+  final Set<String> _loadingTypes = {};
+  final Map<String, Future<void>> _inFlight = {};
 
   @override
   List<Object?> get watchFields => [
@@ -95,7 +102,10 @@ class SellingSummaryState extends AppStateProxyNotifier {
     _salesOrderTrendPoints = const [];
     _deliveryNoteTrendPoints = const [];
     _salesInvoiceTrendPoints = const [];
-    _requestToken++;
+    _loadedCacheKeys.clear();
+    _loadingTypes.clear();
+    _inFlight.clear();
+    _sectionTokens.clear();
   }
 
   Future<void> refreshSellingSummaries({
@@ -108,17 +118,59 @@ class SellingSummaryState extends AppStateProxyNotifier {
       return;
     }
 
-    final token = ++_requestToken;
+    final type = _normalizeDocumentType(documentType);
+    final cacheKey = _sectionCacheKey(type);
+    final flightKey = '$cacheKey|${forceRemote ? 1 : 0}';
+    final running = _inFlight[flightKey];
+    if (running != null) return running;
+
+    final job = _refreshSellingSummaries(
+      forceRemote: forceRemote,
+      documentType: type,
+      cacheKey: cacheKey,
+    );
+    _inFlight[flightKey] = job;
+    try {
+      await job;
+    } finally {
+      if (identical(_inFlight[flightKey], job)) {
+        _inFlight.remove(flightKey);
+      }
+    }
+  }
+
+  Future<void> _refreshSellingSummaries({
+    required bool forceRemote,
+    required String documentType,
+    required String cacheKey,
+  }) async {
+    final token = (_sectionTokens[documentType] ?? 0) + 1;
+    _sectionTokens[documentType] = token;
+    if (!forceRemote) {
+      if (_loadedCacheKeys.contains(cacheKey)) return;
+      final cached = await _readCachedSection(cacheKey);
+      if (_sectionTokens[documentType] != token) return;
+      if (cached != null) {
+        _applySection(documentType, cached);
+        _loadedCacheKeys.add(cacheKey);
+        _orderSummaryError = null;
+        notifyListeners();
+        return;
+      }
+    }
+
     final selectedCompany = filterState.sellingCompanyFilter.trim();
     final effectiveCompany = selectedCompany.isNotEmpty
         ? selectedCompany
         : (appState.preferredCompany(filterState.sellingCompanies) ?? '');
 
+    _loadingTypes.add(documentType);
     _isOrderSummaryLoading = true;
     _orderSummaryError = null;
     notifyListeners();
     try {
-      final result = await _service.fetch(
+      final section = await _service.fetchSection(
+        documentType: documentType,
         year: filterState.sellingPeriodYear,
         month: filterState.sellingPeriodMonth,
         from: filterState.sellingPeriodFrom,
@@ -129,27 +181,92 @@ class SellingSummaryState extends AppStateProxyNotifier {
         resolveCurrentSalesIdentity: appState.resolveCurrentSalesIdentity,
         salesIdentityError: appState.salesIdentityError,
       );
-      if (token != _requestToken) return;
-      _applyResult(result);
+      if (_sectionTokens[documentType] != token) return;
+      _applySection(documentType, section);
+      _loadedCacheKeys.add(cacheKey);
+      await _writeCachedSection(cacheKey, section);
     } catch (error) {
-      if (token != _requestToken) return;
+      if (_sectionTokens[documentType] != token) return;
       _orderSummaryError = error.toString();
     } finally {
-      if (token == _requestToken) {
-        _isOrderSummaryLoading = false;
+      if (_sectionTokens[documentType] == token) {
+        _loadingTypes.remove(documentType);
+        _isOrderSummaryLoading = _loadingTypes.isNotEmpty;
         notifyListeners();
       }
     }
   }
 
-  void _applyResult(SellingSummaryResult result) {
-    _salesOrderSummary = result.salesOrderSummary;
-    _deliveryNoteSummary = result.deliveryNoteSummary;
-    _salesInvoiceSummary = result.salesInvoiceSummary;
-    _salesOrderTrendPoints = result.salesOrderTrendPoints;
-    _deliveryNoteTrendPoints = result.deliveryNoteTrendPoints;
-    _salesInvoiceTrendPoints = result.salesInvoiceTrendPoints;
-    _orderSummaryError = null;
+  String _normalizeDocumentType(String documentType) {
+    switch (documentType.trim()) {
+      case 'Delivery Note':
+      case 'Sales Invoice':
+        return documentType.trim();
+      default:
+        return 'Sales Order';
+    }
+  }
+
+  void _applySection(String documentType, SellingAnalyticsSection section) {
+    if (documentType == 'Delivery Note') {
+      _deliveryNoteSummary = section.summary;
+      _deliveryNoteTrendPoints = section.trend;
+      return;
+    }
+    if (documentType == 'Sales Invoice') {
+      _salesInvoiceSummary = section.summary;
+      _salesInvoiceTrendPoints = section.trend;
+      return;
+    }
+    _salesOrderSummary = section.summary;
+    _salesOrderTrendPoints = section.trend;
+  }
+
+  String _sectionCacheKey(String documentType) {
+    final site = appState.frappeService.baseUrl.trim();
+    final user =
+        appState.currentUser?.trim() ??
+        appState.frappeService.username?.trim() ??
+        '';
+    final selectedCompany = filterState.sellingCompanyFilter.trim();
+    final company = selectedCompany.isNotEmpty
+        ? selectedCompany
+        : (appState.preferredCompany(filterState.sellingCompanies) ?? '');
+    final salesScope = appState.mobileAccess.shouldScopeSalesData
+        ? (appState.currentSalesPerson?.trim() ?? '')
+        : filterState.sellingCustomerTypeFilter.trim();
+    return [
+      _cachePrefix,
+      'section',
+      site,
+      user,
+      filterState.sellingPeriodYear,
+      filterState.sellingPeriodMonth,
+      company,
+      salesScope,
+      documentType,
+    ].join('|');
+  }
+
+  Future<SellingAnalyticsSection?> _readCachedSection(String cacheKey) async {
+    final json = await LocalAppDatabase.instance.readJson(cacheKey);
+    if (json == null) return null;
+    try {
+      return SellingAnalyticsSection.fromJson(json);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeCachedSection(
+    String cacheKey,
+    SellingAnalyticsSection section,
+  ) async {
+    await LocalAppDatabase.instance.writeJson(
+      cacheKey,
+      section.toJson(),
+      ttl: _cacheTtl,
+    );
   }
 
   void _syncFromAppState() {

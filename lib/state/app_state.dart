@@ -864,6 +864,7 @@ class AppState with ChangeNotifier {
   static const String _prefsFrappeSiteHistoryKey = 'frappe_site_history';
   static const String _prefsSummaryCacheKey = 'erp_summary_cache';
   static const String _sellingTrendCachePrefix = 'selling_trend';
+  static const String _buyingTrendCachePrefix = 'buying_trend';
   static const String _documentDbCachePrefix = 'document_cache';
   static const Duration _sellingTrendCacheTtl = Duration(hours: 12);
   static const Duration _sellingTrendRemoteTimeout = Duration(seconds: 45);
@@ -1342,6 +1343,7 @@ class AppState with ChangeNotifier {
       await sp.remove(_summaryCachePrefsKey);
       await sp.remove(_prefsSummaryCacheKey);
       await LocalAppDatabase.instance.deleteByPrefix(_sellingTrendCachePrefix);
+      await LocalAppDatabase.instance.deleteByPrefix(_buyingTrendCachePrefix);
       await LocalAppDatabase.instance.deleteByPrefix(_documentDbCachePrefix);
       await LocalAppDatabase.instance.deleteByPrefix(_collectionDbCachePrefix);
       await LocalAppDatabase.instance.deleteByPrefix(_stockReportDbCachePrefix);

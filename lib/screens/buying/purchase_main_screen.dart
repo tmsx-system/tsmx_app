@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -69,8 +71,16 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
       onInitialize: (context) async {
         await context.read<PurchasingFilterState>().loadBuyingFilterOptions();
       },
-      onTabChanged: (context, index) =>
-          _ensureEntryLoaded(context, entries[index].key),
+      onTabChanged: (context, index) {
+        final key = entries[index].key;
+        _ensureEntryLoaded(context, key);
+        if (key == 'home') return;
+        unawaited(
+          context.read<PurchasingSummaryState>().refreshBuyingSummaries(
+            documentType: purchaseAnalyticsDoctype(key),
+          ),
+        );
+      },
       screensBuilder: (onMenuSelected) => entries
           .map((entry) {
             if (entry.key == 'home') {
@@ -323,6 +333,13 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
   }
 }
 
+String purchaseAnalyticsDoctype(String key) => switch (key) {
+  'pr' => 'Purchase Receipt',
+  'pi' => 'Purchase Invoice',
+  'mr' => 'Material Request',
+  _ => 'Purchase Order',
+};
+
 Future<void> _refreshPurchaseDoctype(BuildContext context, String key) async {
   switch (key) {
     case 'pr':
@@ -383,7 +400,9 @@ class _PurchasePane extends StatelessWidget {
     );
     if (!context.mounted) return;
     await Future.wait([
-      context.read<PurchasingSummaryState>().refreshBuyingSummaries(),
+      context.read<PurchasingSummaryState>().refreshBuyingSummaries(
+        documentType: purchaseAnalyticsDoctype(doctypeKey),
+      ),
       _refreshActiveDoctype(context),
     ]);
   }
@@ -422,7 +441,13 @@ class _PurchasePane extends StatelessWidget {
   }
 
   Future<void> _refreshActiveDoctype(BuildContext context) {
-    return _refreshPurchaseDoctype(context, doctypeKey);
+    return Future.wait([
+      context.read<PurchasingSummaryState>().refreshBuyingSummaries(
+        forceRemote: true,
+        documentType: purchaseAnalyticsDoctype(doctypeKey),
+      ),
+      _refreshPurchaseDoctype(context, doctypeKey),
+    ]);
   }
 
   void _loadMoreActiveDoctype(BuildContext context) {

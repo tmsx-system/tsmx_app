@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -31,7 +33,12 @@ class _PurchaseOverviewTabState extends State<PurchaseOverviewTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final summaryState = context.read<PurchasingSummaryState>();
-      summaryState.refreshBuyingSummaries();
+      unawaited(
+        Future.wait([
+          summaryState.refreshBuyingSummaries(documentType: 'Purchase Order'),
+          summaryState.refreshBuyingSummaries(documentType: 'Purchase Invoice'),
+        ]),
+      );
     });
   }
 
@@ -46,7 +53,16 @@ class _PurchaseOverviewTabState extends State<PurchaseOverviewTab> {
 
     return RefreshIndicator(
       onRefresh: () async {
-        await summaryState.refreshBuyingSummaries();
+        await Future.wait([
+          summaryState.refreshBuyingSummaries(
+            forceRemote: true,
+            documentType: 'Purchase Order',
+          ),
+          summaryState.refreshBuyingSummaries(
+            forceRemote: true,
+            documentType: 'Purchase Invoice',
+          ),
+        ]);
       },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
