@@ -84,9 +84,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
           _loading = false;
         });
       }
-      unawaited(
-        _load(silent: cachedRows.isNotEmpty, forceRefresh: cachedRows.isEmpty),
-      );
+      unawaited(_load(silent: cachedRows.isNotEmpty, forceRefresh: false));
       _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
         if (mounted) _load(silent: true, forceRefresh: true);
       });
@@ -131,6 +129,16 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     try {
       final rows = await appState.fetchApprovalTodos(
         forceRefresh: forceRefresh,
+        onProgress: (partial) {
+          if (!mounted) return;
+          final filtered = _filterRows(partial);
+          if (filtered.isEmpty) return;
+          setState(() {
+            _rows = filtered;
+            if (!silent) _loading = false;
+            _error = null;
+          });
+        },
       );
       final filtered = _filterRows(rows);
       if (!mounted) return;
@@ -178,10 +186,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     unawaited(
       context
           .read<TodoState>()
-          .fetchApprovalDocument(
-            doctype: approval.doctype,
-            name: approval.name,
-          )
+          .fetchApprovalDocument(doctype: approval.doctype, name: approval.name)
           .catchError((_) => <String, dynamic>{}),
     );
     final changed = await Navigator.push<bool>(
@@ -1617,9 +1622,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _error = captureErpError(context, error),
-        );
+        setState(() => _error = captureErpError(context, error));
       }
     } finally {
       if (mounted) setState(() => _processing = false);
@@ -1709,9 +1712,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       await _loadDetail();
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _error = captureErpError(context, error),
-        );
+        setState(() => _error = captureErpError(context, error));
       }
     } finally {
       if (mounted) setState(() => _addingApprover = false);
@@ -1778,9 +1779,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _error = captureErpError(context, error),
-        );
+        setState(() => _error = captureErpError(context, error));
       }
     } finally {
       if (mounted) setState(() => _additionalApprovalProcessing = false);
@@ -1867,21 +1866,6 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                 _errorBox(_error!),
               ],
               if (detail != null) ...[
-                if (widget.approval.doctype == 'Sales Order') ...[
-                  const SizedBox(height: 14),
-                  _additionalApproverSection(detail),
-                ],
-
-                const SizedBox(height: 12),
-                _decisionCard(detail),
-
-                const SizedBox(height: 12),
-
-                _sectionCard(
-                  title: 'Informasi Dokumen',
-                  children: _documentInfoRows(detail),
-                ),
-
                 const SizedBox(height: 12),
 
                 _sectionCard(
@@ -1901,7 +1885,14 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                 ),
 
                 const SizedBox(height: 12),
+                _decisionCard(detail),
 
+                if (widget.approval.doctype == 'Sales Order') ...[
+                  const SizedBox(height: 12),
+                  _additionalApproverSection(detail),
+                ],
+
+                const SizedBox(height: 12),
                 _activitySection(),
               ],
             ],
@@ -2032,7 +2023,8 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
               ),
             _detailMetaPill(
               icon: Icons.task_alt_rounded,
-              label: '${(_workflowActions.isNotEmpty ? _workflowActions : widget.approval.actions).length} action tersedia',
+              label:
+                  '${(_workflowActions.isNotEmpty ? _workflowActions : widget.approval.actions).length} action tersedia',
               color: const Color(0xFF6366F1),
             ),
             _detailMetaPill(
@@ -2091,29 +2083,6 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       ],
     ),
   );
-
-  List<Widget> _documentInfoRows(Map<String, dynamic> detail) {
-    final partnerLabel = widget.approval.doctype == 'Sales Order'
-        ? 'Customer'
-        : widget.approval.doctype == 'Material Request'
-        ? 'Tipe Request'
-        : widget.approval.doctype == 'Journal Entry'
-        ? 'Title'
-        : 'Supplier';
-    return [
-      _detailRow(partnerLabel, widget.approval.partyLabel),
-      _detailRow('Company', _text(detail['company'])),
-      _detailRow(
-        'Tanggal',
-        _text(detail['transaction_date']).isNotEmpty
-            ? _text(detail['transaction_date'])
-            : _text(detail['posting_date']),
-      ),
-      _detailRow('Dibutuhkan', _text(detail['schedule_date'])),
-      _detailRow('Jatuh Tempo', _text(detail['due_date'])),
-      _detailRow('Dibuat oleh', _text(detail['owner'])),
-    ];
-  }
 
   List<Widget> _amountRows(Map<String, dynamic> detail) {
     if (widget.approval.doctype == 'Material Request') {
@@ -2619,17 +2588,49 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         status == 'pending';
   }
 
-  Widget _activitySection() => _sectionCard(
-    title: 'Activity',
-    children: _activity.isEmpty
-        ? [const Text('Belum ada activity dokumen.')]
-        : _activity.take(20).map(_activityRow).toList(),
-  );
+  List<SalesOrderApprovalHistory> get _visibleActivity {
+    final rows = [..._activity];
+    final hasCreated = rows.any(
+      (row) => row.content.toLowerCase().contains('created this'),
+    );
+    if (!hasCreated) {
+      final owner = _text(_detail?['owner']).isNotEmpty
+          ? _text(_detail?['owner'])
+          : widget.approval.owner.trim();
+      if (owner.isNotEmpty) {
+        rows.add(
+          SalesOrderApprovalHistory(
+            id: '${widget.approval.doctype}::${widget.approval.name}::created',
+            doctype: widget.approval.doctype,
+            salesOrder: widget.approval.name,
+            content: 'created this',
+            actor: owner,
+            createdAt: _text(_detail?['creation']),
+          ),
+        );
+      }
+    }
+    rows.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return rows;
+  }
+
+  Widget _activitySection() {
+    final activity = _visibleActivity;
+    return _sectionCard(
+      title: 'Activity',
+      children: activity.isEmpty
+          ? [const Text('Belum ada activity dokumen.')]
+          : activity.take(20).map(_activityRow).toList(),
+    );
+  }
 
   Widget _activityRow(SalesOrderApprovalHistory item) {
     final content = _plainText(item.content);
     final actor = item.actor.isEmpty ? 'Unknown' : item.actor;
+    final action = _activityActionLabel(content);
     final color = _activityColor(content);
+    final showBody =
+        content.isNotEmpty && content.toLowerCase().trim() != action;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -2658,7 +2659,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                         ),
                       ),
                       TextSpan(
-                        text: ' ${_activityActionLabel(content)}',
+                        text: ' $action',
                         style: TextStyle(
                           color: color,
                           fontSize: 12,
@@ -2678,7 +2679,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                     ),
                   ),
                 ],
-                if (content.isNotEmpty) ...[
+                if (showBody) ...[
                   const SizedBox(height: 5),
                   Text(
                     content,
@@ -2713,7 +2714,10 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     if (plain.contains('reject')) return 'rejected';
     if (plain.contains('approve')) return 'approved';
     if (plain.contains('submit')) return 'submitted';
-    if (plain.contains('created')) return 'created';
+    if (plain.contains('created this') || plain.trim() == 'created') {
+      return 'created this';
+    }
+    if (plain.contains('last edited this')) return 'last edited this';
     if (plain.contains('changed') || plain.contains('edited')) return 'updated';
     return 'activity';
   }
@@ -3748,9 +3752,7 @@ class _SalesOrderApprovalDetailPageState
       Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _error = captureErpError(context, error),
-        );
+        setState(() => _error = captureErpError(context, error));
       }
     } finally {
       if (mounted) setState(() => _processing = false);

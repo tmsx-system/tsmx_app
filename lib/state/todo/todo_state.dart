@@ -55,10 +55,12 @@ class TodoState extends AppStateProxyNotifier {
 
   Future<List<ErpApprovalTodo>> fetchApprovalTodos({
     bool forceRefresh = false,
+    void Function(List<ErpApprovalTodo> rows)? onProgress,
   }) async {
     if (appState.isSampleMode) {
       final todos = appState.cachedApprovalTodos;
       _setApprovalTodoSnapshot(todos);
+      onProgress?.call(cachedApprovalTodos);
       return cachedApprovalTodos;
     }
 
@@ -68,6 +70,10 @@ class TodoState extends AppStateProxyNotifier {
     final request = _approvalService.fetchApprovalTodos(
       currentUser: currentUser,
       forceRefresh: forceRefresh,
+      onProgress: (rows) {
+        _setApprovalTodoSnapshot(rows);
+        onProgress?.call(cachedApprovalTodos);
+      },
     );
     _approvalTodoFetchInFlight = request;
     try {

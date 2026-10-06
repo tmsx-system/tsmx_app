@@ -892,6 +892,10 @@ class PosState extends AppStateProxyNotifier {
     }
     add(preferred);
 
+    for (final profile in _profiles) {
+      add(profile.company);
+    }
+
     try {
       for (final company in await fetchNames('Company')) {
         add(company);
@@ -901,12 +905,18 @@ class PosState extends AppStateProxyNotifier {
     }
 
     try {
-      final profiles = await fetchSelectableProfileNames();
-      for (final profileName in profiles.take(20)) {
-        try {
-          final doc = await loadProfileDocument(profileName);
-          add(doc['company']?.toString());
-        } catch (_) {}
+      final assigned = await _assignedPosProfileNames();
+      final rows = await _fetchWithFieldFallback(
+        doctype: 'POS Profile',
+        fields: const ['name', 'company'],
+        orderBy: 'name asc',
+        filters: [
+          ['disabled', '=', 0],
+          ...?_profileNameFilters(assigned),
+        ],
+      );
+      for (final row in rows) {
+        add(row['company']?.toString());
       }
     } catch (_) {}
 

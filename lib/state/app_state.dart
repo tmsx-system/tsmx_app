@@ -10491,7 +10491,7 @@ class AppState with ChangeNotifier {
         ['comment_by', '=', currentUser],
       ],
       orderBy: 'creation desc',
-      maxRows: 5000,
+      maxRows: 80,
     );
     final history = rows
         .where((row) {
@@ -10522,7 +10522,7 @@ class AppState with ChangeNotifier {
           ['owner', '=', currentUser],
         ],
         orderBy: 'creation desc',
-        maxRows: 5000,
+        maxRows: 40,
       );
       history.addAll(
         versions

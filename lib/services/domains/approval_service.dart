@@ -15,6 +15,8 @@ class ApprovalService {
   static const _documentCacheTtl = Duration(minutes: 2);
   static const _approvalTodoDbCachePrefix = 'approval_todo_cache';
   static const _documentDbCachePrefix = 'document_cache';
+  static const _historyCommentLimit = 80;
+  static const _historyVersionLimit = 40;
 
   static const purchaseApprovalDoctypes = {
     'Purchase Order',
@@ -42,6 +44,7 @@ class ApprovalService {
   Future<List<ErpApprovalTodo>> fetchApprovalTodos({
     required String? currentUser,
     bool forceRefresh = false,
+    void Function(List<ErpApprovalTodo> rows)? onProgress,
   }) async {
     final key = _approvalTodoCacheKey(currentUser);
     if (!forceRefresh) {
@@ -66,7 +69,7 @@ class ApprovalService {
     final inFlight = _approvalTodoFetchInFlight;
     if (inFlight != null) return inFlight;
 
-    final request = _fetchApprovalTodosFromErp();
+    final request = _fetchApprovalTodosFromErp(onProgress: onProgress);
     _approvalTodoFetchInFlight = request;
     try {
       final todos = await request;
@@ -101,7 +104,7 @@ class ApprovalService {
         .toLowerCase();
     if (normalizedUser.isEmpty) return const [];
 
-    final rows = await _fetchAllResourcePages(
+    final commentsFuture = _fetchAllResourcePages(
       doctype: 'Comment',
       fields: const [
         'name',
@@ -121,8 +124,27 @@ class ApprovalService {
         ['comment_by', '=', normalizedUser],
       ],
       orderBy: 'creation desc',
-      maxRows: 5000,
+      maxRows: _historyCommentLimit,
     );
+    final versionsFuture = _fetchAllResourcePages(
+      doctype: 'Version',
+      fields: const [
+        'name',
+        'ref_doctype',
+        'docname',
+        'data',
+        'owner',
+        'creation',
+      ],
+      filters: [
+        ['ref_doctype', 'in', _approvalDoctypes],
+        ['owner', '=', normalizedUser],
+      ],
+      orderBy: 'creation desc',
+      maxRows: _historyVersionLimit,
+    );
+
+    final rows = await commentsFuture;
 
     final history = rows
         .where((row) {
@@ -139,23 +161,7 @@ class ApprovalService {
         .toList();
 
     try {
-      final versions = await _fetchAllResourcePages(
-        doctype: 'Version',
-        fields: const [
-          'name',
-          'ref_doctype',
-          'docname',
-          'data',
-          'owner',
-          'creation',
-        ],
-        filters: [
-          ['ref_doctype', 'in', _approvalDoctypes],
-          ['owner', '=', normalizedUser],
-        ],
-        orderBy: 'creation desc',
-        maxRows: 5000,
-      );
+      final versions = await versionsFuture;
       history.addAll(
         versions
             .map(
@@ -192,62 +198,158 @@ class ApprovalService {
     await frappe.ensureLoggedIn();
 
     final activity = <SalesOrderApprovalHistory>[];
-    final commentFuture = _fetchAllResourcePages(
-      doctype: 'Comment',
-      fields: const [
-        'name',
-        'reference_doctype',
-        'reference_name',
-        'content',
-        'comment_type',
-        'comment_by',
-        'owner',
-        'creation',
-      ],
-      filters: [
-        ['reference_doctype', '=', normalizedDoctype],
-        ['reference_name', '=', normalizedName],
-      ],
-      orderBy: 'creation desc',
-      maxRows: 40,
-    ).then((comments) {
-      activity.addAll(comments.map(SalesOrderApprovalHistory.fromJson));
-    }).catchError((_) {});
-
-    final versionFuture = _fetchAllResourcePages(
-      doctype: 'Version',
-      fields: const [
-        'name',
-        'ref_doctype',
-        'docname',
-        'data',
-        'owner',
-        'creation',
-      ],
-      filters: [
-        ['ref_doctype', '=', normalizedDoctype],
-        ['docname', '=', normalizedName],
-      ],
-      orderBy: 'creation desc',
-      maxRows: 20,
-    ).then((versions) {
+    try {
       activity.addAll(
-        versions
-            .map(
-              (row) => _approvalVersionHistoryFromJson(
-                row,
-                fallbackDoctype: normalizedDoctype,
-                fallbackName: normalizedName,
-              ),
-            )
-            .where((row) => row.content.trim().isNotEmpty),
+        await _activityFromDocinfo(
+          doctype: normalizedDoctype,
+          name: normalizedName,
+        ),
       );
-    }).catchError((_) {});
+    } catch (_) {}
 
-    await Future.wait([commentFuture, versionFuture]);
+    if (activity.isEmpty) {
+      try {
+        final comments = await _fetchAllResourcePages(
+          doctype: 'Comment',
+          fields: const [
+            'name',
+            'reference_doctype',
+            'reference_name',
+            'content',
+            'comment_type',
+            'comment_by',
+            'owner',
+            'creation',
+          ],
+          filters: [
+            ['reference_doctype', '=', normalizedDoctype],
+            ['reference_name', '=', normalizedName],
+          ],
+          orderBy: 'creation desc',
+          maxRows: 40,
+        );
+        activity.addAll(
+          comments
+              .map(
+                (row) => _commentHistoryFromJson(
+                  row,
+                  fallbackDoctype: normalizedDoctype,
+                  fallbackName: normalizedName,
+                ),
+              )
+              .where((row) => row.content.trim().isNotEmpty),
+        );
+      } catch (_) {}
+
+      try {
+        final versions = await _fetchAllResourcePages(
+          doctype: 'Version',
+          fields: const [
+            'name',
+            'ref_doctype',
+            'docname',
+            'data',
+            'owner',
+            'creation',
+          ],
+          filters: [
+            ['ref_doctype', '=', normalizedDoctype],
+            ['docname', '=', normalizedName],
+          ],
+          orderBy: 'creation desc',
+          maxRows: 40,
+        );
+        activity.addAll(
+          versions.map(
+            (row) => _approvalVersionHistoryFromJson(
+              row,
+              fallbackDoctype: normalizedDoctype,
+              fallbackName: normalizedName,
+            ),
+          ),
+        );
+      } catch (_) {}
+    }
+
+    try {
+      final document = await _fetchCachedDocument(
+        normalizedDoctype,
+        normalizedName,
+      );
+      activity.addAll(
+        _approvalDocumentAuditHistory(
+          document,
+          doctype: normalizedDoctype,
+          name: normalizedName,
+          existing: activity,
+        ),
+      );
+    } catch (_) {}
 
     activity.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return activity;
+  }
+
+  Future<List<SalesOrderApprovalHistory>> _activityFromDocinfo({
+    required String doctype,
+    required String name,
+  }) async {
+    final raw = await frappe.callMethod(
+      'frappe.desk.form.load.get_docinfo',
+      args: {
+        'doctype': doctype,
+        'name': name,
+        'docname': name,
+      },
+    );
+    if (raw is! Map) return <SalesOrderApprovalHistory>[];
+    var info = Map<String, dynamic>.from(raw);
+    final nested = info['docinfo'];
+    if (nested is Map) {
+      info = Map<String, dynamic>.from(nested);
+    }
+    final activity = <SalesOrderApprovalHistory>[];
+
+    void addCommentLike(dynamic rows) {
+      if (rows is! List) return;
+      for (final row in rows.whereType<Map>()) {
+        final map = Map<String, dynamic>.from(row);
+        final item = _commentHistoryFromJson(
+          map,
+          fallbackDoctype: doctype,
+          fallbackName: name,
+        );
+        if (item.content.trim().isEmpty) continue;
+        activity.add(item);
+      }
+    }
+
+    addCommentLike(info['comments']);
+    addCommentLike(info['communications']);
+
+    final versions = info['versions'];
+    if (versions is List) {
+      for (final row in versions.whereType<Map>()) {
+        final map = Map<String, dynamic>.from(row);
+        activity.add(
+          _approvalVersionHistoryFromJson(
+            map,
+            fallbackDoctype: doctype,
+            fallbackName: name,
+          ),
+        );
+      }
+    }
+
+    final byId = <String, SalesOrderApprovalHistory>{};
+    for (final row in activity) {
+      final key = row.id.trim().isEmpty
+          ? '${row.doctype}|${row.salesOrder}|${row.content}|${row.createdAt}'
+          : row.id;
+      byId[key] = row;
+    }
+    return byId.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   Future<Map<String, dynamic>> fetchSalesOrderApprovalDetail(String name) {
@@ -444,7 +546,9 @@ class ApprovalService {
     );
   }
 
-  Future<List<ErpApprovalTodo>> _fetchApprovalTodosFromErp() async {
+  Future<List<ErpApprovalTodo>> _fetchApprovalTodosFromErp({
+    void Function(List<ErpApprovalTodo> rows)? onProgress,
+  }) async {
     await frappe.ensureLoggedIn();
     const configs = [
       (
@@ -525,65 +629,70 @@ class ApprovalService {
       ),
     ];
 
-    final todos = <ErpApprovalTodo>[];
+    final todosByKey = <String, ErpApprovalTodo>{};
     final totalWatch = Stopwatch()..start();
     final workflowStateDocStatusFuture = _workflowStateDocStatusMap();
-    final listed = await Future.wait(
-      configs.map((config) async {
-        final rows = await _fetchInboxRows(
-          doctype: config.doctype,
-          fields: config.fields,
-        );
-        return (config: config, rows: rows);
-      }),
-    );
-    final workflowStateDocStatus = await workflowStateDocStatusFuture;
-    await Future.wait(
-      listed.map((entry) async {
-        final rows = entry.rows
-            .where(
-              (row) => isApprovalInboxCandidateRow(
-                row,
-                workflowStateDocStatus: workflowStateDocStatus,
-              ),
-            )
-            .toList(growable: false);
-        if (rows.isEmpty) return;
 
-        final transitionWatch = Stopwatch()..start();
-        final actionsByName = await _fetchWorkflowActionsForRows(
-          doctype: entry.config.doctype,
-          rows: rows,
-          workflowStateDocStatus: workflowStateDocStatus,
-        );
-        FrappeService.logTiming(
-          'Todo transitions ${entry.config.doctype} candidates=${rows.length}',
-          transitionWatch.elapsedMilliseconds,
-        );
-        for (final row in rows) {
-          final name = row['name']?.toString() ?? '';
-          if (name.isEmpty) continue;
-          final actions = actionsByName[name] ?? const <String>[];
-          if (!isOpenWorkflowInbox(
-            docStatus: NumParse.asInt(row['docstatus']),
-            workflowState: row['workflow_state']?.toString() ?? '',
-            actions: actions,
-            workflowStateDocStatus: workflowStateDocStatus,
-          )) {
-            continue;
-          }
-          todos.add(
-            ErpApprovalTodo.fromJson(
-              entry.config.doctype,
+    Future<void> processConfig(
+      ({String doctype, List<String> fields}) config,
+    ) async {
+      final rows = await _fetchInboxRows(
+        doctype: config.doctype,
+        fields: config.fields,
+      );
+      final workflowStateDocStatus = await workflowStateDocStatusFuture;
+      final candidates = rows
+          .where(
+            (row) => isApprovalInboxCandidateRow(
               row,
-              actions: actions,
+              workflowStateDocStatus: workflowStateDocStatus,
             ),
-          );
-        }
-      }),
-    );
+          )
+          .toList(growable: false);
+      if (candidates.isEmpty) return;
 
-    todos.sort((a, b) => b.date.compareTo(a.date));
+      final transitionWatch = Stopwatch()..start();
+      final actionsByName = await _fetchWorkflowActionsForRows(
+        doctype: config.doctype,
+        rows: candidates,
+        workflowStateDocStatus: workflowStateDocStatus,
+      );
+      FrappeService.logTiming(
+        'Todo transitions ${config.doctype} candidates=${candidates.length}',
+        transitionWatch.elapsedMilliseconds,
+      );
+
+      var added = false;
+      for (final row in candidates) {
+        final name = row['name']?.toString() ?? '';
+        if (name.isEmpty) continue;
+        final actions = actionsByName[name] ?? const <String>[];
+        if (!isOpenWorkflowInbox(
+          docStatus: NumParse.asInt(row['docstatus']),
+          workflowState: row['workflow_state']?.toString() ?? '',
+          actions: actions,
+          workflowStateDocStatus: workflowStateDocStatus,
+        )) {
+          continue;
+        }
+        todosByKey['${config.doctype}|$name'] = ErpApprovalTodo.fromJson(
+          config.doctype,
+          row,
+          actions: actions,
+        );
+        added = true;
+      }
+      if (added) {
+        final snapshot = todosByKey.values.toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+        onProgress?.call(snapshot);
+      }
+    }
+
+    await Future.wait(configs.map(processConfig));
+
+    final todos = todosByKey.values.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
     FrappeService.logTiming(
       'fetchApprovalTodos total items=${todos.length}',
       totalWatch.elapsedMilliseconds,
@@ -1010,6 +1119,88 @@ class ApprovalService {
       docStatus: _asInt(json['docstatus']),
       actions: actions,
     );
+  }
+
+  SalesOrderApprovalHistory _commentHistoryFromJson(
+    Map<String, dynamic> row, {
+    required String fallbackDoctype,
+    required String fallbackName,
+  }) {
+    final commentType = row['comment_type']?.toString().trim() ?? '';
+    var content = row['content']?.toString() ?? '';
+    if (content.trim().isEmpty) {
+      final type = commentType.toLowerCase();
+      if (type == 'created') {
+        content = 'created this';
+      } else if (type == 'updated' || type == 'edit' || type == 'edited') {
+        content = 'last edited this';
+      } else if (type == 'workflow') {
+        content = 'workflow';
+      } else {
+        content = commentType;
+      }
+    }
+    return SalesOrderApprovalHistory(
+      id: row['name']?.toString() ?? '',
+      doctype: row['reference_doctype']?.toString() ?? fallbackDoctype,
+      salesOrder: row['reference_name']?.toString() ?? fallbackName,
+      content: content,
+      actor:
+          row['comment_by']?.toString() ??
+          row['sender_full_name']?.toString() ??
+          row['owner']?.toString() ??
+          '',
+      createdAt: row['creation']?.toString() ?? '',
+    );
+  }
+
+  List<SalesOrderApprovalHistory> _approvalDocumentAuditHistory(
+    Map<String, dynamic> document, {
+    required String doctype,
+    required String name,
+    required List<SalesOrderApprovalHistory> existing,
+  }) {
+    final rows = <SalesOrderApprovalHistory>[];
+    final hasCreated = existing.any(
+      (row) => row.content.toLowerCase().contains('created this'),
+    );
+    final owner = document['owner']?.toString().trim() ?? '';
+    final creation = document['creation']?.toString().trim() ?? '';
+    if (!hasCreated && (owner.isNotEmpty || creation.isNotEmpty)) {
+      rows.add(
+        SalesOrderApprovalHistory(
+          id: '$doctype::$name::created',
+          doctype: doctype,
+          salesOrder: name,
+          content: 'created this',
+          actor: owner,
+          createdAt: creation,
+        ),
+      );
+    }
+
+    final hasEdited = existing.any((row) {
+      final content = row.content.toLowerCase();
+      return content.contains('last edited this') ||
+          content.contains('changed ');
+    });
+    final modifiedBy = (document['modified_by'] ?? document['owner'])
+        .toString()
+        .trim();
+    final modified = document['modified']?.toString().trim() ?? '';
+    if (!hasEdited && (modifiedBy.isNotEmpty || modified.isNotEmpty)) {
+      rows.add(
+        SalesOrderApprovalHistory(
+          id: '$doctype::$name::modified',
+          doctype: doctype,
+          salesOrder: name,
+          content: 'last edited this',
+          actor: modifiedBy,
+          createdAt: modified,
+        ),
+      );
+    }
+    return rows;
   }
 
   SalesOrderApprovalHistory _approvalVersionHistoryFromJson(
