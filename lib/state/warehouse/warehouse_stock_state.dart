@@ -205,17 +205,193 @@ class WarehouseStockState extends AppStateProxyNotifier {
     });
   }
 
+  Future<void> ensureWarehousesLoaded({bool forceRefresh = false}) async {
+    _adoptAppStateWarehousesIfNeeded();
+    if (!forceRefresh && _warehouses.isNotEmpty) {
+      notifyListeners();
+      return;
+    }
+    await refreshWarehouses(forceRefresh: forceRefresh || _warehouses.isEmpty);
+    _adoptAppStateWarehousesIfNeeded();
+    notifyListeners();
+  }
+
+  Future<List<WarehouseInfo>> fetchFreshWarehouses() async {
+    if (appState.isSampleMode) {
+      _warehouses = appState.warehouses;
+      notifyListeners();
+      return List<WarehouseInfo>.from(_warehouses);
+    }
+
+    await appState.frappeService.ensureLoggedIn();
+    Future<List<Map<String, dynamic>>> fetch({
+      List<String>? fields,
+      List<List<dynamic>>? filters,
+      String? orderBy,
+    }) {
+      return appState.frappeService.fetchResource(
+        'Warehouse',
+        fields:
+            fields ??
+            const [
+              'name',
+              'warehouse_name',
+              'company',
+              'is_group',
+              'disabled',
+            ],
+        filters: filters,
+        orderBy: orderBy ?? 'modified desc',
+        limit: 500,
+      );
+    }
+
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await fetch(
+        filters: const [
+          ['is_group', '=', 0],
+        ],
+      );
+    } catch (_) {
+      try {
+        rows = await fetch(
+          fields: const ['name', 'warehouse_name', 'company'],
+          orderBy: 'name asc',
+        );
+      } catch (_) {
+        rows = await fetch(
+          fields: const ['name'],
+          orderBy: 'name asc',
+        );
+      }
+    }
+
+    _warehouses = rows
+        .map(WarehouseInfo.fromJson)
+        .where((row) => row.name.isNotEmpty && !row.isGroup)
+        .toList();
+    notifyListeners();
+    return List<WarehouseInfo>.from(_warehouses);
+  }
+
+  Future<List<WarehouseInfo>> searchWarehouses(
+    String query, {
+    String? company,
+  }) async {
+    if (appState.isSampleMode) {
+      return _filterLocalWarehouses(query, company: company);
+    }
+
+    await appState.frappeService.ensureLoggedIn();
+    final q = query.trim();
+
+    Future<List<Map<String, dynamic>>> fetch({
+      List<List<dynamic>>? filters,
+      String? orderBy,
+    }) {
+      return appState.frappeService.fetchResource(
+        'Warehouse',
+        fields: const ['name', 'warehouse_name', 'company', 'is_group'],
+        filters: filters,
+        orderBy: orderBy ?? (q.isEmpty ? 'modified desc' : 'name asc'),
+        limit: 80,
+      );
+    }
+
+    List<Map<String, dynamic>> rows = const [];
+    try {
+      final filters = <List<dynamic>>[
+        ['is_group', '=', 0],
+        if (q.isNotEmpty) ['name', 'like', '%$q%'],
+      ];
+      rows = await fetch(filters: filters);
+      if (rows.isEmpty && q.isNotEmpty) {
+        rows = await fetch(
+          filters: [
+            ['is_group', '=', 0],
+            ['warehouse_name', 'like', '%$q%'],
+          ],
+        );
+      }
+      if (rows.isEmpty && q.isNotEmpty) {
+        rows = await fetch(
+          filters: [
+            ['name', 'like', '%$q%'],
+          ],
+        );
+      }
+    } catch (_) {
+      rows = const [];
+    }
+
+    var found = rows
+        .map(WarehouseInfo.fromJson)
+        .where((row) => row.name.isNotEmpty && !row.isGroup)
+        .toList();
+    final selectedCompany = company?.trim() ?? '';
+    if (selectedCompany.isNotEmpty &&
+        found.any((row) => row.company == selectedCompany)) {
+      found = found
+          .where(
+            (row) =>
+                row.company.isEmpty || row.company == selectedCompany,
+          )
+          .toList();
+    }
+    if (found.isNotEmpty) {
+      final byName = {for (final row in _warehouses) row.name: row};
+      for (final row in found) {
+        byName[row.name] = row;
+      }
+      _warehouses = byName.values.toList();
+      notifyListeners();
+    }
+    return found;
+  }
+
+  List<WarehouseInfo> _filterLocalWarehouses(
+    String query, {
+    String? company,
+  }) {
+    final q = query.trim().toLowerCase();
+    final selectedCompany = company?.trim() ?? '';
+    return _warehouses.where((row) {
+      if (row.isGroup || row.isDisabled == true) return false;
+      if (selectedCompany.isNotEmpty &&
+          row.company.isNotEmpty &&
+          row.company != selectedCompany) {
+        return false;
+      }
+      if (q.isEmpty) return true;
+      return row.name.toLowerCase().contains(q) ||
+          row.displayName.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  void _adoptAppStateWarehousesIfNeeded() {
+    if (_warehouses.isNotEmpty) return;
+    final fallback = appState.warehouses
+        .where((row) => row.name.isNotEmpty && !row.isGroup)
+        .toList();
+    if (fallback.isEmpty) return;
+    _warehouses = fallback;
+  }
+
   Future<void> invalidateAndRefreshMasters() async {
     try {
       await LocalAppDatabase.instance.deleteByPrefix(_warehouseCachePrefix);
       await LocalAppDatabase.instance.deleteByPrefix(_itemGroupCachePrefix);
     } catch (_) {}
     _resetLocalStockData();
+    _adoptAppStateWarehousesIfNeeded();
     notifyListeners();
     await Future.wait([
       refreshWarehouses(forceRefresh: true),
       refreshItemGroups(forceRefresh: true),
     ]);
+    _adoptAppStateWarehousesIfNeeded();
+    notifyListeners();
   }
 
   Future<void> _refreshWarehouses({bool forceRefresh = false}) async {
@@ -228,12 +404,12 @@ class WarehouseStockState extends AppStateProxyNotifier {
     final cacheKey = _cacheKey(_warehouseCachePrefix);
     if (!forceRefresh && _warehouses.isEmpty) {
       final cachedRows = await _readCachedRows(cacheKey);
-      if (cachedRows != null) {
+      if (cachedRows != null && cachedRows.isNotEmpty) {
         _warehouses = cachedRows
             .map(WarehouseInfo.fromJson)
             .where((row) => row.name.isNotEmpty && !row.isGroup)
             .toList();
-        notifyListeners();
+        if (_warehouses.isNotEmpty) notifyListeners();
       }
     }
 
@@ -284,7 +460,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
         _warehouses.map(_warehouseToJson).toList(),
       );
     } catch (_) {
-      if (_warehouses.isEmpty) _warehouses = appState.warehouses;
+      _adoptAppStateWarehousesIfNeeded();
     } finally {
       notifyListeners();
     }

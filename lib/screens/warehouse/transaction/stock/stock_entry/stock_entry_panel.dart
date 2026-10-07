@@ -75,14 +75,19 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
 
   Future<void> _bootstrap() async {
     final state = context.read<WarehouseStockState>();
-    if (state.warehouses.isEmpty) {
-      await state.refreshWarehouses();
-    }
+    await state.ensureWarehousesLoaded(forceRefresh: state.warehouses.isEmpty);
     if (!mounted) return;
     _company ??= state.preferredCompany(
       state.stockCompanies.map((entry) => entry.key),
     );
     await _load(includePermissions: true);
+  }
+
+  Future<void> _refreshMastersAndList() async {
+    final state = context.read<WarehouseStockState>();
+    await state.fetchFreshWarehouses();
+    if (!mounted) return;
+    await _load();
   }
 
   Future<void> _load({bool includePermissions = false}) async {
@@ -133,9 +138,7 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
     if (state.stockEntryTypes.isEmpty) {
       await state.fetchStockEntryTypes();
     }
-    if (state.warehouses.isEmpty) {
-      await state.refreshWarehouses();
-    }
+    await state.ensureWarehousesLoaded(forceRefresh: state.warehouses.isEmpty);
     if (!mounted) return;
     final result = await showModalBottomSheet<_StockEntryListFilters>(
       context: context,
@@ -366,7 +369,7 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
             )
           : null,
       body: RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: _refreshMastersAndList,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: warehousePagePaddingOf(context),

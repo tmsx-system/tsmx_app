@@ -65,7 +65,12 @@ class _CreateStockReconciliationScreenState
       _error = null;
     });
     try {
-      if (state.warehouses.isEmpty) await state.refreshWarehouses();
+      await state.ensureWarehousesLoaded(
+        forceRefresh: state.warehouses.isEmpty,
+      );
+      if (state.warehouses.isEmpty) {
+        await state.ensureWarehousesLoaded(forceRefresh: true);
+      }
       final warehouses =
           state.warehouses
               .where((row) => !row.isGroup && row.isDisabled != true)

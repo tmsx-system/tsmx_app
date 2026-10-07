@@ -93,17 +93,19 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
       _error = null;
     });
     try {
-      if (state.warehouses.isEmpty) await state.refreshWarehouses();
-      final warehouses =
-          state.warehouses
-              .where((row) => !row.isGroup && row.isDisabled != true)
-              .toList()
-            ..sort((a, b) => a.name.compareTo(b.name));
-      final companies = state.stockCompanies.map((entry) => entry.key);
+      var warehouses = await state.fetchFreshWarehouses();
+      warehouses = warehouses
+          .where((row) => !row.isGroup && row.isDisabled != true)
+          .toList();
+      if (warehouses.isEmpty) {
+        throw Exception(
+          'Gudang tidak terbaca dari ERP. Buka ulang form Create.',
+        );
+      }
       if (_isEdit) {
         await _applyExisting(state);
       }
-      _company ??= state.preferredCompany(companies);
+      _company = _resolveCompany(state, warehouses);
       bool matchesCompany(WarehouseInfo row) =>
           (_company ?? '').isEmpty || row.company == _company;
       if (!warehouses.any(
@@ -301,18 +303,60 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   }
 
   List<String> get _companies {
-    return context
+    final fromStock = context
         .read<WarehouseStockState>()
         .stockCompanies
         .map((entry) => entry.key)
+        .where((company) => company.trim().isNotEmpty)
         .toList();
+    if (fromStock.isNotEmpty) return fromStock;
+    final fromWarehouses = <String>{};
+    for (final warehouse in _warehouses) {
+      if (warehouse.company.trim().isNotEmpty) {
+        fromWarehouses.add(warehouse.company);
+      }
+    }
+    return fromWarehouses.toList()..sort();
   }
 
   List<WarehouseInfo> get _companyWarehouses {
     final company = _company?.trim() ?? '';
-    return _warehouses
-        .where((row) => company.isEmpty || row.company == company)
+    final filtered = _warehouses
+        .where(
+          (row) =>
+              company.isEmpty ||
+              row.company.isEmpty ||
+              row.company == company,
+        )
         .toList();
+    if (filtered.isNotEmpty) return filtered;
+    return _warehouses;
+  }
+
+  String? _resolveCompany(
+    WarehouseStockState state,
+    List<WarehouseInfo> warehouses,
+  ) {
+    bool hasWarehouse(String? company) {
+      final value = company?.trim() ?? '';
+      if (value.isEmpty) return warehouses.isNotEmpty;
+      return warehouses.any((row) => row.company == value);
+    }
+
+    final current = _company?.trim() ?? '';
+    if (current.isNotEmpty && hasWarehouse(current)) return current;
+
+    final preferred = state.preferredCompany(
+      warehouses
+          .map((row) => row.company)
+          .where((company) => company.trim().isNotEmpty),
+    );
+    if (preferred != null && hasWarehouse(preferred)) return preferred;
+
+    for (final warehouse in warehouses) {
+      if (warehouse.company.trim().isNotEmpty) return warehouse.company;
+    }
+    return current.isEmpty ? null : current;
   }
 
   void _addRow() {
@@ -403,9 +447,51 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
     }
   }
 
+  void _applyWarehouseCompany(String? warehouseName) {
+    final name = warehouseName?.trim() ?? '';
+    if (name.isEmpty) return;
+    for (final warehouse in _warehouses) {
+      if (warehouse.name != name) continue;
+      if (warehouse.company.trim().isEmpty) return;
+      _company = warehouse.company;
+      return;
+    }
+  }
+
+  String _warehouseOptionLabel(WarehouseInfo warehouse) {
+    final display = warehouse.displayName.trim();
+    final name = warehouse.name.trim();
+    if (display.isEmpty || display == name) return name;
+    return '$display · $name';
+  }
+
+  Future<List<ErpItemOption>> _searchWarehouses(String query) async {
+    final state = context.read<WarehouseStockState>();
+    final rows = await state.searchWarehouses(query);
+    if (!mounted) return const [];
+    if (rows.isNotEmpty) {
+      setState(() {
+        final byName = {for (final warehouse in _warehouses) warehouse.name: warehouse};
+        for (final warehouse in rows) {
+          byName[warehouse.name] = warehouse;
+        }
+        _warehouses = byName.values.toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+      });
+    }
+    return [
+      for (final warehouse in rows)
+        ErpItemOption(
+          id: warehouse.name,
+          label: _warehouseOptionLabel(warehouse),
+        ),
+    ];
+  }
+
   void _setDefaultSource(String? warehouse) {
     setState(() {
       _sourceWarehouse = warehouse;
+      _applyWarehouseCompany(warehouse);
       for (final row in _rows) {
         row.sourceWarehouse = warehouse;
       }
@@ -416,6 +502,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   void _setDefaultTarget(String? warehouse) {
     setState(() {
       _targetWarehouse = warehouse;
+      _applyWarehouseCompany(warehouse);
       for (final row in _rows) {
         row.targetWarehouse = warehouse;
       }
@@ -780,9 +867,10 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                   for (final warehouse in warehouses)
                                     ErpItemOption(
                                       id: warehouse.name,
-                                      label: warehouse.displayName,
+                                      label: _warehouseOptionLabel(warehouse),
                                     ),
                                 ],
+                                onSearch: _searchWarehouses,
                                 onSelected: _setDefaultSource,
                               ),
                             ],
@@ -806,9 +894,10 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                   for (final warehouse in warehouses)
                                     ErpItemOption(
                                       id: warehouse.name,
-                                      label: warehouse.displayName,
+                                      label: _warehouseOptionLabel(warehouse),
                                     ),
                                 ],
+                                onSearch: _searchWarehouses,
                                 onSelected: _setDefaultTarget,
                               ),
                             ],

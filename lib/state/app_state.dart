@@ -861,6 +861,8 @@ class AppState with ChangeNotifier {
   static const int _defaultFetchRowLimit = 500;
   static const int _documentPageSize = 50;
   static const String _prefsFrappeConfigKey = 'frappe_config';
+  static const String _prefsSkipAutoLoginKey = 'skip_auto_login';
+  static const String _prefsRememberDeviceKey = 'remember_device';
   static const String _prefsFrappeSiteHistoryKey = 'frappe_site_history';
   static const String _prefsSummaryCacheKey = 'erp_summary_cache';
   static const String _sellingTrendCachePrefix = 'selling_trend';
@@ -1002,6 +1004,10 @@ class AppState with ChangeNotifier {
       );
       _selectedSiteCode = (cfg?['siteCode'] ?? '').trim().toUpperCase();
     }
+    try {
+      final sp = await SharedPreferences.getInstance();
+      _rememberDevice = sp.getBool(_prefsRememberDeviceKey) ?? true;
+    } catch (_) {}
     if (cfg == null) return;
 
     if (cfg['username'] != null) {
@@ -1216,6 +1222,9 @@ class AppState with ChangeNotifier {
     if (cfg == null || !cfg.containsKey('username') || password.isEmpty) {
       return false;
     }
+    if (await _shouldSkipAutoLogin()) {
+      return false;
+    }
 
     try {
       if (_frappeService.baseUrl.trim().isEmpty) return false;
@@ -1223,13 +1232,14 @@ class AppState with ChangeNotifier {
       await _frappeService.login(cfg['username']!, password);
       _isAuthenticated = true;
       _currentUser = cfg['username'];
+      await _setSkipAutoLogin(false);
       await syncCurrentUserRoleFromFrappe();
       _startNotificationPolling();
       unawaited(prefetchInitialData());
       notifyListeners();
       return true;
     } catch (_) {
-      await clearSessionConfig();
+      await _setSkipAutoLogin(true);
       _isAuthenticated = false;
       _currentUser = null;
       _userRole = 'Unassigned';
@@ -1237,6 +1247,26 @@ class AppState with ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<bool> _shouldSkipAutoLogin() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      return sp.getBool(_prefsSkipAutoLoginKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _setSkipAutoLogin(bool value) async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setBool(_prefsSkipAutoLoginKey, value);
+    } catch (_) {}
+  }
+
+  Future<Map<String, String>?> loadSavedLoginCredentials() {
+    return _loadFrappeConfig();
   }
 
   Future<void> prefetchInitialData() async {
@@ -1324,6 +1354,10 @@ class AppState with ChangeNotifier {
             'siteName': cfg['siteName']!,
           if (cfg['siteCode']?.trim().isNotEmpty == true)
             'siteCode': cfg['siteCode']!,
+          if (cfg['username']?.trim().isNotEmpty == true)
+            'username': cfg['username']!,
+          if (_rememberDevice && (cfg['password'] ?? '').isNotEmpty)
+            'password': cfg['password']!,
         };
         if (next.isEmpty) {
           await sp.remove(_prefsFrappeConfigKey);
@@ -1332,6 +1366,7 @@ class AppState with ChangeNotifier {
         }
       }
       await sp.remove(_prefsUserRoleKey);
+      await sp.setBool(_prefsSkipAutoLoginKey, true);
     } catch (_) {}
     _frappeService.username = null;
     _frappeService.password = null;
@@ -1389,6 +1424,7 @@ class AppState with ChangeNotifier {
     try {
       await fetchSalesCustomers(forceRefresh: true);
     } catch (_) {}
+    notifyListeners();
   }
 
   void _resetRuntimeDataForTenantSwitch() {
@@ -1522,7 +1558,15 @@ class AppState with ChangeNotifier {
 
   void setRememberDevice(bool value) {
     _rememberDevice = value;
+    unawaited(_persistRememberDevice());
     notifyListeners();
+  }
+
+  Future<void> _persistRememberDevice() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setBool(_prefsRememberDeviceKey, _rememberDevice);
+    } catch (_) {}
   }
 
   Future<bool> login(
@@ -1550,6 +1594,7 @@ class AppState with ChangeNotifier {
       await _frappeService.login(username, password);
       _isAuthenticated = true;
       _currentUser = username;
+      await _setSkipAutoLogin(false);
       await syncCurrentUserRoleFromFrappe();
       _startNotificationPolling();
       unawaited(prefetchInitialData());
@@ -11414,7 +11459,10 @@ class AppState with ChangeNotifier {
   }) async {
     final sp = await SharedPreferences.getInstance();
     final shouldSavePassword =
-        savePassword || _rememberDevice || password != null;
+        _rememberDevice &&
+        savePassword &&
+        password != null &&
+        password.isNotEmpty;
     final resolvedBaseUrl = _normalizeBaseUrl(
       baseUrl?.trim().isNotEmpty == true ? baseUrl! : _frappeService.baseUrl,
     );

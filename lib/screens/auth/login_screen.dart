@@ -32,10 +32,23 @@ class _LoginScreenState extends State<LoginScreen> {
       if (authState.selectedSiteCode.trim().isNotEmpty) {
         _siteController.text = authState.selectedSiteCode;
       }
+      final saved = await authState.loadSavedLoginCredentials();
       final history = (await authState.loadFrappeSiteHistory())
           .where((site) => (site['siteCode'] ?? '').trim().isNotEmpty)
           .toList();
       if (!mounted) return;
+      final savedSite = (saved?['siteCode'] ?? '').trim();
+      final savedUser = (saved?['username'] ?? '').trim();
+      final savedPassword = saved?['password'] ?? '';
+      if (savedSite.isNotEmpty && _siteController.text.trim().isEmpty) {
+        _siteController.text = savedSite.toUpperCase();
+      }
+      if (savedUser.isNotEmpty) {
+        _usernameController.text = savedUser;
+      }
+      if (savedPassword.isNotEmpty) {
+        _passwordController.text = savedPassword;
+      }
       setState(() => _siteHistory = history);
     });
   }
@@ -84,6 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await authState.saveFrappeConfig(
         username: username,
         password: password,
+        savePassword: authState.rememberDevice,
         baseUrl: authState.selectedSiteBaseUrl,
         siteCode: authState.selectedSiteCode,
         siteName: authState.selectedSiteName,
@@ -371,12 +385,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(width: 4),
-              const Text(
-                'Ingat perangkat ini',
-                style: TextStyle(
-                  color: AppColors.navy,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
+              const Expanded(
+                child: Text(
+                  'Simpan akun login',
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],

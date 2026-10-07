@@ -45,6 +45,10 @@ class AuthState extends AppStateProxyNotifier {
     return appState.login(username, password, baseUrl: baseUrl);
   }
 
+  Future<Map<String, String>?> loadSavedLoginCredentials() {
+    return appState.loadSavedLoginCredentials();
+  }
+
   Future<void> saveFrappeConfig({
     required String username,
     String? password,
