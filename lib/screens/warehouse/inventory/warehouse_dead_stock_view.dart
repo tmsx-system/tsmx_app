@@ -6,7 +6,7 @@ import '../../../state/warehouse/warehouse_dead_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../shared/warehouse_widgets.dart';
 
 class WarehouseDeadStockView extends StatefulWidget {

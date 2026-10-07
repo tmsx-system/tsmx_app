@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/bluetooth_printer_service.dart';
 import '../../theme/app_colors.dart';
-import '../../widgets/erp/erp_error_dialog.dart';
+import '../../utils/erp_error_message.dart';
 
 class BluetoothPrinterScreen extends StatefulWidget {
   final bool popOnSelect;

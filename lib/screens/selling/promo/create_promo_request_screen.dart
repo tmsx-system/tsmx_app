@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/promo_request.dart';
 import '../../../state/selling/promo_state.dart';
 import '../../../theme/app_colors.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/sales_ui.dart';
 

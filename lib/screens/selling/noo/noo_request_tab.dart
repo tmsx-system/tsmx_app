@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../state/selling/noo_state.dart';
 import '../../../theme/app_colors.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../shared/sales_ui.dart';
 import 'create_noo_request_screen.dart';
 

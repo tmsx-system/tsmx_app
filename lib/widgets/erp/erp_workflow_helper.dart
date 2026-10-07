@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_doc_utils.dart';
 import 'erp_detail_sheet.dart';
-import 'erp_error_dialog.dart';
+import '../../utils/erp_error_message.dart';
 
 Future<bool> runErpWorkflowAction(
   BuildContext context, {

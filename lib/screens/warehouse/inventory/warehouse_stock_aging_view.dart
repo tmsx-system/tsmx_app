@@ -6,7 +6,7 @@ import '../../../state/warehouse/warehouse_aging_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../shared/warehouse_widgets.dart';
 
 enum _AgingBucket { all, fresh, medium, old, veryOld }

@@ -11458,11 +11458,10 @@ class AppState with ChangeNotifier {
     String? siteName,
   }) async {
     final sp = await SharedPreferences.getInstance();
+    final passwordToSave =
+        (password != null && password.isNotEmpty) ? password : null;
     final shouldSavePassword =
-        _rememberDevice &&
-        savePassword &&
-        password != null &&
-        password.isNotEmpty;
+        _rememberDevice && savePassword && passwordToSave != null;
     final resolvedBaseUrl = _normalizeBaseUrl(
       baseUrl?.trim().isNotEmpty == true ? baseUrl! : _frappeService.baseUrl,
     );
@@ -11480,7 +11479,7 @@ class AppState with ChangeNotifier {
             ? siteName!.trim()
             : _selectedSiteName,
       ),
-      if (shouldSavePassword && password != null) 'password': password,
+      if (shouldSavePassword) 'password': passwordToSave,
     };
     await sp.setString(_prefsFrappeConfigKey, jsonEncode(cfg));
     await _saveFrappeSiteHistory(
@@ -11493,8 +11492,8 @@ class AppState with ChangeNotifier {
     _frappeService.username = username;
     _selectedSiteCode = cfg['siteCode'] ?? _selectedSiteCode;
     _selectedSiteName = cfg['siteName']!;
-    if (shouldSavePassword && password != null) {
-      _frappeService.password = password;
+    if (shouldSavePassword) {
+      _frappeService.password = passwordToSave;
     }
   }
 

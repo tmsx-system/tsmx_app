@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../models/noo_request.dart';
 import '../../../state/selling/noo_state.dart';
 import '../../../theme/app_colors.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../shared/sales_ui.dart';
 
 class CreateNooRequestScreen extends StatefulWidget {

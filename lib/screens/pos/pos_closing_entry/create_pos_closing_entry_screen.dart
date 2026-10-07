@@ -6,7 +6,7 @@ import '../../../models/pos_opening_entry.dart';
 import '../../../state/pos/pos_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/pos_ui.dart';
 

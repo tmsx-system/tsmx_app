@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../state/pos/pos_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_format.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/pos_ui.dart';
@@ -1092,12 +1092,31 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       setState(() => _error = 'Minimal satu pembayaran.');
       return;
     }
+    if (_paidAmount + 0.009 < _grandTotal) {
+      setState(
+        () => _error =
+            'Jumlah pembayaran masih kurang dari Grand Total. '
+            'Paid: Rp ${formatErpCurrency(_paidAmount)}, '
+            'Grand Total: Rp ${formatErpCurrency(_grandTotal)}.',
+      );
+      return;
+    }
+    final changeAccount = (_accountForChangeAmount ?? '').trim();
+    if (changeAccount.isEmpty) {
+      setState(() {
+        _error = 'Account for Change Amount wajib diisi.';
+        _changeAccountMissing = true;
+      });
+      _scrollToChangeAccount();
+      return;
+    }
 
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
+      if (!mounted) return;
       final state = context.read<PosState>();
       final postingDate = DateFormat('yyyy-MM-dd').format(_postingDate);
       final payload = {
@@ -1115,7 +1134,7 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           'cost_center': _costCenter!.trim(),
         if (_sellingPriceList != null && _sellingPriceList!.isNotEmpty)
           'selling_price_list': _sellingPriceList,
-        'account_for_change_amount': _accountForChangeAmount!.trim(),
+        'account_for_change_amount': changeAccount,
         'discount_amount': _discount,
         'items': items,
         'payments': payments,
@@ -1135,6 +1154,9 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
       String savedName;
       if (_isEditing || (_savedName?.isNotEmpty == true)) {
         savedName = (_documentName ?? '').trim();
+        if (savedName.isEmpty) {
+          throw Exception('Nomor POS Invoice tidak ditemukan untuk di-update.');
+        }
         await state.updateInvoice(savedName, payload);
       } else {
         final created = await state.createInvoice(payload);
@@ -1154,7 +1176,13 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
           });
           _scrollToChangeAccount();
         } else {
-          setState(() => _error = captureErpError(context, error));
+          setState(
+            () => _error = captureErpError(
+              context,
+              error,
+              action: 'menyimpan POS Invoice',
+            ),
+          );
         }
       }
     } finally {

@@ -6,7 +6,7 @@ import '../../../models/purchase_order.dart';
 import '../../../models/warehouse_info.dart';
 import '../../../state/purchasing/purchase_order_state.dart';
 import '../../../theme/app_colors.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 import '../shared/purchase_ui.dart';

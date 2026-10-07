@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../state/pos/pos_state.dart';
 import '../../../theme/app_colors.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../shared/pos_ui.dart';
 

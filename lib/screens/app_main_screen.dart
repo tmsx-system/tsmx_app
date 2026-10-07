@@ -19,7 +19,7 @@ import '../theme/app_colors.dart';
 import '../utils/erp_doc_utils.dart';
 import '../utils/erp_format.dart';
 import '../widgets/erp/clear_app_cache_button.dart';
-import '../widgets/erp/erp_error_dialog.dart';
+import '../utils/erp_error_message.dart';
 import '../widgets/responsive/responsive_layout.dart';
 import '../config/mobile_role_registry.dart';
 import 'auth/login_screen.dart';

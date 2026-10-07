@@ -1,4 +1,7 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+import '../theme/app_colors.dart';
+import 'app_navigator.dart';
 
 enum ErpErrorKind {
   permission,
@@ -28,7 +31,7 @@ class ErpErrorInfo {
 class ErpErrorMessage {
   ErpErrorMessage._();
 
-  static const apologyTitle = 'Mohon maaf';
+  static const apologyTitle = '';
 
   static ErpErrorInfo parse(
     Object error, {
@@ -69,8 +72,8 @@ class ErpErrorMessage {
         kind: ErpErrorKind.permission,
         title: apologyTitle,
         message: actionText.isEmpty
-            ? 'Anda belum memiliki izin untuk $target. Hubungi admin/IT jika seharusnya bisa mengaksesnya.'
-            : 'Anda belum memiliki izin untuk $actionText ($target). Hubungi admin/IT jika seharusnya bisa melakukan ini.',
+            ? 'Anda belum memiliki izin untuk $target.'
+            : 'Anda belum memiliki izin untuk $actionText ($target).',
         detail: raw,
         doctype: doctype,
       );
@@ -114,13 +117,23 @@ class ErpErrorMessage {
       );
     }
 
+    final cleaned = _stripExceptionPrefix(raw);
+    if (_isOpaqueTechnicalError(cleaned)) {
+      return ErpErrorInfo(
+        kind: ErpErrorKind.unexpected,
+        title: apologyTitle,
+        message: actionText.isEmpty
+            ? 'Terjadi kendala. Silakan coba lagi.'
+            : 'Terjadi kendala saat $actionText. Silakan coba lagi.',
+        detail: cleaned,
+        doctype: doctype,
+      );
+    }
     return ErpErrorInfo(
       kind: ErpErrorKind.unexpected,
       title: apologyTitle,
-      message: actionText.isEmpty
-          ? 'Terjadi kendala yang belum kami temukan. Silakan coba lagi. Jika berulang, hubungi tim IT.'
-          : 'Terjadi kendala saat $actionText. Silakan coba lagi. Jika berulang, hubungi tim IT.',
-      detail: _stripExceptionPrefix(raw),
+      message: cleaned,
+      detail: cleaned,
       doctype: doctype,
     );
   }
@@ -237,9 +250,24 @@ class ErpErrorMessage {
   static bool _isValidation(String lower) {
     return lower.contains('validationerror') ||
         lower.contains('mandatoryerror') ||
+        lower.contains('linkvalidationerror') ||
+        lower.contains('timestampmismatcherror') ||
+        lower.contains('cannotchangeconstanterror') ||
         (lower.contains('mandatory') && lower.contains('missing')) ||
         lower.contains('cannot be empty') ||
-        lower.contains('value missing');
+        lower.contains('value missing') ||
+        lower.contains('paid amount') ||
+        lower.contains('grand total');
+  }
+
+  static bool _isOpaqueTechnicalError(String message) {
+    final lower = message.toLowerCase();
+    if (message.trim().isEmpty) return true;
+    return lower.contains('#0 ') ||
+        lower.contains('dart:') ||
+        lower.contains('package:flutter') ||
+        lower.contains('<html') ||
+        lower.contains('<!doctype');
   }
 
   static String? _extractDoctype(String message) {
@@ -262,4 +290,34 @@ class ErpErrorMessage {
     }
     return null;
   }
+}
+
+Future<void> showErpError(
+  BuildContext? context, {
+  required Object error,
+  String? action,
+  int? statusCode,
+}) async {
+  final message = ErpErrorMessage.parse(
+    error,
+    action: action,
+    statusCode: statusCode,
+  ).message;
+  final resolved = context ?? AppNavigator.context;
+  if (resolved == null || !resolved.mounted) return;
+  final messenger = ScaffoldMessenger.maybeOf(resolved);
+  if (messenger == null) return;
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(
+    SnackBar(content: Text(message), backgroundColor: AppColors.danger),
+  );
+}
+
+String captureErpError(
+  BuildContext? context,
+  Object error, {
+  String? action,
+  bool popup = false,
+}) {
+  return ErpErrorMessage.parse(error, action: action).message;
 }

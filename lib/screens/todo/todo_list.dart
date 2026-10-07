@@ -11,7 +11,7 @@ import '../../utils/erp_doc_utils.dart';
 import '../../utils/erp_format.dart';
 import '../../utils/num_parse.dart';
 import '../../widgets/erp/erp_empty_state.dart';
-import '../../widgets/erp/erp_error_dialog.dart';
+import '../../utils/erp_error_message.dart';
 import '../../widgets/erp/erp_status_badge.dart';
 import '../../widgets/erp/erp_status_chip_bar.dart';
 import '../../widgets/erp/erp_workflow_helper.dart';

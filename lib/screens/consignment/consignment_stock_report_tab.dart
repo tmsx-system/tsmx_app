@@ -8,7 +8,7 @@ import '../../utils/date_range_presets.dart';
 import '../../utils/erp_format.dart';
 import '../../widgets/erp/erp_empty_state.dart';
 import '../../widgets/erp/erp_error_box.dart';
-import '../../widgets/erp/erp_error_dialog.dart';
+import '../../utils/erp_error_message.dart';
 
 /// Mobile view for ERPNext Query Report:
 /// [Consignment Stock by Customer](https://jakarta.willshine.id/app/query-report/Consignment%20Stock%20by%20Customer)

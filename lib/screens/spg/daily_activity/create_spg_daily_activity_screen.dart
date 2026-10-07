@@ -8,7 +8,7 @@ import '../../../models/spg_workspace.dart';
 import '../../../state/spg/spg_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_error_box.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 
 class CreateSpgDailyActivityScreen extends StatefulWidget {

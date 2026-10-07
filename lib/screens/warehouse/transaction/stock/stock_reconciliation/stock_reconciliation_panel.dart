@@ -8,7 +8,7 @@ import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
 import '../../../../../widgets/erp/erp_document_card.dart';
 import '../../../../../widgets/erp/erp_empty_state.dart';
-import '../../../../../widgets/erp/erp_error_dialog.dart';
+import '../../../../../utils/erp_error_message.dart';
 import '../../../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../shared/warehouse_widgets.dart';
 import 'create_stock_reconciliation_screen.dart';

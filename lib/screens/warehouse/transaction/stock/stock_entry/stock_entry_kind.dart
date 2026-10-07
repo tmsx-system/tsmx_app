@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../../models/stock_entry.dart';
 import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
-import '../../../../../widgets/erp/erp_error_dialog.dart';
+import '../../../../../utils/erp_error_message.dart';
 import '../../../shared/warehouse_widgets.dart';
 
 class StockEntryKind {

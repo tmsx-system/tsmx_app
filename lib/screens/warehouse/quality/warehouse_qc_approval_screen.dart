@@ -6,7 +6,7 @@ import '../../../models/quality_inspection_record.dart';
 import '../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
-import '../../../widgets/erp/erp_error_dialog.dart';
+import '../../../utils/erp_error_message.dart';
 import '../shared/warehouse_widgets.dart';
 
 class WarehouseQcApprovalScreen extends StatefulWidget {
