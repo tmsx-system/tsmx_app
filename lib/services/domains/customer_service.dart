@@ -106,148 +106,29 @@ class CustomerService {
   Future<List<SalesCustomerOption>> fetchSalesCustomers({
     String? salesPerson,
   }) async {
-    if (salesPerson?.trim().isNotEmpty == true) {
-      final fromSalesTeamRows = await _fetchCustomersBySalesTeamRows(
-        salesPerson!.trim(),
-      );
-      if (fromSalesTeamRows.isNotEmpty) return fromSalesTeamRows;
-      final scoped = await _fetchCustomersByChildTableFilter(
-        salesPerson.trim(),
-      );
-      if (scoped.isNotEmpty) return scoped;
-      return _fetchCustomersByDetailSalesTeam(salesPerson.trim());
-    }
-    return _fetchPermittedCustomers();
+    final customers = await _fetchPermittedCustomers();
+    final person = salesPerson?.trim() ?? '';
+    if (person.isEmpty) return customers;
+    return customers
+        .map(
+          (customer) => customer.copyWithSalesTeam([
+            {'sales_person': person, 'allocated_percentage': 100},
+          ]),
+        )
+        .toList();
   }
 
-  Future<List<SalesCustomerOption>> _fetchCustomersBySalesTeamRows(
-    String salesPerson,
-  ) async {
-    try {
-      final rows = await _frappe.fetchResource(
-        'Sales Team',
-        fields: const [
-          'parent',
-          'sales_person',
-          'allocated_percentage',
-          'commission_rate',
-        ],
-        filters: [
-          ['parenttype', '=', 'Customer'],
-          ['sales_person', '=', salesPerson],
-        ],
-        orderBy: 'parent asc',
-        limit: 2000,
-      );
-      final teamByCustomer = <String, List<Map<String, dynamic>>>{};
-      for (final rawRow in rows) {
-        final customer = rawRow['parent']?.toString().trim() ?? '';
-        if (customer.isEmpty) continue;
-        teamByCustomer.putIfAbsent(customer, () => []).add({
-          'sales_person': salesPerson,
-          'allocated_percentage':
-              NumParse.asDouble(rawRow['allocated_percentage']) > 0
-              ? NumParse.asDouble(rawRow['allocated_percentage'])
-              : 100,
-          if (rawRow['commission_rate'] != null)
-            'commission_rate': rawRow['commission_rate'],
-        });
-      }
-      if (teamByCustomer.isEmpty) return const [];
-
-      final customers = await _fetchPermittedCustomers(
-        customerIds: teamByCustomer.keys.toSet(),
-      );
-      return customers
-          .map(
-            (customer) => customer.copyWithSalesTeam(
-              teamByCustomer[customer.id] ?? const [],
-            ),
-          )
-          .where((customer) => customer.salesTeam.isNotEmpty)
-          .toList();
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Future<List<SalesCustomerOption>> _fetchCustomersByChildTableFilter(
-    String salesPerson,
-  ) async {
-    try {
-      final rows = await _frappe.fetchResource(
-        'Customer',
-        fields: const ['name', 'customer_name', 'primary_address'],
-        filters: [
-          ['Sales Team', 'sales_person', '=', salesPerson],
-        ],
-        orderBy: 'customer_name asc',
-        limit: 500,
-      );
-      return rows
-          .map(SalesCustomerOption.fromJson)
-          .where((customer) => customer.id.isNotEmpty)
-          .map(
-            (customer) => customer.copyWithSalesTeam([
-              {'sales_person': salesPerson, 'allocated_percentage': 100},
-            ]),
-          )
-          .toList();
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Future<List<SalesCustomerOption>> _fetchPermittedCustomers({
-    Set<String> customerIds = const {},
-  }) async {
+  Future<List<SalesCustomerOption>> _fetchPermittedCustomers() async {
     final rows = await _frappe.fetchResource(
       'Customer',
       fields: const ['name', 'customer_name', 'primary_address'],
-      filters: customerIds.isEmpty
-          ? null
-          : [
-              ['name', 'in', customerIds.toList()],
-            ],
       orderBy: 'customer_name asc',
+      limit: 500,
     );
     return rows
         .map(SalesCustomerOption.fromJson)
         .where((customer) => customer.id.isNotEmpty)
         .toList();
-  }
-
-  Future<List<SalesCustomerOption>> _fetchCustomersByDetailSalesTeam(
-    String salesPerson,
-  ) async {
-    final customers = await _fetchPermittedCustomers();
-    final scoped = <SalesCustomerOption>[];
-    for (final customer in customers) {
-      try {
-        final doc = await _frappe.fetchDocument('Customer', customer.id);
-        final salesTeam = doc['sales_team'];
-        if (salesTeam is! List) continue;
-        final rows = <Map<String, dynamic>>[];
-        for (final raw in salesTeam) {
-          if (raw is! Map) continue;
-          final row = Map<String, dynamic>.from(raw);
-          if (row['sales_person']?.toString().trim() != salesPerson) continue;
-          rows.add({
-            'sales_person': row['sales_person'],
-            'allocated_percentage':
-                NumParse.asDouble(row['allocated_percentage']) > 0
-                ? NumParse.asDouble(row['allocated_percentage'])
-                : 100,
-            if (row['commission_rate'] != null)
-              'commission_rate': row['commission_rate'],
-          });
-        }
-        if (rows.isNotEmpty) scoped.add(customer.copyWithSalesTeam(rows));
-      } catch (_) {
-        continue;
-      }
-    }
-    return scoped;
   }
 
   Future<CustomerSalesInsight> fetchSalesInsight(

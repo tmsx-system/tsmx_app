@@ -186,7 +186,6 @@ class SalesOrderState extends AppStateProxyNotifier {
     final filters = <List<dynamic>>[
       ..._sellingPeriodFilters('transaction_date'),
       ...?_statusFilters(_salesOrderStatus),
-      ...?await _salesDocumentScopeFilters(),
     ];
     final rows = await _fetchResourceWithFieldFallback(
       doctype: 'Sales Order',
@@ -261,21 +260,6 @@ class SalesOrderState extends AppStateProxyNotifier {
     if (index < 0) return;
     _salesOrders = List<SalesOrder>.from(_salesOrders)..[index] = order;
     notifyListeners();
-  }
-
-  Future<List<List<dynamic>>?> _salesDocumentScopeFilters() async {
-    if (!appState.mobileAccess.shouldScopeSalesData) return const [];
-    final salesPerson = await appState.resolveCurrentSalesIdentity();
-    final normalized = salesPerson?.trim() ?? '';
-    if (normalized.isEmpty) {
-      throw Exception(
-        appState.salesIdentityError ??
-            'Sales Person user login belum tersedia.',
-      );
-    }
-    return [
-      ['Sales Team', 'sales_person', '=', normalized],
-    ];
   }
 
   List<List<dynamic>> _sellingPeriodFilters(String dateField) {

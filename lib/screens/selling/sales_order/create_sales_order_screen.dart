@@ -2564,6 +2564,12 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         _territoryOptions = _normalizeOptions(territoryOptions);
         _paymentTermsOptions = _normalizeOptions(paymentTermsOptions);
         _salesPersonOptions = _normalizeOptions(salesPersonOptions);
+        final currentSalesPerson = appState.currentSalesPerson?.trim() ?? '';
+        if (currentSalesPerson.isNotEmpty &&
+            !_salesPersonOptions.contains(currentSalesPerson)) {
+          _salesPersonOptions = [..._salesPersonOptions, currentSalesPerson]
+            ..sort();
+        }
         _companyOptions = _normalizeOptions(companyOptions);
         _currencyOptions = _normalizeOptions(currencyOptions);
         _priceListOptions = _normalizeOptions(priceListOptions);
@@ -3052,41 +3058,39 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                         ),
                       ],
 
-                      if (!appState.mobileAccess.isSalesUser) ...[
-                        const SizedBox(height: 12),
-                        ErpItemAutocompleteField(
-                          label: 'Sales Person',
-                          selectedId:
-                              _salesPersonOptions.contains(_selectedSalesPerson)
-                              ? _selectedSalesPerson
-                              : null,
-                          decoration: InputDecoration(
-                            labelText: 'Sales Person',
-                            filled: true,
-                            fillColor: AppColors.background,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                color: AppColors.primary.withValues(alpha: 0.2),
-                              ),
+                      const SizedBox(height: 12),
+                      ErpItemAutocompleteField(
+                        label: 'Sales Person',
+                        selectedId:
+                            _salesPersonOptions.contains(_selectedSalesPerson)
+                            ? _selectedSalesPerson
+                            : null,
+                        decoration: InputDecoration(
+                          labelText: 'Sales Person',
+                          filled: true,
+                          fillColor: AppColors.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: AppColors.primary.withValues(alpha: 0.2),
                             ),
                           ),
-                          options: _salesPersonOptions
-                              .map(
-                                (salesPerson) => ErpItemOption(
-                                  id: salesPerson,
-                                  label: salesPerson,
-                                ),
-                              )
-                              .toList(),
-                          onSelected: (value) =>
-                              setState(() => _selectedSalesPerson = value),
-                          validator: (value) =>
-                              value == null || value.trim().isEmpty
-                              ? 'Sales Person wajib dipilih'
-                              : null,
                         ),
-                      ],
+                        options: _salesPersonOptions
+                            .map(
+                              (salesPerson) => ErpItemOption(
+                                id: salesPerson,
+                                label: salesPerson,
+                              ),
+                            )
+                            .toList(),
+                        onSelected: (value) =>
+                            setState(() => _selectedSalesPerson = value),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                            ? 'Sales Person wajib dipilih'
+                            : null,
+                      ),
 
                       const SizedBox(height: 12),
 

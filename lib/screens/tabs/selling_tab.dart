@@ -213,7 +213,7 @@ class SellingTabState extends State<SellingTab>
         initialSalesGroup: salesGroupFilter,
         companies: sellingState.sellingCompanies,
         salesGroups: sellingState.sellingSalesGroups,
-        lockSalesPerson: sellingState.mobileAccess.shouldScopeSalesData,
+        lockSalesPerson: false,
         loading: summaryState.isOrderSummaryLoading,
       ),
     );
@@ -281,12 +281,8 @@ class SellingTabState extends State<SellingTab>
                     selectedYear: sellingState.sellingPeriodYear,
                     selectedMonth: sellingState.sellingPeriodMonth,
                     selectedCompany: sellingState.sellingCompanyFilter,
-                    selectedSalesGroup:
-                        sellingState.mobileAccess.shouldScopeSalesData
-                        ? 'all'
-                        : salesGroupFilter,
-                    lockSalesPerson:
-                        sellingState.mobileAccess.shouldScopeSalesData,
+                    selectedSalesGroup: salesGroupFilter,
+                    lockSalesPerson: false,
                     loading: summaryState.isOrderSummaryLoading,
                     onOpenFilter: _openSellingPeriodFilter,
                   ),

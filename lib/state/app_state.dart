@@ -2047,17 +2047,13 @@ class AppState with ChangeNotifier {
     }
     if (_shouldScopeSalesData &&
         (_currentSalesPerson == null || _currentSalesPerson!.isEmpty)) {
-      await resolveCurrentSalesIdentity();
-    }
-    if (_shouldScopeSalesData &&
-        (_currentSalesPerson == null || _currentSalesPerson!.isEmpty)) {
-      throw Exception(
-        _salesIdentityError ?? 'Sales Person user login belum tersedia.',
-      );
+      try {
+        await resolveCurrentSalesIdentity();
+      } catch (_) {}
     }
 
     final cacheKey = _salesCustomersCacheKey(
-      salesPerson: _shouldScopeSalesData ? _currentSalesPerson : null,
+      salesPerson: _currentUser?.trim() ?? '',
     );
     if (!forceRefresh) {
       final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
@@ -2066,17 +2062,10 @@ class AppState with ChangeNotifier {
 
     try {
       final customers = await _customerService.fetchSalesCustomers(
-        salesPerson: _shouldScopeSalesData ? _currentSalesPerson : null,
+        salesPerson: _currentSalesPerson,
       );
-      if (!_shouldScopeSalesData || customers.isNotEmpty) {
-        await _writeSalesCustomersToDb(cacheKey, customers);
-        return customers;
-      }
-      final fallbackCustomers = await _fetchSalesCustomersFromSalesDocuments(
-        _currentSalesPerson!.trim(),
-      );
-      await _writeSalesCustomersToDb(cacheKey, fallbackCustomers);
-      return fallbackCustomers;
+      await _writeSalesCustomersToDb(cacheKey, customers);
+      return customers;
     } catch (error) {
       if (forceRefresh) {
         final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
@@ -2132,84 +2121,6 @@ class AppState with ChangeNotifier {
       user,
       salesPerson?.trim() ?? '',
     ].join('|');
-  }
-
-  Future<List<SalesCustomerOption>> _fetchSalesCustomersFromSalesDocuments(
-    String salesPerson,
-  ) async {
-    final customerRows = <String, Map<String, dynamic>>{};
-    for (final spec in const [
-      _SalesCustomerDocumentSpec(
-        doctype: 'Sales Order',
-        dateField: 'transaction_date',
-      ),
-      _SalesCustomerDocumentSpec(
-        doctype: 'Delivery Note',
-        dateField: 'posting_date',
-      ),
-      _SalesCustomerDocumentSpec(
-        doctype: 'Sales Invoice',
-        dateField: 'posting_date',
-      ),
-    ]) {
-      final rows = await _tryFetchSalesCustomerRowsFromDocumentType(
-        spec,
-        salesPerson,
-      );
-      for (final row in rows) {
-        final customer = row['customer']?.toString().trim() ?? '';
-        if (customer.isEmpty || customerRows.containsKey(customer)) continue;
-        customerRows[customer] = row;
-      }
-    }
-    final result =
-        customerRows.values
-            .map(
-              (row) => SalesCustomerOption(
-                id: row['customer']?.toString().trim() ?? '',
-                name: row['customer_name']?.toString().trim().isNotEmpty == true
-                    ? row['customer_name']!.toString()
-                    : row['customer']?.toString().trim() ?? '',
-                salesTeam: [
-                  {'sales_person': salesPerson, 'allocated_percentage': 100},
-                ],
-              ),
-            )
-            .where((customer) => customer.id.isNotEmpty)
-            .toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
-    return result;
-  }
-
-  Future<List<Map<String, dynamic>>> _tryFetchSalesCustomerRowsFromDocumentType(
-    _SalesCustomerDocumentSpec spec,
-    String salesPerson,
-  ) async {
-    try {
-      final rows = await _fetchAllResourcePages(
-        doctype: spec.doctype,
-        fields: const ['name', 'customer', 'customer_name'],
-        filters: const [
-          ['docstatus', '!=', 2],
-        ],
-        orderBy: '${spec.dateField} desc, modified desc',
-        maxRows: 80,
-      );
-      final documents = await _fetchDocumentsInBatches(
-        spec.doctype,
-        rows.map((row) => row['name']?.toString().trim() ?? ''),
-      );
-      return rows.where((row) {
-        final name = row['name']?.toString().trim() ?? '';
-        final document = documents[name];
-        if (document == null) return false;
-        return _documentChildRows(
-          document['sales_team'],
-        ).any((team) => team['sales_person']?.toString().trim() == salesPerson);
-      }).toList();
-    } catch (_) {
-      return const [];
-    }
   }
 
   Future<List<SalesInvoice>> fetchCollectionOutstandingInvoices() async {
@@ -12625,16 +12536,6 @@ class AppState with ChangeNotifier {
       rates.putIfAbsent(code, () => rate);
     }
   }
-}
-
-class _SalesCustomerDocumentSpec {
-  final String doctype;
-  final String dateField;
-
-  const _SalesCustomerDocumentSpec({
-    required this.doctype,
-    required this.dateField,
-  });
 }
 
 class _InactiveDocumentSpec {

@@ -64,7 +64,7 @@ class _ConsignmentSalesOrderTabState extends State<ConsignmentSalesOrderTab> {
         initialSalesGroup: salesGroupFilter,
         companies: sellingState.sellingCompanies,
         salesGroups: sellingState.sellingSalesGroups,
-        lockSalesPerson: sellingState.mobileAccess.shouldScopeSalesData,
+        lockSalesPerson: false,
         loading: summaryState.isOrderSummaryLoading,
       ),
     );
@@ -116,12 +116,8 @@ class _ConsignmentSalesOrderTabState extends State<ConsignmentSalesOrderTab> {
                     selectedYear: sellingState.sellingPeriodYear,
                     selectedMonth: sellingState.sellingPeriodMonth,
                     selectedCompany: sellingState.sellingCompanyFilter,
-                    selectedSalesGroup:
-                        sellingState.mobileAccess.shouldScopeSalesData
-                        ? 'all'
-                        : salesGroupFilter,
-                    lockSalesPerson:
-                        sellingState.mobileAccess.shouldScopeSalesData,
+                    selectedSalesGroup: salesGroupFilter,
+                    lockSalesPerson: false,
                     loading: summaryState.isOrderSummaryLoading,
                     onOpenFilter: _openPeriodFilter,
                   ),
