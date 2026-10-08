@@ -34,6 +34,7 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
   DeliveryNoteStatusKey? _statusFilter;
   Timer? _searchDebounce;
   int _attachmentRefreshKey = 0;
+  bool _isOpeningDetail = false;
 
   static final _chips = <ErpStatusChip<DeliveryNoteStatusKey?>>[
     const ErpStatusChip(label: 'All', value: null),
@@ -89,7 +90,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
 
   List<PurchaseReceipt> _filter(List<PurchaseReceipt> docs) {
     final q = _search.toLowerCase();
+    final seenIds = <String>{};
     return docs.where((d) {
+      if (!seenIds.add(d.id)) return false;
       final matchSearch =
           q.isEmpty ||
           d.id.toLowerCase().contains(q) ||
@@ -100,6 +103,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
   }
 
   Future<void> _openDetail(PurchaseReceipt doc) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
+    try {
     final detail = await context
         .read<PurchaseReceiptState>()
         .loadPurchaseReceiptDetail(doc.id);
@@ -107,7 +113,7 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
 
     final canSubmit = isDocDraft(detail.docStatus);
 
-    showBuyingDocumentDetailSheet(
+    await showBuyingDocumentDetailSheet(
       context: context,
       title: detail.id,
       subtitle: detail.supplier,
@@ -174,6 +180,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
         ],
       ),
     );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
+    }
   }
 
   String _receiptItemNote(PurchaseReceiptItem item) {
@@ -361,7 +370,9 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
                     statusText: d.statusText,
                     date: d.date,
                     value: d.value,
-                    onTap: () => _openDetail(d),
+                    onTap: _isOpeningDetail
+                        ? null
+                        : () => unawaited(_openDetail(d)),
                   ),
                 )
                 .toList(),

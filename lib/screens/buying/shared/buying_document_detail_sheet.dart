@@ -41,7 +41,9 @@ class BuyingDetailItem {
   });
 }
 
-void showBuyingDocumentDetailSheet({
+bool _buyingDetailSheetOpen = false;
+
+Future<void> showBuyingDocumentDetailSheet({
   required BuildContext context,
   required String title,
   required String subtitle,
@@ -51,8 +53,11 @@ void showBuyingDocumentDetailSheet({
   List<BuyingDetailInfo> infos = const [],
   List<BuyingDetailItem> items = const [],
   Widget? footer,
-}) {
-  showModalBottomSheet(
+}) async {
+  if (_buyingDetailSheetOpen) return;
+  _buyingDetailSheetOpen = true;
+  try {
+    await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -118,7 +123,10 @@ void showBuyingDocumentDetailSheet({
         },
       );
     },
-  );
+    );
+  } finally {
+    _buyingDetailSheetOpen = false;
+  }
 }
 
 class _BuyingDetailHeader extends StatelessWidget {

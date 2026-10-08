@@ -52,6 +52,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
   DateTime? _advancedTo;
   _PoDocStatusFilter _advancedDocStatus = _PoDocStatusFilter.all;
   Timer? _searchDebounce;
+  bool _isOpeningDetail = false;
 
   static final _chips = <ErpStatusChip<PurchaseOrderStatusKey?>>[
     const ErpStatusChip(label: 'All', value: null),
@@ -111,7 +112,9 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
 
   List<PurchaseOrder> _filter(List<PurchaseOrder> orders) {
     final q = _search.toLowerCase();
+    final seenIds = <String>{};
     final filtered = orders.where((o) {
+      if (!seenIds.add(o.id)) return false;
       final matchSearch =
           q.isEmpty ||
           o.id.toLowerCase().contains(q) ||
@@ -222,6 +225,9 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
   }
 
   Future<void> _openDetail(PurchaseOrder order) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
+    try {
     final purchasingState = context.read<PurchaseOrderState>();
     final detail = await purchasingState.loadPurchaseOrderDetail(order.id);
     var workflowActions = <String>[];
@@ -245,7 +251,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
         detail.statusKey != PurchaseOrderStatusKey.closed &&
         detail.statusKey != PurchaseOrderStatusKey.cancelled;
 
-    showBuyingDocumentDetailSheet(
+    await showBuyingDocumentDetailSheet(
       context: context,
       title: detail.id,
       subtitle: detail.vendor,
@@ -366,6 +372,9 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
         ],
       ),
     );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
+    }
   }
 
   bool _matchesAdvancedFilters(PurchaseOrder order) {
@@ -429,6 +438,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
   }
 
   Future<void> _editPo(String id, {bool closeSheet = false}) async {
+    if (!closeSheet && _isOpeningDetail) return;
     if (closeSheet) Navigator.pop(context);
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -725,8 +735,10 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
                     statusText: o.statusText,
                     date: o.eta,
                     value: o.totalValue,
-                    onTap: () => _openDetail(o),
-                    onEdit: isDocDraft(o.docStatus)
+                    onTap: _isOpeningDetail
+                        ? null
+                        : () => unawaited(_openDetail(o)),
+                    onEdit: isDocDraft(o.docStatus) && !_isOpeningDetail
                         ? () => _editPo(o.id)
                         : null,
                     onDelete: isDocDraft(o.docStatus)

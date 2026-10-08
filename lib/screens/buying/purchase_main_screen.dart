@@ -32,6 +32,7 @@ class PurchaseMainScreen extends StatefulWidget {
 class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
   Future<_PurchaseDoctypePermissions>? _permissionsFuture;
   final Set<String> _loadedDoctypeKeys = <String>{};
+  bool _isOpeningCreate = false;
 
   @override
   void didChangeDependencies() {
@@ -295,7 +296,9 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
     return FloatingActionButton.extended(
       backgroundColor: AppColors.primary,
       foregroundColor: AppColors.white,
-      onPressed: () => _openPurchaseCreate(context, entry.key),
+      onPressed: _isOpeningCreate
+          ? null
+          : () => unawaited(_openPurchaseCreate(context, entry.key)),
       icon: Icon(switch (entry.key) {
         'pr' => Icons.move_to_inbox_outlined,
         'pi' => Icons.receipt_long_outlined,
@@ -312,6 +315,9 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
   }
 
   Future<void> _openPurchaseCreate(BuildContext context, String key) async {
+    if (_isOpeningCreate) return;
+    setState(() => _isOpeningCreate = true);
+    try {
     final route = switch (key) {
       'pr' => MaterialPageRoute<void>(
         builder: (_) => const CreatePurchaseReceiptScreen(),
@@ -331,6 +337,9 @@ class _PurchaseMainScreenState extends State<PurchaseMainScreen> {
     if (!context.mounted) return;
 
     await _refreshPurchaseDoctype(context, key);
+    } finally {
+      if (mounted) setState(() => _isOpeningCreate = false);
+    }
   }
 }
 

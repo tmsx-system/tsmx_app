@@ -28,6 +28,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
   String _search = '';
   String? _statusFilter;
   Timer? _searchDebounce;
+  bool _isOpeningDetail = false;
 
   static const _allStatusFilter = '__all__';
   static const _chips = <ErpStatusChip<String>>[
@@ -61,7 +62,9 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
 
   List<MaterialRequest> _filter(List<MaterialRequest> docs) {
     final q = _search.toLowerCase();
+    final seenIds = <String>{};
     return docs.where((doc) {
+      if (!seenIds.add(doc.id)) return false;
       final matchSearch =
           q.isEmpty ||
           doc.id.toLowerCase().contains(q) ||
@@ -97,6 +100,9 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
   }
 
   Future<void> _openDetail(MaterialRequest doc) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
+    try {
     final purchasingState = context.read<MaterialRequestState>();
     final detail = await purchasingState.loadMaterialRequestDetail(doc.id);
     var workflowActions = <String>[];
@@ -109,7 +115,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
     if (!mounted) return;
 
     final canSubmit = isDocDraft(detail.docStatus);
-    showBuyingDocumentDetailSheet(
+    await showBuyingDocumentDetailSheet(
       context: context,
       title: detail.id,
       subtitle: detail.type,
@@ -171,6 +177,9 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
         ],
       ),
     );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
+    }
   }
 
   List<Widget> _workflowButtons({
@@ -364,7 +373,9 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
                   .map(
                     (doc) => _MaterialRequestCard(
                       doc: doc,
-                      onTap: () => _openDetail(doc),
+                      onTap: _isOpeningDetail
+                          ? null
+                          : () => unawaited(_openDetail(doc)),
                     ),
                   )
                   .toList(),
@@ -404,7 +415,7 @@ class _MaterialRequestPanelState extends State<MaterialRequestPanel> {
 
 class _MaterialRequestCard extends StatelessWidget {
   final MaterialRequest doc;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _MaterialRequestCard({required this.doc, required this.onTap});
 
