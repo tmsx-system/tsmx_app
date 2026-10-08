@@ -435,24 +435,19 @@ class _RecoFilterSheetState extends State<_RecoFilterSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String?>(
-                initialValue: widget.companies.contains(_company)
-                    ? _company
-                    : null,
-                isExpanded: true,
+              ErpSearchableFilterField(
+                label: 'Company',
+                selectedId: _company,
                 decoration: _fieldDecoration(
                   'Company',
                   icon: Icons.apartment_outlined,
                 ),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Semua company akses'),
-                  ),
+                allLabel: 'Semua company akses',
+                options: [
                   for (final company in widget.companies)
-                    DropdownMenuItem(value: company, child: Text(company)),
+                    ErpItemOption(id: company, label: company),
                 ],
-                onChanged: (value) => setState(() {
+                onSelected: (value) => setState(() {
                   _company = value;
                   _expenseAccount = null;
                   _costCenter = null;

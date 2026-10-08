@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import 'erp_item_autocomplete_field.dart';
 
 class ErpPeriodFilterCard extends StatelessWidget {
   final String title;
@@ -206,30 +207,20 @@ class ErpPeriodFilterCard extends StatelessWidget {
                 final compact = constraints.maxWidth < 390;
                 final companyDropdown = onCompanyChanged == null
                     ? null
-                    : DropdownButtonFormField<String>(
-                        initialValue: selectedCompany,
-                        isExpanded: true,
+                    : ErpSearchableFilterField(
+                        label: 'Company',
+                        selectedId: selectedCompany,
                         decoration: const InputDecoration(
                           labelText: 'Company',
                           prefixIcon: Icon(Icons.business_rounded, size: 18),
                         ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: '',
-                            child: Text('Semua Company'),
-                          ),
+                        allLabel: 'Semua Company',
+                        options: [
                           for (final company in companies)
-                            DropdownMenuItem(
-                              value: company,
-                              child: Text(
-                                company,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                            ErpItemOption(id: company, label: company),
                         ],
-                        onChanged: loading
-                            ? null
+                        onSelected: loading
+                            ? (_) {}
                             : (value) => onCompanyChanged?.call(value ?? ''),
                       );
                 final customerDropdown = onCustomerTypeChanged == null

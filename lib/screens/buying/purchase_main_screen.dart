@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/purchasing/purchasing_filter_state.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../shared/role_main_screen.dart';
 import 'material_request/create_material_request_screen.dart';
 import 'material_request/material_request_panel.dart';
@@ -751,26 +752,20 @@ class _PurchasePeriodFilterSheetState
                     : (value) => setState(() => _year = value ?? _year),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: selectedCompany,
-                isExpanded: true,
+              ErpSearchableFilterField(
+                label: 'Company',
+                selectedId: selectedCompany,
                 decoration: const InputDecoration(
                   labelText: 'Company',
                   prefixIcon: Icon(Icons.business_rounded, size: 18),
                 ),
-                items: [
-                  const DropdownMenuItem(
-                    value: '',
-                    child: Text('Semua Company'),
-                  ),
+                allLabel: 'Semua Company',
+                options: [
                   for (final company in companies)
-                    DropdownMenuItem(
-                      value: company,
-                      child: Text(company, overflow: TextOverflow.ellipsis),
-                    ),
+                    ErpItemOption(id: company, label: company),
                 ],
-                onChanged: widget.loading
-                    ? null
+                onSelected: widget.loading
+                    ? (_) {}
                     : (value) => setState(() => _company = value ?? ''),
               ),
               const SizedBox(height: 12),

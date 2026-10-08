@@ -116,6 +116,63 @@ class _ErpItemAutocompleteFieldState extends State<ErpItemAutocompleteField> {
   }
 }
 
+class ErpSearchableFilterField extends StatelessWidget {
+  static const allId = '__all__';
+
+  final String label;
+  final String? selectedId;
+  final List<ErpItemOption> options;
+  final ValueChanged<String?> onSelected;
+  final InputDecoration decoration;
+  final String? allLabel;
+  final Future<List<ErpItemOption>> Function(String query)? onSearch;
+
+  const ErpSearchableFilterField({
+    super.key,
+    required this.label,
+    required this.selectedId,
+    required this.options,
+    required this.onSelected,
+    required this.decoration,
+    this.allLabel,
+    this.onSearch,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      if (allLabel != null) ErpItemOption(id: allId, label: allLabel!),
+      ...options,
+    ];
+    final selected = (selectedId == null || selectedId!.isEmpty)
+        ? (allLabel != null ? allId : selectedId)
+        : selectedId;
+    return ErpItemAutocompleteField(
+      label: label,
+      selectedId: selected,
+      options: items,
+      decoration: decoration,
+      onSearch: onSearch == null
+          ? null
+          : (query) async {
+              final rows = await onSearch!(query);
+              return [
+                if (allLabel != null) ErpItemOption(id: allId, label: allLabel!),
+                ...rows,
+              ];
+            },
+      onSelected: (value) {
+        if (allLabel != null &&
+            (value == null || value.isEmpty || value == allId)) {
+          onSelected(null);
+        } else {
+          onSelected(value);
+        }
+      },
+    );
+  }
+}
+
 class _ErpItemSearchSheet extends StatefulWidget {
   final String title;
   final List<ErpItemOption> options;

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../state/selling/collection_state.dart';
 import '../../../state/selling/selling_summary_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../utils/date_range_presets.dart';
 import 'ar_aging_tab.dart';
 import 'outstanding_invoice_tab.dart';
@@ -522,26 +523,20 @@ class _CollectionPeriodFilterSheetState
                       }),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: selectedCompany,
-                isExpanded: true,
+              ErpSearchableFilterField(
+                label: 'Company',
+                selectedId: selectedCompany,
                 decoration: const InputDecoration(
                   labelText: 'Company',
                   prefixIcon: Icon(Icons.business_rounded, size: 18),
                 ),
-                items: [
-                  const DropdownMenuItem(
-                    value: '',
-                    child: Text('Semua Company'),
-                  ),
+                allLabel: 'Semua Company',
+                options: [
                   for (final company in companies)
-                    DropdownMenuItem(
-                      value: company,
-                      child: Text(company, overflow: TextOverflow.ellipsis),
-                    ),
+                    ErpItemOption(id: company, label: company),
                 ],
-                onChanged: widget.loading
-                    ? null
+                onSelected: widget.loading
+                    ? (_) {}
                     : (value) => setState(() => _company = value ?? ''),
               ),
               const SizedBox(height: 16),

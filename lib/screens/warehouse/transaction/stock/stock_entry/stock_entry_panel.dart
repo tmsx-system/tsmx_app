@@ -11,6 +11,7 @@ import '../../../../../utils/erp_doc_utils.dart';
 import '../../../../../utils/erp_share_file.dart';
 import '../../../../../widgets/erp/erp_empty_state.dart';
 import '../../../../../utils/erp_error_message.dart';
+import '../../../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
 import '../../../../../widgets/erp/erp_workflow_helper.dart';
 import '../../../shared/warehouse_widgets.dart';
@@ -681,61 +682,76 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              _dropdown<String?>(
+              ErpSearchableFilterField(
                 label: 'Company',
-                value: (_company ?? '').isEmpty
-                    ? null
-                    : (companies.contains(_company) ? _company : _company),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Semua company akses'),
-                  ),
+                selectedId: _company,
+                decoration: _filterDecoration('Company'),
+                allLabel: 'Semua company akses',
+                options: [
                   for (final company in companies)
-                    DropdownMenuItem<String?>(
-                      value: company,
-                      child: Text(company),
-                    ),
+                    ErpItemOption(id: company, label: company),
                 ],
-                onChanged: (value) => setState(() {
+                onSelected: (value) => setState(() {
                   _company = value;
                   _fromWarehouse = null;
                   _toWarehouse = null;
                 }),
               ),
               const SizedBox(height: 12),
-              _dropdown<String?>(
+              ErpSearchableFilterField(
                 label: 'Default Source Warehouse',
-                value: _fromWarehouse,
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Semua gudang asal'),
-                  ),
+                selectedId: _fromWarehouse,
+                decoration: _filterDecoration('Default Source Warehouse'),
+                allLabel: 'Semua gudang asal',
+                options: [
                   for (final warehouse in warehouses)
-                    DropdownMenuItem<String?>(
-                      value: warehouse.name,
-                      child: Text(warehouse.displayName),
+                    ErpItemOption(
+                      id: warehouse.name,
+                      label: warehouse.displayName,
                     ),
                 ],
-                onChanged: (value) => setState(() => _fromWarehouse = value),
+                onSearch: (query) async {
+                  final rows = await state.searchWarehouses(
+                    query,
+                    company: _company,
+                  );
+                  return [
+                    for (final warehouse in rows)
+                      ErpItemOption(
+                        id: warehouse.name,
+                        label: warehouse.displayName,
+                      ),
+                  ];
+                },
+                onSelected: (value) => setState(() => _fromWarehouse = value),
               ),
               const SizedBox(height: 12),
-              _dropdown<String?>(
+              ErpSearchableFilterField(
                 label: 'Default Target Warehouse',
-                value: _toWarehouse,
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Semua gudang tujuan'),
-                  ),
+                selectedId: _toWarehouse,
+                decoration: _filterDecoration('Default Target Warehouse'),
+                allLabel: 'Semua gudang tujuan',
+                options: [
                   for (final warehouse in warehouses)
-                    DropdownMenuItem<String?>(
-                      value: warehouse.name,
-                      child: Text(warehouse.displayName),
+                    ErpItemOption(
+                      id: warehouse.name,
+                      label: warehouse.displayName,
                     ),
                 ],
-                onChanged: (value) => setState(() => _toWarehouse = value),
+                onSearch: (query) async {
+                  final rows = await state.searchWarehouses(
+                    query,
+                    company: _company,
+                  );
+                  return [
+                    for (final warehouse in rows)
+                      ErpItemOption(
+                        id: warehouse.name,
+                        label: warehouse.displayName,
+                      ),
+                  ];
+                },
+                onSelected: (value) => setState(() => _toWarehouse = value),
               ),
               const SizedBox(height: 18),
               Row(
@@ -790,27 +806,16 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  Widget _dropdown<T>({
-    required String label,
-    required T? value,
-    required List<DropdownMenuItem<T>> items,
-    required ValueChanged<T?> onChanged,
-  }) {
-    return DropdownButtonFormField<T>(
-      initialValue: items.any((item) => item.value == value) ? value : null,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: AppColors.background,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 12,
-        ),
+  InputDecoration _filterDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: AppColors.background,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 12,
       ),
-      items: items,
-      onChanged: onChanged,
     );
   }
 }

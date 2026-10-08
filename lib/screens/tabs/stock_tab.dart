@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../state/warehouse/warehouse_stock_state.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../models/inventory_item.dart';
 import '../../models/stock_area_option.dart';
 import '../warehouse/transaction/stock/item_stock_detail_screen.dart';
@@ -945,26 +946,18 @@ class _StockFilterSheetState extends State<_StockFilterSheet> {
                 ],
               ),
               const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: _company,
-                isExpanded: true,
+              ErpSearchableFilterField(
+                label: 'Company',
+                selectedId: _company,
                 decoration: _sheetInputDecoration(
                   label: 'Company',
                   icon: Icons.business_rounded,
                 ),
-                items: widget.companies
-                    .map(
-                      (entry) => DropdownMenuItem<String>(
-                        value: entry.key,
-                        child: Text(
-                          entry.value,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
+                options: [
+                  for (final entry in widget.companies)
+                    ErpItemOption(id: entry.key, label: entry.value),
+                ],
+                onSelected: (value) {
                   if (value == null) return;
                   setState(() {
                     _company = value;

@@ -138,17 +138,21 @@ class _FinancePeriodCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          _FinanceDropdown<String>(
+          ErpSearchableFilterField(
             label: 'Company',
-            icon: Icons.business_rounded,
-            value: selectedCompany,
-            enabled: !loading,
-            items: [
-              const DropdownMenuItem(value: '', child: Text('Semua Company')),
+            selectedId: selectedCompany,
+            decoration: const InputDecoration(
+              labelText: 'Company',
+              prefixIcon: Icon(Icons.business_rounded, size: 18),
+            ),
+            allLabel: 'Semua Company',
+            options: [
               for (final company in companies)
-                DropdownMenuItem(value: company, child: Text(company)),
+                ErpItemOption(id: company, label: company),
             ],
-            onChanged: (value) => onCompanyChanged?.call(value ?? ''),
+            onSelected: loading
+                ? (_) {}
+                : (value) => onCompanyChanged?.call(value ?? ''),
           ),
         ],
       ),

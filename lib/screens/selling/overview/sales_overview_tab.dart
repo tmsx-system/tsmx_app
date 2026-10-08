@@ -10,6 +10,7 @@ import '../../../services/local_app_database.dart';
 import '../../../services/native_file_service.dart';
 import '../../../state/selling/sales_overview_state.dart';
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../utils/erp_format.dart';
 import '../../../utils/num_parse.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
@@ -1131,56 +1132,42 @@ class _SalesOverviewFilterSheetState extends State<_SalesOverviewFilterSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: selectedCompany,
-                isExpanded: true,
+              ErpSearchableFilterField(
+                label: 'Company',
+                selectedId: selectedCompany,
                 decoration: const InputDecoration(
                   labelText: 'Company',
                   prefixIcon: Icon(Icons.business_rounded),
                 ),
-                items: [
-                  const DropdownMenuItem<String>(
-                    value: '',
-                    child: Text('Semua Company'),
-                  ),
-                  ...widget.companies.map(
-                    (company) => DropdownMenuItem<String>(
-                      value: company,
-                      child: Text(company, overflow: TextOverflow.ellipsis),
-                    ),
-                  ),
+                allLabel: 'Semua Company',
+                options: [
+                  for (final company in widget.companies)
+                    ErpItemOption(id: company, label: company),
                 ],
-                onChanged: widget.loading
-                    ? null
+                onSelected: widget.loading
+                    ? (_) {}
                     : (value) => setState(() => _company = value ?? ''),
               ),
               if (!widget.lockSalesPerson) ...[
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedSalesGroup,
-                  isExpanded: true,
+                ErpSearchableFilterField(
+                  label: 'Sales Group',
+                  selectedId: selectedSalesGroup == 'all'
+                      ? null
+                      : selectedSalesGroup,
                   decoration: const InputDecoration(
                     labelText: 'Sales Group',
                     prefixIcon: Icon(Icons.groups_rounded),
                   ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: 'all',
-                      child: Text('All'),
-                    ),
-                    ...widget.salesGroups.map(
-                      (salesGroup) => DropdownMenuItem<String>(
-                        value: salesGroup,
-                        child: Text(
-                          salesGroup,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
+                  allLabel: 'All',
+                  options: [
+                    for (final salesGroup in widget.salesGroups)
+                      ErpItemOption(id: salesGroup, label: salesGroup),
                   ],
-                  onChanged: widget.loading
-                      ? null
-                      : (value) => setState(() => _salesGroup = value ?? 'all'),
+                  onSelected: widget.loading
+                      ? (_) {}
+                      : (value) =>
+                            setState(() => _salesGroup = value ?? 'all'),
                 ),
               ],
               const SizedBox(height: 18),

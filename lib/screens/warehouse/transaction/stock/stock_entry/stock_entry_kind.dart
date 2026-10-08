@@ -39,6 +39,9 @@ class StockEntryKind {
     _ => false,
   };
 
+  /// Repack/Disassemble: tiap baris item boleh source, target, atau keduanya.
+  bool get itemWarehousesOptional => allowSameWarehouse;
+
   IconData get icon => switch (_purposeKey) {
     'material transfer' => Icons.swap_horiz_rounded,
     'material receipt' => Icons.move_to_inbox_rounded,

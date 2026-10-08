@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
+import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/erp/erp_status_chip_bar.dart';
 import 'pos_ui.dart';
 
@@ -58,10 +59,10 @@ class PosListFilterBar extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: DropdownButtonFormField<String?>(
+              child: ErpSearchableFilterField(
                 key: ValueKey('profile-filter-${selectedProfile ?? 'all'}'),
-                initialValue: selectedProfile,
-                isExpanded: true,
+                label: 'POS Profile',
+                selectedId: selectedProfile,
                 decoration: posFieldDecoration('POS Profile').copyWith(
                   prefixIcon: const Icon(Icons.storefront_outlined, size: 20),
                   contentPadding: const EdgeInsets.symmetric(
@@ -69,28 +70,19 @@ class PosListFilterBar extends StatelessWidget {
                     vertical: 10,
                   ),
                 ),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Semua Profile'),
-                  ),
+                allLabel: 'Semua Profile',
+                options: [
                   for (final profile in profiles)
-                    DropdownMenuItem<String?>(
-                      value: profile,
-                      child: Text(profile, overflow: TextOverflow.ellipsis),
-                    ),
+                    ErpItemOption(id: profile, label: profile),
                   if (selectedProfile != null &&
                       selectedProfile!.isNotEmpty &&
                       !profiles.contains(selectedProfile))
-                    DropdownMenuItem<String?>(
-                      value: selectedProfile,
-                      child: Text(
-                        selectedProfile!,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    ErpItemOption(
+                      id: selectedProfile!,
+                      label: selectedProfile!,
                     ),
                 ],
-                onChanged: onProfileChanged,
+                onSelected: onProfileChanged,
               ),
             ),
             if (onReset != null && hasActiveFilters) ...[
