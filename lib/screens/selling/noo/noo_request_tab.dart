@@ -291,7 +291,7 @@ class _NooRequestTabState extends State<NooRequestTab> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _statusFilterChip(label: 'All', value: null),
+          _statusFilterChip(label: 'Semua', value: null),
           ..._statusOptions.map(
             (status) => _statusFilterChip(label: status, value: status),
           ),

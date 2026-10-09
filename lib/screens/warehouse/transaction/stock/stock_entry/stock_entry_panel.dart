@@ -683,10 +683,10 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
               ),
               const SizedBox(height: 16),
               ErpSearchableFilterField(
-                label: 'Company',
+                label: 'Perusahaan',
                 selectedId: _company,
-                decoration: _filterDecoration('Company'),
-                allLabel: 'Semua company akses',
+                decoration: _filterDecoration('Perusahaan'),
+                allLabel: 'Semua perusahaan akses',
                 options: [
                   for (final company in companies)
                     ErpItemOption(id: company, label: company),
@@ -767,7 +767,7 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
                           _toWarehouse = null;
                         });
                       },
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),

@@ -1,6 +1,7 @@
 import '../../models/erp_summary.dart';
 import '../../services/frappe_service.dart';
 import '../../utils/date_range_presets.dart';
+import '../../utils/frappe_page_walker.dart';
 import '../../utils/num_parse.dart';
 
 class SellingAnalyticsSection {
@@ -86,6 +87,19 @@ class SellingSummaryService {
         ),
       );
     }
+    if (shouldScopeSalesData) {
+      return _toPublicSection(
+        await _fetchPermittedDocumentAnalytics(
+          basedOn: basedOn,
+          year: year,
+          month: month,
+          from: from,
+          to: to,
+          company: company,
+          salesPerson: salesPerson,
+        ),
+      );
+    }
     return _toPublicSection(
       await _fetchSalesAnalyticsBySalesPersonOrEmpty(
         basedOn: basedOn,
@@ -96,6 +110,76 @@ class SellingSummaryService {
         company: company,
         salesPerson: salesPerson,
       ),
+    );
+  }
+
+  Future<_AnalyticsSection> _fetchPermittedDocumentAnalytics({
+    required String basedOn,
+    required int year,
+    required int month,
+    required DateTime from,
+    required DateTime to,
+    required String company,
+    required String salesPerson,
+  }) async {
+    final dateField = basedOn == 'Sales Order'
+        ? 'transaction_date'
+        : 'posting_date';
+    final filters = <List<dynamic>>[
+      [dateField, '>=', DateRangePresets.toFrappeDate(from)],
+      [dateField, '<=', DateRangePresets.toFrappeDate(to)],
+      if (company.trim().isNotEmpty) ['company', '=', company.trim()],
+      ['docstatus', '<', 2],
+      if (salesPerson.trim().isNotEmpty)
+        ['Sales Team', 'sales_person', '=', salesPerson.trim()],
+    ];
+    final rows = await walkFrappePages(
+      pageSize: 500,
+      maxRows: 2000,
+      fetchPage: (start, limit) => frappe.fetchReportView(
+        basedOn,
+        fields: [
+          'name',
+          'grand_total',
+          'base_net_total',
+          'net_total',
+          dateField,
+        ],
+        limit: limit,
+        limitStart: start,
+        filters: filters,
+        orderBy: '$dateField desc, name desc',
+      ),
+    );
+
+    final trend = _emptyAnalyticsTrend(year, month);
+    var totalValue = 0.0;
+    var count = 0;
+    for (final row in rows) {
+      final value = NumParse.asDouble(
+        row['grand_total'] ?? row['base_net_total'] ?? row['net_total'],
+      );
+      count++;
+      totalValue += value;
+      final date = DateTime.tryParse(row[dateField]?.toString() ?? '');
+      if (date == null) continue;
+      if (month == 0) {
+        final index = date.month - 1;
+        if (index >= 0 && index < trend.length) {
+          trend[index] = trend[index].add(value);
+        }
+        continue;
+      }
+      final label = 'Minggu ${_isoWeekNumber(date)}';
+      final index = trend.indexWhere((point) => point.label == label);
+      if (index >= 0) {
+        trend[index] = trend[index].add(value);
+      }
+    }
+
+    return _AnalyticsSection(
+      summary: DocumentSummary(totalValue: totalValue, documentCount: count),
+      trend: trend,
     );
   }
 

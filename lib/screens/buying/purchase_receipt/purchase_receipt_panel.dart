@@ -37,7 +37,7 @@ class _PurchaseReceiptPanelState extends State<PurchaseReceiptPanel> {
   bool _isOpeningDetail = false;
 
   static final _chips = <ErpStatusChip<DeliveryNoteStatusKey?>>[
-    const ErpStatusChip(label: 'All', value: null),
+    const ErpStatusChip(label: 'Semua', value: null),
     const ErpStatusChip(label: 'Draft', value: DeliveryNoteStatusKey.draft),
     const ErpStatusChip(label: 'To Bill', value: DeliveryNoteStatusKey.toBill),
     const ErpStatusChip(

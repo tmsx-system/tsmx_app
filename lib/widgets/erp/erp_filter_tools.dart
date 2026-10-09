@@ -208,13 +208,13 @@ class ErpPeriodFilterCard extends StatelessWidget {
                 final companyDropdown = onCompanyChanged == null
                     ? null
                     : ErpSearchableFilterField(
-                        label: 'Company',
+                        label: 'Perusahaan',
                         selectedId: selectedCompany,
                         decoration: const InputDecoration(
-                          labelText: 'Company',
+                          labelText: 'Perusahaan',
                           prefixIcon: Icon(Icons.business_rounded, size: 18),
                         ),
-                        allLabel: 'Semua Company',
+                        allLabel: 'Semua perusahaan',
                         options: [
                           for (final company in companies)
                             ErpItemOption(id: company, label: company),

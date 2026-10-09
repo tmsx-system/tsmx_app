@@ -55,7 +55,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
   bool _isOpeningDetail = false;
 
   static final _chips = <ErpStatusChip<PurchaseOrderStatusKey?>>[
-    const ErpStatusChip(label: 'All', value: null),
+    const ErpStatusChip(label: 'Semua', value: null),
     const ErpStatusChip(label: 'Draft', value: PurchaseOrderStatusKey.draft),
     const ErpStatusChip(
       label: 'To Receive and To Bill',
@@ -182,7 +182,7 @@ class _PurchaseOrderPanelState extends State<PurchaseOrderPanel> {
 
   String _sortLabel(_PurchaseSortOption option) {
     return switch (option) {
-      _PurchaseSortOption.newest => 'Newest',
+      _PurchaseSortOption.newest => 'Terbaru',
       _PurchaseSortOption.oldestEta => 'ETA terlama',
       _PurchaseSortOption.valueHigh => 'Nilai tertinggi',
       _PurchaseSortOption.valueLow => 'Nilai terendah',
@@ -829,7 +829,7 @@ class _PurchaseOrderQuickFilters extends StatelessWidget {
           const SizedBox(width: 8),
           _PurchaseFilterButton(
             icon: Icons.restart_alt_rounded,
-            label: 'Reset',
+            label: 'Atur ulang',
             onTap: onReset,
           ),
         ],
@@ -1525,11 +1525,11 @@ class _PurchaseOrderAdvancedFilterSheetState
               const SizedBox(height: 10),
               DropdownButtonFormField<_PoDocStatusFilter>(
                 initialValue: _docStatus,
-                decoration: const InputDecoration(labelText: 'Doc status'),
+                decoration: const InputDecoration(labelText: 'Status dokumen'),
                 items: const [
                   DropdownMenuItem(
                     value: _PoDocStatusFilter.all,
-                    child: Text('All'),
+                    child: Text('Semua'),
                   ),
                   DropdownMenuItem(
                     value: _PoDocStatusFilter.draft,
@@ -1554,14 +1554,14 @@ class _PurchaseOrderAdvancedFilterSheetState
                   Expanded(
                     child: OutlinedButton(
                       onPressed: _reset,
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: FilledButton(
                       onPressed: _apply,
-                      child: const Text('Apply'),
+                      child: const Text('Terapkan'),
                     ),
                   ),
                 ],

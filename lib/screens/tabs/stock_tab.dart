@@ -471,7 +471,7 @@ class _StockTabState extends State<StockTab>
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: const Text(
-                    'Reset',
+                    'Atur ulang',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -553,19 +553,19 @@ class _StockTabState extends State<StockTab>
 
   String _sortLabel(_StockSortOption option) {
     return switch (option) {
-      _StockSortOption.urgentFirst => 'Urgent first',
-      _StockSortOption.quantityLow => 'Qty low-high',
-      _StockSortOption.quantityHigh => 'Qty high-low',
-      _StockSortOption.name => 'Name A-Z',
+      _StockSortOption.urgentFirst => 'Mendesak dulu',
+      _StockSortOption.quantityLow => 'Qty rendah-tinggi',
+      _StockSortOption.quantityHigh => 'Qty tinggi-rendah',
+      _StockSortOption.name => 'Nama A-Z',
     };
   }
 
   String _statusFilterLabel(_StockStatusFilter filter) {
     return switch (filter) {
-      _StockStatusFilter.all => 'All',
-      _StockStatusFilter.urgent => 'Urgent',
-      _StockStatusFilter.lowStock => 'Low',
-      _StockStatusFilter.inStock => 'Healthy',
+      _StockStatusFilter.all => 'Semua',
+      _StockStatusFilter.urgent => 'Mendesak',
+      _StockStatusFilter.lowStock => 'Rendah',
+      _StockStatusFilter.inStock => 'Aman',
     };
   }
 
@@ -584,7 +584,7 @@ class _StockTabState extends State<StockTab>
     required List<String> itemGroupOptions,
   }) {
     final companyLabel =
-        _companyTitle(companies, _selectedCompany) ?? 'Semua Company';
+        _companyTitle(companies, _selectedCompany) ?? 'Semua perusahaan';
     final warehouseLabel = _selectedWarehouse == null
         ? 'Semua area'
         : _selectedWarehouse!;
@@ -947,10 +947,10 @@ class _StockFilterSheetState extends State<_StockFilterSheet> {
               ),
               const SizedBox(height: 10),
               ErpSearchableFilterField(
-                label: 'Company',
+                label: 'Perusahaan',
                 selectedId: _company,
                 decoration: _sheetInputDecoration(
-                  label: 'Company',
+                  label: 'Perusahaan',
                   icon: Icons.business_rounded,
                 ),
                 options: [
@@ -987,7 +987,7 @@ class _StockFilterSheetState extends State<_StockFilterSheet> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),

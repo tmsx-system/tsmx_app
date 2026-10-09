@@ -447,7 +447,7 @@ class _InactiveCustomerFilterSheetState
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),

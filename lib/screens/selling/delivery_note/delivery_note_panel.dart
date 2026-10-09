@@ -34,7 +34,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
   bool _isOpeningDetail = false;
 
   static final _chips = <ErpStatusChip<DeliveryNoteStatusKey?>>[
-    const ErpStatusChip(label: 'All', value: null),
+    const ErpStatusChip(label: 'Semua', value: null),
     const ErpStatusChip(label: 'Draft', value: DeliveryNoteStatusKey.draft),
     const ErpStatusChip(label: 'To Bill', value: DeliveryNoteStatusKey.toBill),
     const ErpStatusChip(
@@ -152,14 +152,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
     return null;
   }
 
-  String _sortLabel(SellingSortOption option) {
-    return switch (option) {
-      SellingSortOption.newest => 'Newest',
-      SellingSortOption.oldest => 'Oldest',
-      SellingSortOption.valueHigh => 'Value high',
-      SellingSortOption.valueLow => 'Value low',
-    };
-  }
+  String _sortLabel(SellingSortOption option) => sellingSortLabel(option);
 
   bool _matchesAdvancedFilters(DeliveryNote doc) {
     final filters = _advancedFilters;

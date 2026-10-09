@@ -436,13 +436,13 @@ class _RecoFilterSheetState extends State<_RecoFilterSheet> {
               ),
               const SizedBox(height: 16),
               ErpSearchableFilterField(
-                label: 'Company',
+                label: 'Perusahaan',
                 selectedId: _company,
                 decoration: _fieldDecoration(
-                  'Company',
+                  'Perusahaan',
                   icon: Icons.apartment_outlined,
                 ),
-                allLabel: 'Semua company akses',
+                allLabel: 'Semua perusahaan akses',
                 options: [
                   for (final company in widget.companies)
                     ErpItemOption(id: company, label: company),
@@ -500,7 +500,7 @@ class _RecoFilterSheetState extends State<_RecoFilterSheet> {
                           _costCenter = null;
                         });
                       },
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),

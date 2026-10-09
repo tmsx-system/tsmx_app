@@ -219,7 +219,7 @@ class _CollectionPeriodFilterBar extends StatelessWidget {
         ? '$selectedYear'
         : '${_monthName(selectedMonth)} $selectedYear';
     final companyLabel = selectedCompany.trim().isEmpty
-        ? 'Semua Company'
+        ? 'Semua perusahaan'
         : selectedCompany.trim();
     final agingLabel = applyDateFilter
         ? '${dateBasis == CollectionAgingDateBasis.invoiceDate ? 'Tanggal SI' : 'Tanggal TT'} | '
@@ -524,13 +524,13 @@ class _CollectionPeriodFilterSheetState
               ),
               const SizedBox(height: 12),
               ErpSearchableFilterField(
-                label: 'Company',
+                label: 'Perusahaan',
                 selectedId: selectedCompany,
                 decoration: const InputDecoration(
-                  labelText: 'Company',
+                  labelText: 'Perusahaan',
                   prefixIcon: Icon(Icons.business_rounded, size: 18),
                 ),
-                allLabel: 'Semua Company',
+                allLabel: 'Semua perusahaan',
                 options: [
                   for (final company in companies)
                     ErpItemOption(id: company, label: company),
@@ -684,7 +684,7 @@ class _CollectionPeriodFilterSheetState
                   Expanded(
                     child: OutlinedButton(
                       onPressed: widget.loading ? null : _reset,
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),

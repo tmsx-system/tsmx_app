@@ -88,7 +88,7 @@ class PosListFilterBar extends StatelessWidget {
             if (onReset != null && hasActiveFilters) ...[
               const SizedBox(width: 8),
               IconButton(
-                tooltip: 'Reset filter',
+                tooltip: 'Atur ulang filter',
                 onPressed: onReset,
                 style: IconButton.styleFrom(
                   backgroundColor: AppColors.softGreen,

@@ -34,7 +34,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
   bool _isOpeningDetail = false;
 
   static final _chips = <ErpStatusChip<InvoiceStatusKey?>>[
-    const ErpStatusChip(label: 'All', value: null),
+    const ErpStatusChip(label: 'Semua', value: null),
     const ErpStatusChip(label: 'Draft', value: InvoiceStatusKey.draft),
     const ErpStatusChip(label: 'Return', value: InvoiceStatusKey.returnDoc),
     const ErpStatusChip(
@@ -148,14 +148,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
     return null;
   }
 
-  String _sortLabel(SellingSortOption option) {
-    return switch (option) {
-      SellingSortOption.newest => 'Newest',
-      SellingSortOption.oldest => 'Oldest',
-      SellingSortOption.valueHigh => 'Value high',
-      SellingSortOption.valueLow => 'Value low',
-    };
-  }
+  String _sortLabel(SellingSortOption option) => sellingSortLabel(option);
 
   bool _matchesAdvancedFilters(SalesInvoice doc) {
     final filters = _advancedFilters;

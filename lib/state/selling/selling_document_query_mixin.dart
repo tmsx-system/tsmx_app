@@ -44,19 +44,8 @@ mixin SellingDocumentQueryMixin on AppStateProxyNotifier {
         .toList();
   }
 
-  Future<List<List<dynamic>>?> salesDocumentScopeFilters() async {
-    if (!appState.mobileAccess.shouldScopeSalesData) return const [];
-    final salesPerson = await appState.resolveCurrentSalesIdentity();
-    final normalized = salesPerson?.trim() ?? '';
-    if (normalized.isEmpty) {
-      throw Exception(
-        appState.salesIdentityError ??
-            'Sales Person user login belum tersedia.',
-      );
-    }
-    return [
-      ['Sales Team', 'sales_person', '=', normalized],
-    ];
+  Future<List<List<dynamic>>?> salesDocumentScopeFilters() {
+    return appState.salesDocumentScopeFilters();
   }
 
   Future<List<Map<String, dynamic>>> fetchAllResourcePages({

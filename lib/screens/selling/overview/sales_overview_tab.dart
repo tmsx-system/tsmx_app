@@ -627,7 +627,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
 
   String get _selectedSalesGroupLabel {
     if (_selectedSalesGroup.trim().isEmpty || _selectedSalesGroup == 'all') {
-      return 'All';
+      return 'Semua';
     }
     return _selectedSalesGroup;
   }
@@ -739,7 +739,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
       ['Tanggal', _dateFileLabel],
       [
         'Company',
-        _selectedCompany.isEmpty ? 'Semua Company' : _selectedCompany,
+        _selectedCompany.isEmpty ? 'Semua perusahaan' : _selectedCompany,
       ],
       ['Sales Group', _selectedSalesGroupLabel],
       [],
@@ -758,7 +758,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     return _shareCsv('top_10_customer_$_dateFileLabel.csv', [
       [
         'Company',
-        _selectedCompany.isEmpty ? 'Semua Company' : _selectedCompany,
+        _selectedCompany.isEmpty ? 'Semua perusahaan' : _selectedCompany,
       ],
       ['Tanggal', _dateFileLabel],
       ['Sales Group', _selectedSalesGroupLabel],
@@ -782,7 +782,7 @@ class _SalesOverviewTabState extends State<SalesOverviewTab> {
     return _shareCsv('ranking_collection_$_dateFileLabel.csv', [
       [
         'Company',
-        _selectedCompany.isEmpty ? 'Semua Company' : _selectedCompany,
+        _selectedCompany.isEmpty ? 'Semua perusahaan' : _selectedCompany,
       ],
       ['Tanggal', _dateFileLabel],
       ['Sales Group', _selectedSalesGroupLabel],
@@ -946,7 +946,7 @@ class _SalesOverviewFilterCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${_dateLabel(date)}  |  ${selectedCompany.isEmpty ? 'Semua Company' : selectedCompany}',
+                  '${_dateLabel(date)}  |  ${selectedCompany.isEmpty ? 'Semua perusahaan' : selectedCompany}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -960,7 +960,7 @@ class _SalesOverviewFilterCard extends StatelessWidget {
                   lockSalesPerson
                       ? 'Sales login'
                       : selectedSalesGroup == 'all'
-                      ? 'All Sales Group'
+                      ? 'Semua sales group'
                       : selectedSalesGroup,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1133,13 +1133,13 @@ class _SalesOverviewFilterSheetState extends State<_SalesOverviewFilterSheet> {
               ),
               const SizedBox(height: 12),
               ErpSearchableFilterField(
-                label: 'Company',
+                label: 'Perusahaan',
                 selectedId: selectedCompany,
                 decoration: const InputDecoration(
-                  labelText: 'Company',
+                  labelText: 'Perusahaan',
                   prefixIcon: Icon(Icons.business_rounded),
                 ),
-                allLabel: 'Semua Company',
+                allLabel: 'Semua perusahaan',
                 options: [
                   for (final company in widget.companies)
                     ErpItemOption(id: company, label: company),
@@ -1159,7 +1159,7 @@ class _SalesOverviewFilterSheetState extends State<_SalesOverviewFilterSheet> {
                     labelText: 'Sales Group',
                     prefixIcon: Icon(Icons.groups_rounded),
                   ),
-                  allLabel: 'All',
+                  allLabel: 'Semua',
                   options: [
                     for (final salesGroup in widget.salesGroups)
                       ErpItemOption(id: salesGroup, label: salesGroup),
@@ -1176,7 +1176,7 @@ class _SalesOverviewFilterSheetState extends State<_SalesOverviewFilterSheet> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: widget.loading ? null : _reset,
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),

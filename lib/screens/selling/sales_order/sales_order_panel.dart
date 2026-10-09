@@ -258,10 +258,10 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
 
   String _sortLabel(_OrderSortOption option) {
     return switch (option) {
-      _OrderSortOption.newest => 'Newest',
-      _OrderSortOption.oldest => 'Oldest',
-      _OrderSortOption.valueHigh => 'Value high',
-      _OrderSortOption.valueLow => 'Value low',
+      _OrderSortOption.newest => 'Terbaru',
+      _OrderSortOption.oldest => 'Terlama',
+      _OrderSortOption.valueHigh => 'Nilai tertinggi',
+      _OrderSortOption.valueLow => 'Nilai terendah',
     };
   }
 
@@ -978,7 +978,7 @@ class _SalesOrderQuickFilters extends StatelessWidget {
           const SizedBox(width: 8),
           _SalesFilterButton(
             icon: Icons.restart_alt_rounded,
-            label: 'Reset',
+            label: 'Atur ulang',
             color: _soBlue,
             onTap: onReset,
           ),
@@ -1239,11 +1239,11 @@ class _SalesOrderAdvancedFilterSheetState
               const SizedBox(height: 10),
               DropdownButtonFormField<_DocStatusFilter>(
                 initialValue: _docStatus,
-                decoration: const InputDecoration(labelText: 'Doc status'),
+                decoration: const InputDecoration(labelText: 'Status dokumen'),
                 items: const [
                   DropdownMenuItem(
                     value: _DocStatusFilter.all,
-                    child: Text('All'),
+                    child: Text('Semua'),
                   ),
                   DropdownMenuItem(
                     value: _DocStatusFilter.draft,
@@ -1268,14 +1268,14 @@ class _SalesOrderAdvancedFilterSheetState
                   Expanded(
                     child: OutlinedButton(
                       onPressed: _reset,
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: FilledButton(
                       onPressed: _apply,
-                      child: const Text('Apply'),
+                      child: const Text('Terapkan'),
                     ),
                   ),
                 ],

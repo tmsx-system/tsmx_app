@@ -446,7 +446,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
             onSelected: (status) => setState(() => _statusQuickFilter = status),
             chips: [
               ErpStatusChip<String?>(
-                label: 'All',
+                label: 'Semua',
                 value: null,
                 count: allStatusCount,
               ),
@@ -750,8 +750,8 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
 
   String _approvalSortLabel(_ApprovalTodoSortOption option) {
     return switch (option) {
-      _ApprovalTodoSortOption.newest => 'Newest',
-      _ApprovalTodoSortOption.oldest => 'Oldest',
+      _ApprovalTodoSortOption.newest => 'Terbaru',
+      _ApprovalTodoSortOption.oldest => 'Terlama',
       _ApprovalTodoSortOption.amountHigh => 'Nilai tertinggi',
       _ApprovalTodoSortOption.amountLow => 'Nilai terendah',
     };
@@ -1306,7 +1306,7 @@ class _ApprovalFilterSheetState extends State<_ApprovalFilterSheet> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: _reset,
-                      child: const Text('Reset'),
+                      child: const Text('Atur ulang'),
                     ),
                   ),
                   const SizedBox(width: 10),

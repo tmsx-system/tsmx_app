@@ -2019,13 +2019,15 @@ class AppState with ChangeNotifier {
     return salesPerson;
   }
 
+  Future<List<List<dynamic>>?> salesDocumentScopeFilters([
+    String doctype = '',
+  ]) {
+    return _salesDocumentScopeFilters(doctype);
+  }
+
   Future<List<List<dynamic>>?> _salesDocumentScopeFilters(String _) async {
     final salesPerson = await _salesPersonScopeName();
     if (salesPerson == null) return const [];
-
-    // Avoid scanning Sales Team rows and then querying parent documents by a
-    // large name list. ERPNext Report View can filter SO/DN/SI through the
-    // Sales Team child table directly, which is much faster for Sales User.
     return [
       ['Sales Team', 'sales_person', '=', salesPerson],
     ];
@@ -6733,18 +6735,23 @@ class AppState with ChangeNotifier {
     required String dateField,
   }) async {
     try {
-      final selectedSalesGroup = _selectedSellingParentSalesPerson();
-      final scopedSalesPerson = _shouldScopeSalesData
-          ? await _salesPersonScopeName()
-          : null;
-      final analytics = await _fetchSalesAnalyticsBySalesPersonSection(
-        basedOn: doctype,
-        year: _sellingPeriodYear,
-        month: _sellingPeriodMonth,
-        company: _sellingCompanyFilter,
-        salesPerson: scopedSalesPerson ?? selectedSalesGroup ?? '',
-      );
-      if (analytics != null) return analytics;
+      final usePermittedDocumentList =
+          _shouldScopeSalesData &&
+          (doctype == 'Delivery Note' || doctype == 'Sales Invoice');
+      if (!usePermittedDocumentList) {
+        final selectedSalesGroup = _selectedSellingParentSalesPerson();
+        final scopedSalesPerson = _shouldScopeSalesData
+            ? await _salesPersonScopeName()
+            : null;
+        final analytics = await _fetchSalesAnalyticsBySalesPersonSection(
+          basedOn: doctype,
+          year: _sellingPeriodYear,
+          month: _sellingPeriodMonth,
+          company: _sellingCompanyFilter,
+          salesPerson: scopedSalesPerson ?? selectedSalesGroup ?? '',
+        );
+        if (analytics != null) return analytics;
+      }
     } catch (_) {
       // Fall back to document API when the custom report is not installed.
     }

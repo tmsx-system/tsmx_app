@@ -7,6 +7,15 @@ enum SellingSortOption { newest, oldest, valueHigh, valueLow }
 
 enum SellingDocStatusFilter { all, draft, submitted, cancelled }
 
+String sellingSortLabel(SellingSortOption option) {
+  return switch (option) {
+    SellingSortOption.newest => 'Terbaru',
+    SellingSortOption.oldest => 'Terlama',
+    SellingSortOption.valueHigh => 'Nilai tertinggi',
+    SellingSortOption.valueLow => 'Nilai terendah',
+  };
+}
+
 class SellingAdvancedFilters {
   final String customer;
   final double? minValue;
@@ -118,7 +127,7 @@ class SellingQuickFilters extends StatelessWidget {
           const SizedBox(width: 8),
           _SellingFilterButton(
             icon: Icons.restart_alt_rounded,
-            label: 'Reset',
+            label: 'Atur ulang',
             color: const Color(0xFF2563EB),
             onTap: onReset,
           ),
@@ -327,7 +336,7 @@ class _SellingAdvancedFilterSheetState
                       child: OutlinedButton.icon(
                         onPressed: () => _pickDate(isFrom: true),
                         icon: const Icon(Icons.date_range_rounded),
-                        label: Text('From ${_dateText(_from)}'),
+                        label: Text('Dari ${_dateText(_from)}'),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -335,7 +344,7 @@ class _SellingAdvancedFilterSheetState
                       child: OutlinedButton.icon(
                         onPressed: () => _pickDate(isFrom: false),
                         icon: const Icon(Icons.event_rounded),
-                        label: Text('To ${_dateText(_to)}'),
+                        label: Text('Sampai ${_dateText(_to)}'),
                       ),
                     ),
                   ],
@@ -343,11 +352,11 @@ class _SellingAdvancedFilterSheetState
                 const SizedBox(height: 10),
                 DropdownButtonFormField<SellingDocStatusFilter>(
                   initialValue: _docStatus,
-                  decoration: const InputDecoration(labelText: 'Doc status'),
+                  decoration: const InputDecoration(labelText: 'Status dokumen'),
                   items: const [
                     DropdownMenuItem(
                       value: SellingDocStatusFilter.all,
-                      child: Text('All'),
+                      child: Text('Semua'),
                     ),
                     DropdownMenuItem(
                       value: SellingDocStatusFilter.draft,
@@ -372,14 +381,14 @@ class _SellingAdvancedFilterSheetState
                     Expanded(
                       child: OutlinedButton(
                         onPressed: _reset,
-                        child: const Text('Reset'),
+                        child: const Text('Atur ulang'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: FilledButton(
                         onPressed: _apply,
-                        child: const Text('Apply'),
+                        child: const Text('Terapkan'),
                       ),
                     ),
                   ],

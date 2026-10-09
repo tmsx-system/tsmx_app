@@ -553,7 +553,7 @@ class _ValuationFilterSheetState extends State<_ValuationFilterSheet> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    child: const Text('Reset'),
+                    child: const Text('Atur ulang'),
                   ),
                 ),
                 const SizedBox(width: 10),

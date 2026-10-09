@@ -186,6 +186,7 @@ class SalesOrderState extends AppStateProxyNotifier {
     final filters = <List<dynamic>>[
       ..._sellingPeriodFilters('transaction_date'),
       ...?_statusFilters(_salesOrderStatus),
+      ...?await appState.salesDocumentScopeFilters('Sales Order'),
     ];
     final rows = await _fetchResourceWithFieldFallback(
       doctype: 'Sales Order',
