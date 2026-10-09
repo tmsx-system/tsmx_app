@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/delivery_activity_log.dart';
 import '../../models/delivery_note.dart';
 import '../app_state_proxy_notifier.dart';
@@ -31,6 +33,7 @@ class LogisticsTrackingState extends AppStateProxyNotifier
     appState.currentSalesPerson,
     appState.selectedSiteBaseUrl,
     appState.currentUser,
+    appState.sellingListEpoch,
   ];
 
   List<DeliveryNote> get deliveryNotes => _deliveryNotes;
@@ -49,6 +52,10 @@ class LogisticsTrackingState extends AppStateProxyNotifier
       userIndex: 9,
     )) {
       _resetLocalDeliveryNotes();
+      return;
+    }
+    if (previous.length > 10 && previous[10] != next[10]) {
+      unawaited(refreshDeliveryNotes());
     }
   }
 

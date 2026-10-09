@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/delivery_note.dart';
 import '../../services/frappe_service.dart';
 import '../app_state_proxy_notifier.dart';
@@ -31,6 +33,7 @@ class LogisticsDeliveryState extends AppStateProxyNotifier
     appState.currentSalesPerson,
     appState.selectedSiteBaseUrl,
     appState.currentUser,
+    appState.sellingListEpoch,
   ];
 
   List<DeliveryNote> get deliveryNotes => _deliveryNotes;
@@ -50,6 +53,10 @@ class LogisticsDeliveryState extends AppStateProxyNotifier
       userIndex: 10,
     )) {
       _resetLocalDeliveryNotes();
+      return;
+    }
+    if (previous.length > 10 && previous[10] != next[10]) {
+      unawaited(refreshDeliveryNotes());
     }
   }
 

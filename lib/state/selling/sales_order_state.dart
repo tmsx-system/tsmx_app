@@ -9,7 +9,6 @@ import '../../models/stock_ledger_movement.dart';
 import '../../models/warehouse_info.dart';
 import '../../services/frappe_service.dart';
 import '../../utils/date_range_presets.dart';
-import '../../utils/frappe_page_walker.dart';
 import '../../utils/mobile_access.dart';
 import '../app_state_proxy_notifier.dart';
 import 'selling_filter_state.dart';
@@ -20,7 +19,6 @@ class SalesOrderState extends AppStateProxyNotifier {
   }
 
   static const int _documentPageSize = 50;
-  static const int _pageSize = 500;
 
   List<SalesOrder> _salesOrders = const [];
   bool _isSalesOrdersLoading = false;
@@ -42,6 +40,7 @@ class SalesOrderState extends AppStateProxyNotifier {
     appState.currentSalesPerson,
     appState.selectedSiteBaseUrl,
     appState.currentUser,
+    appState.sellingListEpoch,
   ];
 
   int get sellingPeriodYear => filterState.sellingPeriodYear;
@@ -73,6 +72,10 @@ class SalesOrderState extends AppStateProxyNotifier {
       userIndex: 6,
     )) {
       _resetLocalDocuments();
+      return;
+    }
+    if (previous.length > 7 && previous[7] != next[7]) {
+      unawaited(refreshSalesOrders());
     }
   }
 
@@ -215,45 +218,7 @@ class SalesOrderState extends AppStateProxyNotifier {
         'customer_name',
       ]),
     );
-    return _attachSalesOrderItems(
-      rows.map((row) => SalesOrder.fromJson(row)).toList(),
-    );
-  }
-
-  Future<List<SalesOrder>> _attachSalesOrderItems(
-    List<SalesOrder> orders,
-  ) async {
-    if (orders.isEmpty) return orders;
-    try {
-      final rows = await _fetchAllResourcePages(
-        doctype: 'Sales Order Item',
-        fields: const [
-          'parent',
-          'item_code',
-          'item_name',
-          'qty',
-          'rate',
-          'discount_amount',
-          'warehouse',
-        ],
-        filters: [
-          ['parent', 'in', orders.map((order) => order.id).toList()],
-        ],
-        maxRows: 2000,
-      );
-      final grouped = <String, List<SalesOrderItem>>{};
-      for (final row in rows) {
-        final parent = row['parent']?.toString() ?? '';
-        if (parent.isEmpty) continue;
-        grouped.putIfAbsent(parent, () => []).add(SalesOrderItem.fromJson(row));
-      }
-      return [
-        for (final order in orders)
-          order.copyWith(items: grouped[order.id] ?? order.items),
-      ];
-    } catch (_) {
-      return orders;
-    }
+    return rows.map((row) => SalesOrder.fromJson(row)).toList();
   }
 
   void _replaceSalesOrderSnapshot(SalesOrder order) {
@@ -296,25 +261,6 @@ class SalesOrderState extends AppStateProxyNotifier {
     return fields
         .map<List<dynamic>>((field) => [field, 'like', '%$query%'])
         .toList();
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchAllResourcePages({
-    required String doctype,
-    required List<String> fields,
-    List<List<dynamic>>? filters,
-    int? maxRows,
-  }) {
-    return walkFrappePages(
-      pageSize: _pageSize,
-      maxRows: maxRows,
-      fetchPage: (start, limit) => _fetchResourceWithFieldFallback(
-        doctype: doctype,
-        fields: fields,
-        limit: limit,
-        limitStart: start,
-        filters: filters,
-      ),
-    );
   }
 
   Future<List<Map<String, dynamic>>> _fetchResourceWithFieldFallback({

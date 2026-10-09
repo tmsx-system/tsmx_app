@@ -35,6 +35,7 @@ class DeliveryNoteState extends AppStateProxyNotifier
     appState.currentSalesPerson,
     appState.selectedSiteBaseUrl,
     appState.currentUser,
+    appState.sellingListEpoch,
   ];
 
   int get sellingPeriodYear => filterState.sellingPeriodYear;
@@ -60,6 +61,10 @@ class DeliveryNoteState extends AppStateProxyNotifier
       userIndex: 6,
     )) {
       _resetLocalDocuments();
+      return;
+    }
+    if (previous.length > 7 && previous[7] != next[7]) {
+      unawaited(refreshDeliveryNotes());
     }
   }
 

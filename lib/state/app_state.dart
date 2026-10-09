@@ -543,6 +543,12 @@ class AppState with ChangeNotifier {
       _materialRequestTrendPoints;
 
   List<SalesOrder> get salesOrders => _salesOrders;
+  int _sellingListEpoch = 0;
+  int get sellingListEpoch => _sellingListEpoch;
+
+  void _invalidateSellingDocumentLists() {
+    _sellingListEpoch++;
+  }
   List<PurchaseOrder> get purchaseOrders => _purchaseOrders;
   List<DeliveryNote> get deliveryNotes => _deliveryNotes;
   List<SalesInvoice> get salesInvoices => _salesInvoices;
@@ -5961,61 +5967,8 @@ class AppState with ChangeNotifier {
     String? username,
     String? password,
   }) async {
-    final canReuseInFlight =
-        baseUrl == null && username == null && password == null;
-    if (canReuseInFlight && _salesOrdersFetchInFlight != null) {
-      return _salesOrdersFetchInFlight;
-    }
-    final request = _fetchSalesOrdersFromFrappe(
-      baseUrl: baseUrl,
-      username: username,
-      password: password,
-    );
-    if (canReuseInFlight) _salesOrdersFetchInFlight = request;
-    return request.whenComplete(() {
-      if (identical(_salesOrdersFetchInFlight, request)) {
-        _salesOrdersFetchInFlight = null;
-      }
-    });
-  }
-
-  Future<void> _fetchSalesOrdersFromFrappe({
-    String? baseUrl,
-    String? username,
-    String? password,
-  }) async {
-    if (_isSampleMode) {
-      notifyListeners();
-      return;
-    }
-    _isSalesOrdersLoading = true;
-    _salesOrdersError = null;
-    _hasMoreSalesOrders = true;
-    _isMoreSalesOrdersLoading = false;
-    final version = ++_salesOrderQueryVersion;
+    _invalidateSellingDocumentLists();
     notifyListeners();
-
-    try {
-      _frappeService.baseUrl = _activeFrappeBaseUrl(baseUrl);
-      if (username != null && password != null) {
-        await _frappeService.login(username, password);
-      } else {
-        await _frappeService.ensureLoggedIn();
-      }
-
-      final orders = await _fetchSalesOrderPage(limitStart: 0);
-      if (version != _salesOrderQueryVersion) return;
-      _salesOrders = orders;
-      _hasMoreSalesOrders = orders.isNotEmpty;
-    } catch (error) {
-      if (version != _salesOrderQueryVersion) return;
-      _salesOrdersError = error.toString();
-    } finally {
-      if (version == _salesOrderQueryVersion) {
-        _isSalesOrdersLoading = false;
-        notifyListeners();
-      }
-    }
   }
 
   Future<void> fetchPurchaseOrdersFromFrappe({
@@ -6082,40 +6035,7 @@ class AppState with ChangeNotifier {
     }
   }
 
-  Future<void> loadMoreSalesOrders() async {
-    if (_isSalesOrdersLoading ||
-        _isMoreSalesOrdersLoading ||
-        !_hasMoreSalesOrders) {
-      return;
-    }
-
-    _isMoreSalesOrdersLoading = true;
-    final version = _salesOrderQueryVersion;
-    notifyListeners();
-
-    try {
-      await _frappeService.ensureLoggedIn();
-      final nextPage = await _fetchSalesOrderPage(
-        limitStart: _salesOrders.length,
-      );
-      if (version != _salesOrderQueryVersion) return;
-      final existingIds = _salesOrders.map((order) => order.id).toSet();
-      _salesOrders = [
-        ..._salesOrders,
-        ...nextPage.where((order) => existingIds.add(order.id)),
-      ];
-      _hasMoreSalesOrders = nextPage.isNotEmpty;
-      _salesOrdersError = null;
-    } catch (err) {
-      if (version != _salesOrderQueryVersion) return;
-      _salesOrdersError = err.toString();
-    } finally {
-      if (version == _salesOrderQueryVersion) {
-        _isMoreSalesOrdersLoading = false;
-        notifyListeners();
-      }
-    }
-  }
+  Future<void> loadMoreSalesOrders() async {}
 
   Future<void> loadMorePurchaseOrders() async {
     if (_isPurchaseOrdersLoading ||
@@ -6175,8 +6095,7 @@ class AppState with ChangeNotifier {
 
     try {
       await Future.wait([
-        if (canUseSales) refreshSalesOrders(),
-        if (canUseSales) refreshSalesInvoices(),
+        if (canUseSales) refreshSellingSummaries(),
         if (canUsePurchase) refreshPurchaseOrders(),
         if (canUsePurchase) refreshPurchaseInvoices(),
         if (canUseStock || canUseWarehouse) refreshInventory(),
@@ -6191,25 +6110,9 @@ class AppState with ChangeNotifier {
       var unpaidSalesInvoices = 0;
 
       if (canUseSales) {
-        for (final order in _salesOrders) {
-          salesTotal += order.value;
-          if (order.docStatus == 0) salesDraftCount++;
-          if (order.statusKey == SalesOrderStatusKey.completed) {
-            salesCompleted += order.value;
-            salesCompletedCount++;
-          } else if (order.statusKey != SalesOrderStatusKey.cancelled &&
-              order.statusKey != SalesOrderStatusKey.closed) {
-            salesOpen += order.value;
-            salesOpenCount++;
-          }
-        }
-        for (final invoice in _salesInvoices) {
-          if (invoice.statusKey == InvoiceStatusKey.unpaid ||
-              invoice.statusKey == InvoiceStatusKey.overdue ||
-              invoice.statusKey == InvoiceStatusKey.partlyPaid) {
-            unpaidSalesInvoices++;
-          }
-        }
+        salesTotal = _salesOrderSummary.totalValue;
+        salesOpenCount = _salesOrderSummary.documentCount;
+        unpaidSalesInvoices = _salesInvoiceSummary.documentCount;
       }
 
       var purchaseTotal = 0.0;
@@ -6836,14 +6739,7 @@ class AppState with ChangeNotifier {
     _deliveryNoteTrendPoints = _emptySellingTrendPoints();
     _salesInvoiceTrendPoints = _emptySellingTrendPoints();
     notifyListeners();
-    await Future.wait([
-      switch (documentType) {
-        'Delivery Note' => fetchDeliveryNotesFromFrappe(),
-        'Sales Invoice' => fetchSalesInvoicesFromFrappe(),
-        _ => fetchSalesOrdersFromFrappe(),
-      },
-      refreshSellingSummaries(documentType: documentType),
-    ]);
+    await refreshSellingSummaries(documentType: documentType);
   }
 
   void updateSellingFilterSnapshot({
@@ -8264,87 +8160,13 @@ class AppState with ChangeNotifier {
   }
 
   Future<void> fetchDeliveryNotesFromFrappe() async {
-    final inFlight = _deliveryNotesFetchInFlight;
-    if (inFlight != null) return inFlight;
-    final request = _fetchDeliveryNotesFromFrappe();
-    _deliveryNotesFetchInFlight = request;
-    return request.whenComplete(() {
-      if (identical(_deliveryNotesFetchInFlight, request)) {
-        _deliveryNotesFetchInFlight = null;
-      }
-    });
-  }
-
-  Future<void> _fetchDeliveryNotesFromFrappe() async {
-    if (_isSampleMode) {
-      notifyListeners();
-      return;
-    }
-    _isDeliveryNotesLoading = true;
-    _deliveryNotesError = null;
-    _hasMoreDeliveryNotes = true;
-    _isMoreDeliveryNotesLoading = false;
-    final version = ++_deliveryNoteQueryVersion;
+    _invalidateSellingDocumentLists();
     notifyListeners();
-
-    try {
-      await _frappeService.ensureLoggedIn();
-      final docs = await _fetchDeliveryNotePage(limitStart: 0);
-      if (version != _deliveryNoteQueryVersion) return;
-      _deliveryNotes = docs;
-      _hasMoreDeliveryNotes = docs.isNotEmpty;
-      _deliveryNotesError = null;
-    } catch (err) {
-      if (version != _deliveryNoteQueryVersion) return;
-      _deliveryNotesError = err.toString();
-    } finally {
-      if (version == _deliveryNoteQueryVersion) {
-        _isDeliveryNotesLoading = false;
-        notifyListeners();
-      }
-    }
   }
 
   Future<void> fetchSalesInvoicesFromFrappe() async {
-    final inFlight = _salesInvoicesFetchInFlight;
-    if (inFlight != null) return inFlight;
-    final request = _fetchSalesInvoicesFromFrappe();
-    _salesInvoicesFetchInFlight = request;
-    return request.whenComplete(() {
-      if (identical(_salesInvoicesFetchInFlight, request)) {
-        _salesInvoicesFetchInFlight = null;
-      }
-    });
-  }
-
-  Future<void> _fetchSalesInvoicesFromFrappe() async {
-    if (_isSampleMode) {
-      notifyListeners();
-      return;
-    }
-    _isSalesInvoicesLoading = true;
-    _salesInvoicesError = null;
-    _hasMoreSalesInvoices = true;
-    _isMoreSalesInvoicesLoading = false;
-    final version = ++_salesInvoiceQueryVersion;
+    _invalidateSellingDocumentLists();
     notifyListeners();
-
-    try {
-      await _frappeService.ensureLoggedIn();
-      final docs = await _fetchSalesInvoicePage(limitStart: 0);
-      if (version != _salesInvoiceQueryVersion) return;
-      _salesInvoices = docs;
-      _hasMoreSalesInvoices = docs.isNotEmpty;
-      _salesInvoicesError = null;
-    } catch (err) {
-      if (version != _salesInvoiceQueryVersion) return;
-      _salesInvoicesError = err.toString();
-    } finally {
-      if (version == _salesInvoiceQueryVersion) {
-        _isSalesInvoicesLoading = false;
-        notifyListeners();
-      }
-    }
   }
 
   Future<void> fetchPurchaseReceiptsFromFrappe() async {
@@ -8503,61 +8325,9 @@ class AppState with ChangeNotifier {
     await fetchSalesInvoicesFromFrappe();
   }
 
-  Future<void> loadMoreDeliveryNotes() async {
-    if (_isDeliveryNotesLoading ||
-        _isMoreDeliveryNotesLoading ||
-        !_hasMoreDeliveryNotes) {
-      return;
-    }
-    _isMoreDeliveryNotesLoading = true;
-    final version = _deliveryNoteQueryVersion;
-    notifyListeners();
-    try {
-      final page = await _fetchDeliveryNotePage(
-        limitStart: _deliveryNotes.length,
-      );
-      if (version != _deliveryNoteQueryVersion) return;
-      final ids = _deliveryNotes.map((e) => e.id).toSet();
-      _deliveryNotes = [..._deliveryNotes, ...page.where((e) => ids.add(e.id))];
-      _hasMoreDeliveryNotes = page.isNotEmpty;
-    } catch (err) {
-      if (version != _deliveryNoteQueryVersion) return;
-      _deliveryNotesError = err.toString();
-    } finally {
-      if (version == _deliveryNoteQueryVersion) {
-        _isMoreDeliveryNotesLoading = false;
-        notifyListeners();
-      }
-    }
-  }
+  Future<void> loadMoreDeliveryNotes() async {}
 
-  Future<void> loadMoreSalesInvoices() async {
-    if (_isSalesInvoicesLoading ||
-        _isMoreSalesInvoicesLoading ||
-        !_hasMoreSalesInvoices) {
-      return;
-    }
-    _isMoreSalesInvoicesLoading = true;
-    final version = _salesInvoiceQueryVersion;
-    notifyListeners();
-    try {
-      final page = await _fetchSalesInvoicePage(
-        limitStart: _salesInvoices.length,
-      );
-      if (version != _salesInvoiceQueryVersion) return;
-      final ids = _salesInvoices.map((e) => e.id).toSet();
-      _salesInvoices = [..._salesInvoices, ...page.where((e) => ids.add(e.id))];
-      _hasMoreSalesInvoices = page.isNotEmpty;
-    } catch (err) {
-      if (version != _salesInvoiceQueryVersion) return;
-      _salesInvoicesError = err.toString();
-    } finally {
-      if (version == _salesInvoiceQueryVersion) {
-        _isMoreSalesInvoicesLoading = false;
-        notifyListeners();
-      }
-    }
-  }
+  Future<void> loadMoreSalesInvoices() async {}
 
   Future<void> refreshPurchaseReceipts() => fetchPurchaseReceiptsFromFrappe();
   Future<void> refreshPurchaseInvoices() => fetchPurchaseInvoicesFromFrappe();
@@ -11566,155 +11336,6 @@ class AppState with ChangeNotifier {
     }
   }
 
-  Future<List<SalesOrder>> _fetchSalesOrderPage({
-    required int limitStart,
-  }) async {
-    final scopeFilters = await _salesDocumentScopeFilters('Sales Order');
-    final filters = <List<dynamic>>[
-      ...await _sellingDocumentFilters(
-        'transaction_date',
-        doctype: 'Sales Order',
-      ),
-      ...?_salesOrderFilters(_salesOrderStatus),
-      ...?scopeFilters,
-    ];
-    final data = await _fetchResourceWithFieldFallback(
-      doctype: 'Sales Order',
-      fields: const [
-        'name',
-        'owner',
-        'customer',
-        'customer_name',
-        'grand_total',
-        'status',
-        'workflow_state',
-        'docstatus',
-        'transaction_date',
-        'delivery_date',
-        'total_qty',
-        'per_delivered',
-        'per_billed',
-      ],
-      limit: _documentPageSize,
-      limitStart: limitStart,
-      orderBy: 'transaction_date desc, name desc',
-      filters: filters.isEmpty ? null : filters,
-      orFilters: _searchFilters(_salesOrderSearch, const [
-        'name',
-        'customer',
-        'customer_name',
-      ]),
-    );
-
-    var orders = data.map((item) => SalesOrder.fromJson(item)).toList();
-    if (scopeFilters == null) {
-      orders = await _filterSalesDocumentsByCurrentSalesPerson(
-        doctype: 'Sales Order',
-        docs: orders,
-        idOf: (order) => order.id,
-      );
-    }
-    orders = await _attachSalesOrderItems(orders);
-    return orders;
-  }
-
-  Future<List<DeliveryNote>> _fetchDeliveryNotePage({
-    required int limitStart,
-  }) async {
-    final scopeFilters = await _salesDocumentScopeFilters('Delivery Note');
-    final filters = <List<dynamic>>[
-      ...await _sellingDocumentFilters(
-        'posting_date',
-        doctype: 'Delivery Note',
-      ),
-      ...?_statusFilters(_deliveryNoteStatus),
-      ...?scopeFilters,
-    ];
-    final data = await _fetchResourceWithFieldFallback(
-      doctype: 'Delivery Note',
-      fields: const [
-        'name',
-        'owner',
-        'customer',
-        'customer_name',
-        'status',
-        'docstatus',
-        'posting_date',
-        'base_net_total',
-        'net_total',
-        'grand_total',
-        'total_qty',
-      ],
-      limit: _documentPageSize,
-      limitStart: limitStart,
-      orderBy: 'posting_date desc, name desc',
-      filters: filters,
-      orFilters: _searchFilters(_deliveryNoteSearch, const [
-        'name',
-        'customer',
-        'customer_name',
-      ]),
-    );
-    var docs = data.map(DeliveryNote.fromJson).toList();
-    if (scopeFilters == null) {
-      docs = await _filterSalesDocumentsByCurrentSalesPerson(
-        doctype: 'Delivery Note',
-        docs: docs,
-        idOf: (doc) => doc.id,
-      );
-    }
-    return docs;
-  }
-
-  Future<List<SalesInvoice>> _fetchSalesInvoicePage({
-    required int limitStart,
-  }) async {
-    final scopeFilters = await _salesDocumentScopeFilters('Sales Invoice');
-    final filters = <List<dynamic>>[
-      ...await _sellingDocumentFilters(
-        'posting_date',
-        doctype: 'Sales Invoice',
-      ),
-      ...?_statusFilters(_salesInvoiceStatus),
-      ...?scopeFilters,
-    ];
-    final data = await _fetchResourceWithFieldFallback(
-      doctype: 'Sales Invoice',
-      fields: const [
-        'name',
-        'owner',
-        'customer',
-        'customer_name',
-        'status',
-        'docstatus',
-        'posting_date',
-        'base_net_total',
-        'net_total',
-        'grand_total',
-        'outstanding_amount',
-        'due_date',
-      ],
-      limit: _documentPageSize,
-      limitStart: limitStart,
-      orderBy: 'posting_date desc, name desc',
-      filters: filters.isEmpty ? null : filters,
-      orFilters: _searchFilters(_salesInvoiceSearch, const [
-        'name',
-        'customer',
-        'customer_name',
-      ]),
-    );
-    var docs = data.map(SalesInvoice.fromJson).toList();
-    if (scopeFilters == null) {
-      docs = await _filterSalesDocumentsByCurrentSalesPerson(
-        doctype: 'Sales Invoice',
-        docs: docs,
-        idOf: (doc) => doc.id,
-      );
-    }
-    return docs;
-  }
-
   List<List<dynamic>>? _statusFilters(String? status) {
     if (status == null || status.isEmpty) return null;
     return [
@@ -11860,10 +11481,6 @@ class AppState with ChangeNotifier {
     _buyingSupplierTypeIdsCacheKey = type;
     _buyingSupplierTypeIdsCache = ids;
     return ids;
-  }
-
-  List<List<dynamic>>? _salesOrderFilters(String? status) {
-    return _statusFilters(status);
   }
 
   List<List<dynamic>>? _searchFilters(String search, List<String> fields) {
@@ -12037,42 +11654,6 @@ class AppState with ChangeNotifier {
       ];
     }
     return _statusFilters(status);
-  }
-
-  Future<List<SalesOrder>> _attachSalesOrderItems(
-    List<SalesOrder> orders,
-  ) async {
-    if (orders.isEmpty) return orders;
-    try {
-      final rows = await _fetchAllResourcePages(
-        doctype: 'Sales Order Item',
-        fields: const [
-          'parent',
-          'item_code',
-          'item_name',
-          'qty',
-          'rate',
-          'warehouse',
-        ],
-        filters: [
-          ['parent', 'in', orders.map((order) => order.id).toList()],
-        ],
-        maxRows: 2000,
-      );
-      final grouped = <String, List<SalesOrderItem>>{};
-      for (final row in rows) {
-        final parent = row['parent']?.toString() ?? '';
-        if (parent.isEmpty) continue;
-        grouped.putIfAbsent(parent, () => []).add(SalesOrderItem.fromJson(row));
-      }
-      return orders
-          .map(
-            (order) => order.copyWith(items: grouped[order.id] ?? order.items),
-          )
-          .toList();
-    } catch (_) {
-      return orders;
-    }
   }
 
   Future<List<PurchaseOrder>> _attachPurchaseOrderItems(
