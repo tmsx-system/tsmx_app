@@ -31,6 +31,7 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
   List<String> _profiles = const [];
   PosDoctypeActionPermissions _permissions =
       const PosDoctypeActionPermissions();
+  bool _isOpeningDetail = false;
 
   static const _doctype = 'POS Closing Entry';
 
@@ -107,6 +108,8 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
   }
 
   Future<void> _openDetail(PosClosingEntry entry) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
     final state = context.read<PosState>();
     try {
       final detail = await state.loadClosingDetail(entry.id);
@@ -172,6 +175,8 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.toString())),
       );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
     }
   }
 
@@ -232,7 +237,9 @@ class _PosClosingEntryPanelState extends State<PosClosingEntryPanel> {
                         : entry.periodEndDate,
                     value: entry.grandTotal,
                     trailing: entry.user,
-                    onTap: () => _openDetail(entry),
+                    onTap: _isOpeningDetail
+                        ? null
+                        : () => unawaited(_openDetail(entry)),
                     onEdit: _permissions.canWrite && entry.docStatus == 0
                         ? () => _openEdit(entry.id)
                         : null,

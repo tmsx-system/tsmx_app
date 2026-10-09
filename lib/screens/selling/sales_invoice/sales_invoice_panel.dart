@@ -31,6 +31,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
   SellingSortOption _sortOption = SellingSortOption.newest;
   SellingAdvancedFilters _advancedFilters = SellingAdvancedFilters.empty;
   Timer? _searchDebounce;
+  bool _isOpeningDetail = false;
 
   static final _chips = <ErpStatusChip<InvoiceStatusKey?>>[
     const ErpStatusChip(label: 'All', value: null),
@@ -236,6 +237,9 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
   }
 
   Future<void> _openDetail(SalesInvoice doc) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
+    try {
     final detail = await context
         .read<SalesInvoiceState>()
         .loadSalesInvoiceDetail(doc.id);
@@ -243,7 +247,7 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
 
     final canSubmit = isDocDraft(detail.docStatus);
 
-    showSellingDocumentDetailSheet(
+    await showSellingDocumentDetailSheet(
       context: context,
       title: detail.id,
       subtitle: detail.customer,
@@ -299,6 +303,9 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
             )
           : null,
     );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
+    }
   }
 
   Future<void> _submit(String id) async {
@@ -422,7 +429,9 @@ class _SalesInvoicePanelState extends State<SalesInvoicePanel> {
                     statusText: d.statusText,
                     date: d.date,
                     value: d.value,
-                    onTap: () => _openDetail(d),
+                    onTap: _isOpeningDetail
+                        ? null
+                        : () => unawaited(_openDetail(d)),
                   ),
                 )
                 .toList(),

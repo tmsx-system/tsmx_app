@@ -31,6 +31,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
   SellingSortOption _sortOption = SellingSortOption.newest;
   SellingAdvancedFilters _advancedFilters = SellingAdvancedFilters.empty;
   Timer? _searchDebounce;
+  bool _isOpeningDetail = false;
 
   static final _chips = <ErpStatusChip<DeliveryNoteStatusKey?>>[
     const ErpStatusChip(label: 'All', value: null),
@@ -240,6 +241,9 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
   }
 
   Future<void> _openDetail(DeliveryNote doc) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
+    try {
     final detail = await context
         .read<DeliveryNoteState>()
         .loadDeliveryNoteDetail(doc.id);
@@ -247,7 +251,7 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
 
     final canSubmit = isDocDraft(detail.docStatus);
 
-    showSellingDocumentDetailSheet(
+    await showSellingDocumentDetailSheet(
       context: context,
       title: detail.id,
       subtitle: detail.customer,
@@ -294,6 +298,9 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
             )
           : null,
     );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
+    }
   }
 
   Future<void> _submit(String id) async {
@@ -417,7 +424,9 @@ class _DeliveryNotePanelState extends State<DeliveryNotePanel> {
                     statusText: d.statusText,
                     date: d.date,
                     value: d.value,
-                    onTap: () => _openDetail(d),
+                    onTap: _isOpeningDetail
+                        ? null
+                        : () => unawaited(_openDetail(d)),
                   ),
                 )
                 .toList(),

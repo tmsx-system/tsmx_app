@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 
+bool _posDetailSheetOpen = false;
+
 Future<void> showPosDocumentDetailSheet({
   required BuildContext context,
   required String title,
   required String subtitle,
   required List<Widget> children,
-}) {
-  return showModalBottomSheet<void>(
+}) async {
+  if (_posDetailSheetOpen) return;
+  _posDetailSheetOpen = true;
+  try {
+    await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -63,7 +68,10 @@ Future<void> showPosDocumentDetailSheet({
         },
       );
     },
-  );
+    );
+  } finally {
+    _posDetailSheetOpen = false;
+  }
 }
 
 class PosDetailRow extends StatelessWidget {

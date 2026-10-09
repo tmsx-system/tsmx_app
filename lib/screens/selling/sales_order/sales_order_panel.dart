@@ -856,7 +856,9 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
                     statusText: o.effectiveStatusText,
                     date: o.date,
                     value: o.value,
-                    onTap: () => _openDetail(o),
+                    onTap: _isOpeningDetail
+                        ? null
+                        : () => unawaited(_openDetail(o)),
                     onEdit: isDocDraft(o.docStatus) && _canWriteSalesOrder
                         ? () => _editSo(o.id)
                         : null,

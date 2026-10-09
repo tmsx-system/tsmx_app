@@ -43,7 +43,9 @@ class SellingDetailItem {
   });
 }
 
-void showSellingDocumentDetailSheet({
+bool _sellingDetailSheetOpen = false;
+
+Future<void> showSellingDocumentDetailSheet({
   required BuildContext context,
   required String title,
   required String subtitle,
@@ -53,8 +55,11 @@ void showSellingDocumentDetailSheet({
   List<SellingDetailInfo> infos = const [],
   List<SellingDetailItem> items = const [],
   Widget? footer,
-}) {
-  showModalBottomSheet(
+}) async {
+  if (_sellingDetailSheetOpen) return;
+  _sellingDetailSheetOpen = true;
+  try {
+    await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
@@ -120,7 +125,10 @@ void showSellingDocumentDetailSheet({
         },
       );
     },
-  );
+    );
+  } finally {
+    _sellingDetailSheetOpen = false;
+  }
 }
 
 class _SellingDetailHeader extends StatelessWidget {

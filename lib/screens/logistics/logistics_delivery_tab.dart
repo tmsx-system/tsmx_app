@@ -29,6 +29,7 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
   _DeliveryScope _scope = _DeliveryScope.all;
   String? _busyId;
   String? _error;
+  bool _isOpeningDetail = false;
 
   @override
   void initState() {
@@ -200,16 +201,22 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
     }
   }
 
-  void _openDetail(DeliveryNote row) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => _LogisticsDeliveryDetailScreen(
-          row: row,
-          onUploadPhoto: _chooseProofPhoto,
-          onCaptureSignature: _captureCustomerSignature,
+  Future<void> _openDetail(DeliveryNote row) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => _LogisticsDeliveryDetailScreen(
+            row: row,
+            onUploadPhoto: _chooseProofPhoto,
+            onCaptureSignature: _captureCustomerSignature,
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
+    }
   }
 
   @override
@@ -383,7 +390,7 @@ class _LogisticsDeliveryTabState extends State<LogisticsDeliveryTab> {
         color: AppColors.white,
         borderRadius: BorderRadius.circular(22),
         child: InkWell(
-          onTap: () => _openDetail(row),
+          onTap: _isOpeningDetail ? null : () => unawaited(_openDetail(row)),
           borderRadius: BorderRadius.circular(22),
           child: Container(
             padding: const EdgeInsets.all(14),

@@ -33,6 +33,7 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
   List<String> _profiles = const [];
   PosDoctypeActionPermissions _permissions =
       const PosDoctypeActionPermissions();
+  bool _isOpeningDetail = false;
 
   static const _doctype = 'POS Invoice';
 
@@ -114,6 +115,8 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
   }
 
   Future<void> _openDetail(PosInvoice invoice) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
     final state = context.read<PosState>();
     try {
       final detail = await state.loadInvoiceDetail(invoice.id);
@@ -200,6 +203,8 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.toString())),
       );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
     }
   }
 
@@ -256,7 +261,9 @@ class _PosInvoicePanelState extends State<PosInvoicePanel> {
                     date: invoice.postingDate,
                     value: invoice.value,
                     trailing: invoice.posProfile,
-                    onTap: () => _openDetail(invoice),
+                    onTap: _isOpeningDetail
+                        ? null
+                        : () => unawaited(_openDetail(invoice)),
                     onEdit: _permissions.canWrite && invoice.docStatus == 0
                         ? () => _openEdit(invoice.id)
                         : null,

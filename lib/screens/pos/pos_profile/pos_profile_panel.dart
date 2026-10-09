@@ -22,6 +22,7 @@ class PosProfilePanel extends StatefulWidget {
 class _PosProfilePanelState extends State<PosProfilePanel> {
   final _searchController = TextEditingController();
   Timer? _debounce;
+  bool _isOpeningDetail = false;
 
   @override
   void dispose() {
@@ -39,6 +40,8 @@ class _PosProfilePanelState extends State<PosProfilePanel> {
   }
 
   Future<void> _openDetail(PosProfile profile) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
     final state = context.read<PosState>();
     try {
       final detail = await state.loadProfileDetail(profile.id);
@@ -72,6 +75,8 @@ class _PosProfilePanelState extends State<PosProfilePanel> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.toString())),
       );
+    } finally {
+      if (mounted) setState(() => _isOpeningDetail = false);
     }
   }
 
@@ -122,7 +127,9 @@ class _PosProfilePanelState extends State<PosProfilePanel> {
                     date: profile.modified,
                     value: 0,
                     trailing: profile.warehouse,
-                    onTap: () => _openDetail(profile),
+                    onTap: _isOpeningDetail
+                        ? null
+                        : () => unawaited(_openDetail(profile)),
                   ),
               ],
             ),
