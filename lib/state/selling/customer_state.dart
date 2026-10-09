@@ -43,6 +43,10 @@ class CustomerState extends AppStateProxyNotifier {
     return appState.fetchSalesCustomers(forceRefresh: forceRefresh);
   }
 
+  Future<List<SalesCustomerOption>> searchSalesCustomers(String query) {
+    return appState.searchSalesCustomers(query);
+  }
+
   Future<CustomerSalesInsight> fetchCustomerSalesInsight(
     String customer, {
     String? company,

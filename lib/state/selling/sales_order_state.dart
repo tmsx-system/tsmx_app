@@ -513,6 +513,10 @@ class SalesOrderState extends AppStateProxyNotifier {
     return appState.fetchSalesCustomers(forceRefresh: forceRefresh);
   }
 
+  Future<List<SalesCustomerOption>> searchSalesCustomers(String query) {
+    return appState.searchSalesCustomers(query);
+  }
+
   Future<SalesOrder> createSalesOrder({
     required String customer,
     String? itemCode,

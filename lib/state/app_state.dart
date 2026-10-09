@@ -577,6 +577,7 @@ class AppState with ChangeNotifier {
   Timer? _notificationPollTimer;
   Future<void>? _notificationTickInFlight;
   final Map<String, Future<List<SalesInvoice>>> _collectionInvoiceInFlight = {};
+  Future<List<SalesCustomerOption>>? _salesCustomersInFlight;
   final Map<String, Future<List<CollectionPayment>>>
   _collectionPaymentInFlight = {};
   final Map<String, Future<Map<String, List<SalesInvoicePaymentAllocation>>>>
@@ -1546,6 +1547,7 @@ class AppState with ChangeNotifier {
     _salesVisitCacheAt = null;
     _salesVisitFetchInFlight = null;
     _collectionInvoiceInFlight.clear();
+    _salesCustomersInFlight = null;
     _collectionPaymentInFlight.clear();
     _collectionAllocationInFlight.clear();
     _stockAgingInFlight.clear();
@@ -2103,20 +2105,68 @@ class AppState with ChangeNotifier {
     if (!forceRefresh) {
       final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
       if (cachedCustomers != null) return cachedCustomers;
+      final inFlight = _salesCustomersInFlight;
+      if (inFlight != null) return inFlight;
     }
 
-    try {
-      final customers = await _customerService.fetchSalesCustomers(
-        salesPerson: _currentSalesPerson,
-      );
-      await _writeSalesCustomersToDb(cacheKey, customers);
-      return customers;
-    } catch (error) {
-      if (forceRefresh) {
+    final request = () async {
+      try {
+        final customers = await _customerService.fetchSalesCustomers(
+          salesPerson: _currentSalesPerson,
+        );
+        await _writeSalesCustomersToDb(cacheKey, customers);
+        return customers;
+      } catch (error) {
         final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
         if (cachedCustomers != null) return cachedCustomers;
+        rethrow;
       }
-      rethrow;
+    }();
+    _salesCustomersInFlight = request;
+    try {
+      return await request;
+    } finally {
+      if (identical(_salesCustomersInFlight, request)) {
+        _salesCustomersInFlight = null;
+      }
+    }
+  }
+
+  Future<List<SalesCustomerOption>> searchSalesCustomers(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return fetchSalesCustomers();
+    if (_isSampleMode) {
+      final cached = await fetchSalesCustomers();
+      final needle = q.toLowerCase();
+      return cached
+          .where(
+            (customer) =>
+                customer.id.toLowerCase().contains(needle) ||
+                customer.name.toLowerCase().contains(needle),
+          )
+          .toList();
+    }
+    if (_shouldScopeSalesData &&
+        (_currentSalesPerson == null || _currentSalesPerson!.isEmpty)) {
+      try {
+        await resolveCurrentSalesIdentity();
+      } catch (_) {}
+    }
+    try {
+      return await _customerService.searchSalesCustomers(
+        q,
+        salesPerson: _currentSalesPerson,
+      );
+    } catch (_) {
+      final cached = await fetchSalesCustomers();
+      final needle = q.toLowerCase();
+      return cached
+          .where(
+            (customer) =>
+                customer.id.toLowerCase().contains(needle) ||
+                customer.name.toLowerCase().contains(needle),
+          )
+          .toList();
     }
   }
 

@@ -49,6 +49,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   bool _isLoadingCustomerInsight = false;
   String? _customerInsightError;
   Timer? _pricingDebounce;
+  Timer? _customerSearchDebounce;
   int _repriceGeneration = 0;
   bool _syncingControllers = false;
   bool _totalScheduled = false;
@@ -585,6 +586,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   @override
   void dispose() {
     _pricingDebounce?.cancel();
+    _customerSearchDebounce?.cancel();
     _customerCtrl.dispose();
     _qtyCtrl.dispose();
     _rateCtrl.dispose();
@@ -1500,6 +1502,59 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     }).toList();
   }
 
+  _CustomerOption _mapSalesCustomer(SalesCustomerOption customer) {
+    return _CustomerOption(
+      id: customer.id,
+      name: customer.name,
+      salesTeam: customer.salesTeam,
+    );
+  }
+
+  void _mergeCustomerOptions(List<_CustomerOption> rows) {
+    if (rows.isEmpty) return;
+    final byId = {
+      for (final customer in _customerOptions) customer.id: customer,
+    };
+    for (final customer in rows) {
+      byId[customer.id] = customer;
+    }
+    _customerOptions = byId.values.toList();
+  }
+
+  Future<List<_CustomerOption>> _searchCustomersRemote(String query) async {
+    final rows = await context.read<SalesOrderState>().searchSalesCustomers(
+      query,
+    );
+    final mapped = rows.map(_mapSalesCustomer).toList();
+    if (mounted) {
+      setState(() => _mergeCustomerOptions(mapped));
+    }
+    return _filteredCustomers(query);
+  }
+
+  Future<List<_CustomerOption>> _refreshCustomersRemote() async {
+    final appState = context.read<SalesOrderState>();
+    final rows = await appState.fetchSalesCustomers(forceRefresh: true);
+    var mapped = rows.map(_mapSalesCustomer).toList();
+    if (appState.mobileAccess.isSalesUser) {
+      final salesPerson = appState.currentSalesPerson?.trim() ?? '';
+      mapped = mapped
+          .where(
+            (customer) =>
+                salesPerson.isNotEmpty &&
+                customer.salesTeam.any(
+                  (row) =>
+                      row['sales_person']?.toString().trim() == salesPerson,
+                ),
+          )
+          .toList();
+    }
+    if (mounted) {
+      setState(() => _customerOptions = mapped);
+    }
+    return _salesScopedCustomerOptions().take(30).toList();
+  }
+
   List<_CustomerOption> _salesScopedCustomerOptions() {
     final appState = context.read<SalesOrderState>();
     if (!appState.mobileAccess.isSalesUser) return _customerOptions;
@@ -1540,9 +1595,56 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         var query = '';
+        var searching = false;
+        var customers = _filteredCustomers('');
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            final customers = _filteredCustomers(query);
+            Future<void> refreshCustomers() async {
+              setSheetState(() => searching = true);
+              try {
+                final rows = await _refreshCustomersRemote();
+                if (!sheetContext.mounted) return;
+                setSheetState(() {
+                  searching = false;
+                  customers = query.trim().isEmpty
+                      ? rows
+                      : _filteredCustomers(query);
+                });
+              } catch (_) {
+                if (!sheetContext.mounted) return;
+                setSheetState(() => searching = false);
+              }
+            }
+
+            void onQueryChanged(String value) {
+              _customerSearchDebounce?.cancel();
+              final trimmed = value.trim();
+              setSheetState(() {
+                query = value;
+                customers = _filteredCustomers(value);
+                searching = trimmed.isNotEmpty;
+              });
+              if (trimmed.isEmpty) return;
+              _customerSearchDebounce = Timer(
+                const Duration(milliseconds: 280),
+                () async {
+                  try {
+                    final rows = await _searchCustomersRemote(trimmed);
+                    if (!sheetContext.mounted) return;
+                    setSheetState(() {
+                      searching = false;
+                      customers = rows;
+                    });
+                  } catch (_) {
+                    if (!sheetContext.mounted) return;
+                    setSheetState(() {
+                      searching = false;
+                      customers = _filteredCustomers(trimmed);
+                    });
+                  }
+                },
+              );
+            }
             return SafeArea(
               top: false,
               child: Padding(
@@ -1596,6 +1698,19 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                               ),
                             ),
                             IconButton(
+                              tooltip: 'Refresh customer',
+                              onPressed: searching ? null : refreshCustomers,
+                              icon: searching
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.refresh_rounded),
+                            ),
+                            IconButton(
                               tooltip: 'Tutup',
                               onPressed: () => Navigator.pop(sheetContext),
                               icon: const Icon(Icons.close_rounded),
@@ -1617,8 +1732,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                               borderSide: BorderSide.none,
                             ),
                           ),
-                          onChanged: (value) =>
-                              setSheetState(() => query = value),
+                          onChanged: onQueryChanged,
                         ),
                       ),
                       if (!context
@@ -1637,7 +1751,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                         ),
                       ],
                       Flexible(
-                        child: customers.isEmpty
+                        child: customers.isEmpty && !searching
                             ? const Center(
                                 child: Padding(
                                   padding: EdgeInsets.all(28),
@@ -1650,7 +1764,10 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                                   ),
                                 ),
                               )
-                            : ListView.separated(
+                            : RefreshIndicator(
+                                onRefresh: refreshCustomers,
+                                child: ListView.separated(
+                                physics: const AlwaysScrollableScrollPhysics(),
                                 shrinkWrap: true,
                                 padding: const EdgeInsets.fromLTRB(
                                   12,
@@ -1760,6 +1877,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                                     ),
                                   );
                                 },
+                              ),
                               ),
                       ),
                     ],
@@ -2321,7 +2439,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     return DateTime(value.year, value.month, value.day);
   }
 
-  Future<void> _loadSelectors() async {
+  Future<void> _loadSelectors({bool forceRefresh = false}) async {
     final appState = context.read<SalesOrderState>();
     setState(() {
       _isLoadingSelectors = true;
@@ -2423,7 +2541,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
           .catchError((_) => <String, dynamic>{});
       final salesCustomersFuture = _loadSelector<List<SalesCustomerOption>>(
         label: 'Customer / Sales Team',
-        load: () => appState.fetchSalesCustomers(forceRefresh: true),
+        load: () => appState.fetchSalesCustomers(forceRefresh: forceRefresh),
         fallback: const [],
         errors: selectorErrors,
       );
@@ -2962,7 +3080,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                           tooltip: 'Coba lagi',
                           onPressed: _isLoadingSelectors
                               ? null
-                              : _loadSelectors,
+                              : () => _loadSelectors(forceRefresh: true),
                           icon: const Icon(Icons.refresh_rounded),
                         ),
                       ],
@@ -3050,7 +3168,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                             TextButton.icon(
                               onPressed: _isLoadingSelectors
                                   ? null
-                                  : _loadSelectors,
+                                  : () => _loadSelectors(forceRefresh: true),
                               icon: const Icon(Icons.refresh_rounded),
                               label: const Text('Retry'),
                             ),

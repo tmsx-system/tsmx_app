@@ -107,6 +107,36 @@ class CustomerService {
     String? salesPerson,
   }) async {
     final customers = await _fetchPermittedCustomers();
+    return _withSalesPerson(customers, salesPerson);
+  }
+
+  Future<List<SalesCustomerOption>> searchSalesCustomers(
+    String query, {
+    String? salesPerson,
+  }) async {
+    final q = query.trim();
+    if (q.isEmpty) return fetchSalesCustomers(salesPerson: salesPerson);
+    final rows = await _frappe.fetchResource(
+      'Customer',
+      fields: const ['name', 'customer_name', 'primary_address'],
+      orFilters: [
+        ['name', 'like', '%$q%'],
+        ['customer_name', 'like', '%$q%'],
+      ],
+      orderBy: 'customer_name asc',
+      limit: 80,
+    );
+    final customers = rows
+        .map(SalesCustomerOption.fromJson)
+        .where((customer) => customer.id.isNotEmpty)
+        .toList();
+    return _withSalesPerson(customers, salesPerson);
+  }
+
+  List<SalesCustomerOption> _withSalesPerson(
+    List<SalesCustomerOption> customers,
+    String? salesPerson,
+  ) {
     final person = salesPerson?.trim() ?? '';
     if (person.isEmpty) return customers;
     return customers
