@@ -7,6 +7,7 @@ import '../../../../../models/stock_entry.dart';
 import '../../../../../models/warehouse_info.dart';
 import '../../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../../theme/app_colors.dart';
+import '../../../../../utils/date_range_presets.dart';
 import '../../../../../utils/erp_doc_utils.dart';
 import '../../../../../utils/erp_share_file.dart';
 import '../../../../../widgets/erp/erp_empty_state.dart';
@@ -48,6 +49,8 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
   String? _company;
   String? _fromWarehouse;
   String? _toWarehouse;
+  DateTime? _fromDate;
+  DateTime? _toDate;
   bool _isOpeningDetail = false;
 
   @override
@@ -116,6 +119,8 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
         fromWarehouse: _fromWarehouse,
         toWarehouse: _toWarehouse,
         name: _search.text,
+        fromDate: _fromDate,
+        toDate: _toDate,
       );
       if (!mounted) return;
       if (state.stockEntriesError != null) {
@@ -132,7 +137,29 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
   bool get _hasExtraFilters =>
       (_company ?? '').isNotEmpty ||
       (_fromWarehouse ?? '').isNotEmpty ||
-      (_toWarehouse ?? '').isNotEmpty;
+      (_toWarehouse ?? '').isNotEmpty ||
+      _hasDateFilter;
+
+  bool get _hasDateFilter => _fromDate != null || _toDate != null;
+
+  String get _dateFilterLabel {
+    final from = _fromDate;
+    final to = _toDate;
+    if (from != null && to != null) {
+      return '${DateRangePresets.formatDisplay(from)} – ${DateRangePresets.formatDisplay(to)}';
+    }
+    if (from != null) return 'Mulai ${DateRangePresets.formatDisplay(from)}';
+    if (to != null) return 'Sampai ${DateRangePresets.formatDisplay(to)}';
+    return '';
+  }
+
+  Future<void> _clearDateFilter() async {
+    setState(() {
+      _fromDate = null;
+      _toDate = null;
+    });
+    await _load();
+  }
 
   Future<void> _openFilters() async {
     final state = context.read<WarehouseStockState>();
@@ -154,6 +181,8 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
               company: _company,
               fromWarehouse: _fromWarehouse,
               toWarehouse: _toWarehouse,
+              fromDate: _fromDate,
+              toDate: _toDate,
             ),
             defaultType: widget.kind.name,
           ),
@@ -166,6 +195,8 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
       _company = result.company;
       _fromWarehouse = result.fromWarehouse;
       _toWarehouse = result.toWarehouse;
+      _fromDate = result.fromDate;
+      _toDate = result.toDate;
     });
     await _load();
   }
@@ -414,6 +445,32 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
                 ),
               ],
             ),
+            if (_hasDateFilter) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: InputChip(
+                  avatar: const Icon(
+                    Icons.calendar_month_rounded,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                  label: Text(_dateFilterLabel),
+                  labelStyle: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                  backgroundColor: AppColors.softGreen,
+                  side: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.2),
+                  ),
+                  onPressed: _openFilters,
+                  onDeleted: _loading ? null : _clearDateFilter,
+                  deleteIconColor: AppColors.primary,
+                ),
+              ),
+            ],
             if (_loading) ...[
               const SizedBox(height: 12),
               const LinearProgressIndicator(),
@@ -431,7 +488,7 @@ class _StockEntryPanelState extends State<StockEntryPanel> {
               ErpEmptyState(
                 title: 'Belum ada $_stockEntryType',
                 message:
-                    'Tidak ada dokumen untuk filter ini. Ubah company/gudang atau buat Stock Entry baru.',
+                    'Tidak ada dokumen untuk filter ini. Ubah tanggal, perusahaan, atau gudang, atau buat Stock Entry baru.',
               )
             else
               ...entries.map(_stockEntryCard),
@@ -595,12 +652,16 @@ class _StockEntryListFilters {
   final String? company;
   final String? fromWarehouse;
   final String? toWarehouse;
+  final DateTime? fromDate;
+  final DateTime? toDate;
 
   const _StockEntryListFilters({
     required this.stockEntryType,
     this.company,
     this.fromWarehouse,
     this.toWarehouse,
+    this.fromDate,
+    this.toDate,
   });
 }
 
@@ -622,6 +683,8 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
   String? _company;
   String? _fromWarehouse;
   String? _toWarehouse;
+  DateTime? _fromDate;
+  DateTime? _toDate;
 
   @override
   void initState() {
@@ -630,6 +693,94 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
     _company = widget.initial.company;
     _fromWarehouse = widget.initial.fromWarehouse;
     _toWarehouse = widget.initial.toWarehouse;
+    _fromDate = widget.initial.fromDate;
+    _toDate = widget.initial.toDate;
+  }
+
+  bool _sameDay(DateTime? a, DateTime? b) =>
+      a != null &&
+      b != null &&
+      a.year == b.year &&
+      a.month == b.month &&
+      a.day == b.day;
+
+  bool _matchesRange(DateRangePreset range) =>
+      _sameDay(_fromDate, range.from) && _sameDay(_toDate, range.to);
+
+  void _applyRange(DateRangePreset? range) {
+    setState(() {
+      _fromDate = range?.from;
+      _toDate = range?.to;
+    });
+  }
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final today = DateTime.now();
+    final current = isFrom ? _fromDate : _toDate;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? (isFrom ? _toDate : _fromDate) ?? today,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(today.year + 2, 12, 31),
+      helpText: isFrom ? 'Dari tanggal' : 'Sampai tanggal',
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (isFrom) {
+        _fromDate = picked;
+        if (_toDate != null && _toDate!.isBefore(picked)) _toDate = picked;
+      } else {
+        _toDate = picked;
+        if (_fromDate != null && _fromDate!.isAfter(picked)) {
+          _fromDate = picked;
+        }
+      }
+    });
+  }
+
+  Widget _datePresetChip(String label, DateRangePreset? range) {
+    final selected = range == null
+        ? _fromDate == null && _toDate == null
+        : _matchesRange(range);
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => _applyRange(range),
+      selectedColor: AppColors.primary,
+      backgroundColor: AppColors.background,
+      side: const BorderSide(color: AppColors.border),
+      labelStyle: TextStyle(
+        color: selected ? AppColors.white : AppColors.navy,
+        fontWeight: FontWeight.w800,
+        fontSize: 12,
+      ),
+      showCheckmark: false,
+    );
+  }
+
+  Widget _dateField({required bool isFrom}) {
+    final value = isFrom ? _fromDate : _toDate;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _pickDate(isFrom: isFrom),
+      child: InputDecorator(
+        decoration: _filterDecoration(isFrom ? 'Dari' : 'Sampai').copyWith(
+          suffixIcon: const Icon(
+            Icons.calendar_today_rounded,
+            size: 18,
+            color: AppColors.primary,
+          ),
+        ),
+        child: Text(
+          value == null ? '-' : DateRangePresets.formatDisplay(value),
+          style: const TextStyle(
+            color: AppColors.navy,
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -647,7 +798,7 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
           color: AppColors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -674,12 +825,49 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Filter company dan gudang. Tipe sudah dikunci sesuai fitur yang dibuka.',
+                'Filter tanggal, perusahaan, dan gudang. Tipe sudah dikunci sesuai fitur yang dibuka.',
                 style: TextStyle(
                   color: AppColors.slate,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Tanggal Posting',
+                style: TextStyle(
+                  color: AppColors.navy,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _datePresetChip('Semua tanggal', null),
+                  _datePresetChip(
+                    'Bulan ini',
+                    DateRangePresets.monthToDateRange(),
+                  ),
+                  _datePresetChip(
+                    '7 hari',
+                    DateRangePresets.last7DaysRange(),
+                  ),
+                  _datePresetChip(
+                    '30 hari',
+                    DateRangePresets.last30DaysRange(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: _dateField(isFrom: true)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _dateField(isFrom: false)),
+                ],
               ),
               const SizedBox(height: 16),
               ErpSearchableFilterField(
@@ -765,6 +953,8 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
                           _company = preferred;
                           _fromWarehouse = null;
                           _toWarehouse = null;
+                          _fromDate = null;
+                          _toDate = null;
                         });
                       },
                       child: const Text('Atur ulang'),
@@ -780,6 +970,8 @@ class _StockEntryFilterSheetState extends State<_StockEntryFilterSheet> {
                           company: _company,
                           fromWarehouse: _fromWarehouse,
                           toWarehouse: _toWarehouse,
+                          fromDate: _fromDate,
+                          toDate: _toDate,
                         ),
                       ),
                       child: const Text('Terapkan'),

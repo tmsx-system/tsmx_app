@@ -969,6 +969,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
     String? fromWarehouse,
     String? toWarehouse,
     String? name,
+    DateTime? fromDate,
+    DateTime? toDate,
   }) async {
     _isStockEntriesLoading = true;
     _stockEntriesError = null;
@@ -980,6 +982,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
       fromWarehouse: fromWarehouse,
       toWarehouse: toWarehouse,
       name: name,
+      fromDate: fromDate,
+      toDate: toDate,
     );
 
     try {
@@ -1044,6 +1048,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
     String? fromWarehouse,
     String? toWarehouse,
     String? name,
+    DateTime? fromDate,
+    DateTime? toDate,
   }) {
     final filters = <List<dynamic>>[];
     final type = stockEntryType?.trim() ?? '';
@@ -1067,6 +1073,28 @@ class WarehouseStockState extends AppStateProxyNotifier {
     final query = name?.trim() ?? '';
     if (query.isNotEmpty) {
       filters.add(['name', 'like', '%$query%']);
+    }
+    if (fromDate != null && toDate != null) {
+      filters.add([
+        'posting_date',
+        'between',
+        [
+          DateRangePresets.toFrappeDate(fromDate),
+          DateRangePresets.toFrappeDate(toDate),
+        ],
+      ]);
+    } else if (fromDate != null) {
+      filters.add([
+        'posting_date',
+        '>=',
+        DateRangePresets.toFrappeDate(fromDate),
+      ]);
+    } else if (toDate != null) {
+      filters.add([
+        'posting_date',
+        '<=',
+        DateRangePresets.toFrappeDate(toDate),
+      ]);
     }
     return filters;
   }
