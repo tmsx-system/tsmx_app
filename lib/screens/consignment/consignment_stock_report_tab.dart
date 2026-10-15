@@ -35,7 +35,8 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
   String? _error;
   List<String> _parentWarehouses = const [];
   List<_ReportColumn> _columns = const [];
-  List<Map<String, dynamic>> _rows = const [];
+  _ConsignmentColumns _resolvedColumns = const _ConsignmentColumns();
+  List<_ConsignmentGroup> _groups = const [];
 
   @override
   bool get wantKeepAlive => true;
@@ -171,7 +172,7 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
         setState(() {
           _loading = false;
           _error = diagnose;
-          _rows = const [];
+          _groups = const [];
         });
         return;
       }
@@ -201,13 +202,17 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
         rows.add(mapped);
       }
 
+      final reportColumns = columns
+          .map(_ReportColumn.fromQueryColumn)
+          .where((column) => column.field.isNotEmpty)
+          .toList(growable: false);
+      final resolved = _ConsignmentColumns.resolve(reportColumns);
+
       if (!mounted) return;
       setState(() {
-        _columns = columns
-            .map(_ReportColumn.fromQueryColumn)
-            .where((column) => column.field.isNotEmpty)
-            .toList(growable: false);
-        _rows = rows;
+        _columns = reportColumns;
+        _resolvedColumns = resolved;
+        _groups = _ConsignmentGroup.fromRows(rows, resolved);
         _loading = false;
       });
     } catch (error) {
@@ -218,7 +223,7 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
       setState(() {
         _loading = false;
         _error = diagnosed;
-        _rows = const [];
+        _groups = const [];
       });
     }
   }
@@ -477,7 +482,7 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
             const SizedBox(height: 14),
             ErpErrorBox(message: _error!, onRetry: _loading ? null : _loadReport),
           ],
-          if (!_loading && _error == null && _rows.isEmpty) ...[
+          if (!_loading && _error == null && _groups.isEmpty) ...[
             const SizedBox(height: 18),
             const ErpEmptyState(
               title: 'Tidak ada data stock consignment',
@@ -486,19 +491,44 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
               icon: Icons.inventory_2_outlined,
             ),
           ],
-          if (_rows.isNotEmpty) ...[
+          if (_groups.isNotEmpty) ...[
             const SizedBox(height: 16),
             _ResultsHeader(
-              count: _rows.length,
+              count: _groups.length,
               warehouse: warehouseValue ?? '-',
               rangeLabel:
                   '${dateFmt.format(_fromDate)} – ${dateFmt.format(_toDate)}',
             ),
             const SizedBox(height: 12),
-            for (final row in _rows)
-              _ReportRowCard(row: row, columns: _columns),
+            for (final group in _groups)
+              _ConsignmentCustomerCard(
+                group: group,
+                onOpenEntry: (entry) => _showEntrySheet(group, entry),
+              ),
           ],
         ],
+      ),
+    );
+  }
+
+  void _showEntrySheet(_ConsignmentGroup group, _ConsignmentEntry entry) {
+    final isSummary = identical(entry, group.summary);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      ),
+      builder: (_) => _EntryDetailSheet(
+        title: group.name,
+        subtitle: isSummary
+            ? 'Ringkasan terakhir'
+            : 'Histori · ${_formatReportDate(entry.eventDate)}',
+        entry: entry,
+        columns: _columns,
+        hiddenColumn: isSummary ? null : _resolvedColumns.name,
       ),
     );
   }
@@ -586,7 +616,16 @@ class _ReportColumn {
     return _ReportColumn(field: field, label: label, fieldtype: fieldtype);
   }
 
+  bool get isDate {
+    if (fieldtype.toLowerCase().contains('date')) return true;
+    final key = '$field $label'.toLowerCase();
+    return key.contains('tgl') ||
+        key.contains('tanggal') ||
+        key.contains('date');
+  }
+
   bool get isNumeric {
+    if (isDate) return false;
     final type = fieldtype.toLowerCase();
     if (type.contains('float') ||
         type.contains('currency') ||
@@ -1006,7 +1045,7 @@ class _ResultsHeader extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              '$count baris',
+              '$count customer',
               style: const TextStyle(
                 color: AppColors.primary,
                 fontWeight: FontWeight.w900,
@@ -1049,200 +1088,523 @@ class _ResultsHeader extends StatelessWidget {
   }
 }
 
-class _ReportRowCard extends StatelessWidget {
-  final Map<String, dynamic> row;
-  final List<_ReportColumn> columns;
+final NumberFormat _qtyFormat = NumberFormat('#,##0.##', 'id_ID');
 
-  const _ReportRowCard({required this.row, required this.columns});
+const List<String> _idMonths = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'Mei',
+  'Jun',
+  'Jul',
+  'Agu',
+  'Sep',
+  'Okt',
+  'Nov',
+  'Des',
+];
+
+String _formatQty(double? value) =>
+    value == null ? '-' : _qtyFormat.format(value);
+
+String _formatReportDate(DateTime? date) => date == null
+    ? '-'
+    : '${date.day} ${_idMonths[date.month - 1]} ${date.year}';
+
+dynamic _reportValue(Map<String, dynamic> row, _ReportColumn? column) {
+  if (column == null) return null;
+  if (row.containsKey(column.field)) return row[column.field];
+  if (row.containsKey(column.label)) return row[column.label];
+  final field = column.field.toLowerCase();
+  for (final entry in row.entries) {
+    if (entry.key.toLowerCase() == field) return entry.value;
+  }
+  return null;
+}
+
+String _reportText(Map<String, dynamic> row, _ReportColumn? column) {
+  final text = _reportValue(row, column)?.toString().trim() ?? '';
+  return text.toLowerCase() == 'null' ? '' : text;
+}
+
+double? _parseReportNumber(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is num) return raw.toDouble();
+  final text = raw.toString().trim();
+  if (text.isEmpty || text.toLowerCase() == 'null') return null;
+  return double.tryParse(text.replaceAll(',', ''));
+}
+
+DateTime? _parseReportDate(dynamic raw) {
+  final text = raw?.toString().trim() ?? '';
+  if (text.isEmpty || text.toLowerCase() == 'null') return null;
+  final iso = DateTime.tryParse(text);
+  if (iso != null) return iso;
+  final match = RegExp(r'^(\d{1,2})[-/](\d{1,2})[-/](\d{4})').firstMatch(text);
+  if (match == null) return null;
+  return DateTime(
+    int.parse(match.group(3)!),
+    int.parse(match.group(2)!),
+    int.parse(match.group(1)!),
+  );
+}
+
+String _formatReportCell(Map<String, dynamic> row, _ReportColumn column) {
+  final raw = _reportValue(row, column);
+  if (column.isDate) {
+    final date = _parseReportDate(raw);
+    return date == null ? _reportText(row, column) : _formatReportDate(date);
+  }
+  if (column.isNumeric) {
+    final number = _parseReportNumber(raw);
+    if (number != null) {
+      return column.isCurrencyLike
+          ? formatErpCurrency(number)
+          : _formatQty(number);
+    }
+  }
+  return _reportText(row, column);
+}
+
+/// Report source lives in ERP, so columns are matched by fieldname/label
+/// keywords instead of fixed fieldnames.
+class _ConsignmentColumns {
+  final _ReportColumn? name;
+  final _ReportColumn? itemCode;
+  final _ReportColumn? itemName;
+  final _ReportColumn? uom;
+  final _ReportColumn? transferDate;
+  final _ReportColumn? stockIn;
+  final _ReportColumn? saleDate;
+  final _ReportColumn? sold;
+  final _ReportColumn? balance;
+
+  const _ConsignmentColumns({
+    this.name,
+    this.itemCode,
+    this.itemName,
+    this.uom,
+    this.transferDate,
+    this.stockIn,
+    this.saleDate,
+    this.sold,
+    this.balance,
+  });
+
+  factory _ConsignmentColumns.resolve(List<_ReportColumn> columns) {
+    String keyOf(_ReportColumn column) =>
+        '${column.field} ${column.label}'.toLowerCase();
+    bool hasAny(String key, List<String> needles) => needles.any(key.contains);
+    _ReportColumn? find(bool Function(_ReportColumn column, String key) test) {
+      for (final column in columns) {
+        if (test(column, keyOf(column))) return column;
+      }
+      return null;
+    }
+
+    final transferDate = find(
+      (c, k) => c.isDate && hasAny(k, const ['transfer', 'masuk', 'input']),
+    );
+    final saleDate = find(
+      (c, k) => c.isDate && hasAny(k, const ['jual', 'sold', 'sale']),
+    );
+    final stockIn = find(
+      (c, k) =>
+          !c.isDate &&
+          hasAny(k, const [
+            'masuk',
+            'stock_in',
+            'qty_in',
+            'in_qty',
+            'transfer_in',
+            'transfer in',
+          ]),
+    );
+    final sold = find(
+      (c, k) => !c.isDate && hasAny(k, const ['terjual', 'sold', 'jual']),
+    );
+    final balance = find((c, k) => !c.isDate && k.contains('sisa')) ??
+        find(
+          (c, k) =>
+              c != stockIn &&
+              !c.isDate &&
+              hasAny(k, const ['balance', 'closing', 'qty akhir', 'stok akhir']),
+        );
+    final uom = find((c, k) => hasAny(k, const ['uom', 'satuan']));
+    final itemName = find(
+      (c, k) =>
+          c.field.toLowerCase() == 'item_name' ||
+          hasAny(k, const ['item name', 'nama item', 'nama barang']),
+    );
+    final itemCode = find(
+      (c, k) =>
+          c != itemName &&
+          !c.isDate &&
+          (c.field.toLowerCase() == 'item_code' || k.contains('item')),
+    );
+    final used = {
+      transferDate,
+      saleDate,
+      stockIn,
+      sold,
+      balance,
+      uom,
+      itemName,
+      itemCode,
+    };
+    final name = find(
+          (c, k) =>
+              !used.contains(c) &&
+              hasAny(k, const ['customer', 'warehouse', 'gudang', 'pelanggan']),
+        ) ??
+        find((c, k) => !used.contains(c) && !c.isDate && !c.isNumeric) ??
+        (columns.isEmpty ? null : columns.first);
+
+    return _ConsignmentColumns(
+      name: name,
+      itemCode: itemCode,
+      itemName: itemName,
+      uom: uom,
+      transferDate: transferDate,
+      stockIn: stockIn,
+      saleDate: saleDate,
+      sold: sold,
+      balance: balance,
+    );
+  }
+}
+
+class _ConsignmentEntry {
+  final Map<String, dynamic> row;
+  final String name;
+  final String itemCode;
+  final String itemName;
+  final String uom;
+  final DateTime? transferDate;
+  final DateTime? saleDate;
+  final double? stockIn;
+  final double? sold;
+  final double? balance;
+  final bool isHistory;
+
+  const _ConsignmentEntry({
+    required this.row,
+    required this.name,
+    required this.itemCode,
+    required this.itemName,
+    required this.uom,
+    required this.transferDate,
+    required this.saleDate,
+    required this.stockIn,
+    required this.sold,
+    required this.balance,
+    required this.isHistory,
+  });
+
+  factory _ConsignmentEntry.fromRow(
+    Map<String, dynamic> row,
+    _ConsignmentColumns columns,
+  ) {
+    final name = _reportText(row, columns.name);
+    return _ConsignmentEntry(
+      row: row,
+      name: name,
+      itemCode: _reportText(row, columns.itemCode),
+      itemName: _reportText(row, columns.itemName),
+      uom: _reportText(row, columns.uom),
+      transferDate: _parseReportDate(_reportValue(row, columns.transferDate)),
+      saleDate: _parseReportDate(_reportValue(row, columns.saleDate)),
+      stockIn: _parseReportNumber(_reportValue(row, columns.stockIn)),
+      sold: _parseReportNumber(_reportValue(row, columns.sold)),
+      balance: _parseReportNumber(_reportValue(row, columns.balance)),
+      isHistory: _isHistoryRow(row, name),
+    );
+  }
+
+  static bool _isHistoryRow(Map<String, dynamic> row, String name) {
+    final indent = _parseReportNumber(row['indent']);
+    if (indent != null) return indent > 0;
+    final lower = name.toLowerCase();
+    return lower.contains('↳') ||
+        lower.replaceAll(RegExp(r'[^a-z]'), '') == 'history';
+  }
+
+  DateTime? get eventDate => transferDate ?? saleDate;
+}
+
+class _ConsignmentGroup {
+  final _ConsignmentEntry summary;
+  final List<_ConsignmentEntry> history = [];
+
+  _ConsignmentGroup(this.summary);
+
+  static List<_ConsignmentGroup> fromRows(
+    List<Map<String, dynamic>> rows,
+    _ConsignmentColumns columns,
+  ) {
+    final groups = <_ConsignmentGroup>[];
+    for (final row in rows) {
+      final entry = _ConsignmentEntry.fromRow(row, columns);
+      if (entry.isHistory && groups.isNotEmpty) {
+        groups.last.history.add(entry);
+      } else {
+        groups.add(_ConsignmentGroup(entry));
+      }
+    }
+    return groups;
+  }
+
+  String _firstNonEmpty(String Function(_ConsignmentEntry entry) pick) {
+    final own = pick(summary);
+    if (own.isNotEmpty) return own;
+    for (final entry in history) {
+      final value = pick(entry);
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  String get name => summary.name.isEmpty ? '-' : summary.name;
+  String get itemCode => _firstNonEmpty((entry) => entry.itemCode);
+  String get itemName => _firstNonEmpty((entry) => entry.itemName);
+  String get uom => _firstNonEmpty((entry) => entry.uom);
+
+  double? get totalIn => history.isEmpty
+      ? summary.stockIn
+      : history.fold<double>(0, (total, entry) => total + (entry.stockIn ?? 0));
+
+  double? get totalSold => history.isEmpty
+      ? summary.sold
+      : history.fold<double>(0, (total, entry) => total + (entry.sold ?? 0));
+
+  double? get balance =>
+      summary.balance ?? (history.isEmpty ? null : history.last.balance);
+}
+
+class _ConsignmentCustomerCard extends StatelessWidget {
+  final _ConsignmentGroup group;
+  final ValueChanged<_ConsignmentEntry> onOpenEntry;
+
+  const _ConsignmentCustomerCard({
+    required this.group,
+    required this.onOpenEntry,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final targetWarehouse = _coalesceText([
-      _firstText(const [
-        'target_warehouse',
-        'to_warehouse',
-        't_warehouse',
-      ]),
-      _textMatching(const ['target warehouse', 'gudang tujuan']),
-    ]);
-    final sourceWarehouse = _coalesceText([
-      _firstText(const [
-        'source_warehouse',
-        'from_warehouse',
-        's_warehouse',
-      ]),
-      _textMatching(const ['source warehouse', 'gudang asal']),
-    ]);
-    final itemName = _firstText(const ['item_name']);
-    final itemCode = _firstText(const ['item_code']);
-    final uom = _firstText(const ['uom', 'stock_uom']);
-
-    final qtyAkhirColumn = _columnMatching(const [
-      'qty_akhir',
-      'closing_qty',
-      'balance_qty',
-      'qty akhir',
-      'akhir',
-    ]);
-    final qtyAwalColumn = _columnMatching(const [
-      'qty_awal',
-      'opening_qty',
-      'qty awal',
-    ]);
-    final transferInColumn = _columnMatching(const [
-      'transfer_in',
-      'transfer in',
-    ]);
-    final soldColumn = _columnMatching(const ['terjual', 'sold', 'qty_sold']);
-    final returColumn = _columnMatching(const [
-      'retur',
-      'adjustment',
-      'qty_return',
-    ]);
-
-    final title = targetWarehouse.isNotEmpty
-        ? targetWarehouse
-        : (itemName.isNotEmpty ? itemName : itemCode);
-    final itemLine = [
-      if (itemName.isNotEmpty) itemName,
-      if (itemCode.isNotEmpty && itemCode != itemName) itemCode,
-    ].join(' · ');
-
-    final shownFields = <String>{
-      if (targetWarehouse.isNotEmpty) 'target',
-      if (itemName.isNotEmpty) 'item_name',
-      if (itemCode.isNotEmpty) 'item_code',
-    };
+    final uom = group.uom;
+    final unitLabel = uom.toLowerCase();
+    final itemTitle = group.itemName.isNotEmpty ? group.itemName : group.itemCode;
+    final itemSubtitle =
+        group.itemName.isNotEmpty && group.itemCode.isNotEmpty
+            ? group.itemCode
+            : '';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.04),
+            color: AppColors.navy.withValues(alpha: 0.05),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
         ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: 4,
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.horizontal(
-                  left: Radius.circular(18),
-                ),
-              ),
-            ),
+            Container(width: 5, color: AppColors.primary),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                padding: const EdgeInsets.fromLTRB(14, 12, 12, 14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (title.isNotEmpty)
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: AppColors.navy,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14,
+                    InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => onOpenEntry(group.summary),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.location_on_rounded,
+                              size: 22,
+                              color: AppColors.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                group.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.navy,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppColors.slate,
+                            ),
+                          ],
                         ),
                       ),
-                    if (itemLine.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        itemLine,
-                        style: const TextStyle(
-                          color: AppColors.slate,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
+                    ),
+                    if (itemTitle.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: AppColors.accentYellow.withValues(
+                                alpha: 0.25,
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.inventory_2_outlined,
+                              size: 18,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  itemTitle,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.navy,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                if (itemSubtitle.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    itemSubtitle,
+                                    style: const TextStyle(
+                                      color: AppColors.slate,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                          flex: 2,
-                          child: _MetricTile(
-                            label: qtyAkhirColumn?.label ?? 'Qty Akhir',
-                            value: qtyAkhirColumn == null
-                                ? '-'
-                                : _cellValue(qtyAkhirColumn),
-                            emphasize: true,
+                          child: _SummaryMetric(
+                            icon: Icons.move_to_inbox_outlined,
+                            label: 'Total Stok Masuk',
+                            value: _formatQty(group.totalIn),
+                            unit: uom,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: _MetricTile(
-                            label: 'UOM',
-                            value: uom.isEmpty ? '-' : uom,
+                          child: _SummaryMetric(
+                            icon: Icons.shopping_cart_outlined,
+                            label: 'Total Terjual',
+                            value: _formatQty(group.totalSold),
+                            unit: uom,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: _MetricTile(
-                            label: qtyAwalColumn?.label ?? 'Qty Awal',
-                            value: qtyAwalColumn == null
-                                ? '-'
-                                : _cellValue(qtyAwalColumn),
+                          child: _SummaryMetric(
+                            icon: Icons.inventory_outlined,
+                            label: 'Sisa Stok',
+                            value: _formatQty(group.balance),
+                            unit: uom,
+                            highlight: true,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
-                    if (sourceWarehouse.isNotEmpty)
-                      _DetailLine(
-                        label: 'Source Warehouse',
-                        value: sourceWarehouse,
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Detail Batch / Lot',
+                      style: TextStyle(
+                        color: AppColors.navy,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
                       ),
-                    if (transferInColumn != null)
-                      _DetailLine(
-                        label: transferInColumn.label,
-                        value: _cellValue(transferInColumn),
-                        numeric: true,
-                      ),
-                    if (soldColumn != null)
-                      _DetailLine(
-                        label: soldColumn.label,
-                        value: _cellValue(soldColumn),
-                        numeric: true,
-                      ),
-                    if (returColumn != null)
-                      _DetailLine(
-                        label: returColumn.label,
-                        value: _cellValue(returColumn),
-                        numeric: true,
-                      ),
-                    for (final column in columns)
-                      if (_shouldShowExtra(column, shownFields, {
-                        qtyAkhirColumn?.field,
-                        qtyAwalColumn?.field,
-                        transferInColumn?.field,
-                        soldColumn?.field,
-                        returColumn?.field,
-                        'uom',
-                        'stock_uom',
-                        'item_name',
-                        'item_code',
-                        'target_warehouse',
-                        'to_warehouse',
-                        'source_warehouse',
-                        'from_warehouse',
-                      }))
-                        _DetailLine(
-                          label: column.label,
-                          value: _cellValue(column),
-                          numeric: column.isNumeric,
+                    ),
+                    const SizedBox(height: 8),
+                    const _LotHeaderRow(),
+                    if (group.history.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceMuted,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Text(
+                            'Belum ada histori pada periode ini.',
+                            style: TextStyle(
+                              color: AppColors.slate,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11.5,
+                            ),
+                          ),
                         ),
+                      )
+                    else
+                      for (final entry in group.history)
+                        _LotRow(
+                          entry: entry,
+                          unitLabel: unitLabel,
+                          onTap: () => onOpenEntry(entry),
+                        ),
+                    const SizedBox(height: 10),
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 14,
+                          color: AppColors.slate,
+                        ),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Stok tersisa dihitung per tanggal input',
+                            style: TextStyle(
+                              color: AppColors.slate,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -1252,163 +1614,85 @@ class _ReportRowCard extends StatelessWidget {
       ),
     );
   }
-
-  bool _shouldShowExtra(
-    _ReportColumn column,
-    Set<String> shownFields,
-    Set<String?> hiddenFields,
-  ) {
-    final field = column.field.toLowerCase();
-    final label = column.label.toLowerCase();
-    if (field == 'idx' || field == 'name') return false;
-    if (hiddenFields.contains(field) || hiddenFields.contains(column.field)) {
-      return false;
-    }
-    if (shownFields.contains(field)) return false;
-    const alreadyShown = [
-      'target warehouse',
-      'source warehouse',
-      'qty akhir',
-      'qty awal',
-      'uom',
-      'item name',
-      'item code',
-      'transfer in',
-      'terjual',
-      'retur',
-      'adjustment',
-    ];
-    final haystack = '$field $label';
-    if (alreadyShown.any(haystack.contains)) return false;
-    final value = _cellValue(column);
-    return value.isNotEmpty;
-  }
-
-  _ReportColumn? _columnMatching(List<String> needles) {
-    for (final needle in needles) {
-      final key = needle.toLowerCase();
-      for (final column in columns) {
-        final haystack = '${column.field} ${column.label}'.toLowerCase();
-        if (haystack.contains(key)) {
-          if (key == 'akhir' &&
-              (haystack.contains('awal') || haystack.contains('opening'))) {
-            continue;
-          }
-          return column;
-        }
-      }
-    }
-    return null;
-  }
-
-  String _textMatching(List<String> needles) {
-    final column = _columnMatching(needles);
-    if (column == null) return '';
-    return _cellValue(column);
-  }
-
-  String _firstText(List<String> keys, {String exclude = ''}) {
-    for (final key in keys) {
-      for (final entry in row.entries) {
-        if (entry.key.toLowerCase() != key) continue;
-        final value = entry.value?.toString().trim() ?? '';
-        if (value.isEmpty || value.toLowerCase() == 'null') continue;
-        if (exclude.isNotEmpty && value == exclude) continue;
-        return value;
-      }
-    }
-    return '';
-  }
-
-  String _coalesceText(List<String> values) {
-    for (final value in values) {
-      if (value.trim().isNotEmpty) return value.trim();
-    }
-    return '';
-  }
-
-  String _cellValue(_ReportColumn column) {
-    final raw = _rawValue(column);
-    if (raw == null) return '';
-    if (raw is num) {
-      return column.isCurrencyLike
-          ? formatErpCurrency(raw.toDouble())
-          : _formatNumber(raw.toDouble());
-    }
-    final text = raw.toString().trim();
-    if (text.isEmpty || text.toLowerCase() == 'null') return '';
-    final normalized = text.replaceAll(',', '');
-    final asNumber = double.tryParse(normalized);
-    if (asNumber != null &&
-        RegExp(r'^-?\d+(\.\d+)?$').hasMatch(normalized) &&
-        column.isNumeric) {
-      return column.isCurrencyLike
-          ? formatErpCurrency(asNumber)
-          : _formatNumber(asNumber);
-    }
-    return text;
-  }
-
-  dynamic _rawValue(_ReportColumn column) {
-    if (row.containsKey(column.field)) return row[column.field];
-    final field = column.field.toLowerCase();
-    final label = column.label.toLowerCase();
-    for (final entry in row.entries) {
-      final key = entry.key.toLowerCase();
-      if (key == field || key == label) return entry.value;
-    }
-    return null;
-  }
-
-  String _formatNumber(double value) {
-    if (value == value.roundToDouble()) {
-      return formatErpCurrency(value);
-    }
-    final parts = value.toStringAsFixed(2).split('.');
-    final whole = double.tryParse(parts[0]) ?? value.truncateToDouble();
-    return '${formatErpCurrency(whole)},${parts[1]}';
-  }
 }
 
-class _DetailLine extends StatelessWidget {
+class _SummaryMetric extends StatelessWidget {
+  final IconData icon;
   final String label;
   final String value;
-  final bool numeric;
+  final String unit;
+  final bool highlight;
 
-  const _DetailLine({
+  const _SummaryMetric({
+    required this.icon,
     required this.label,
     required this.value,
-    this.numeric = false,
+    required this.unit,
+    this.highlight = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (value.trim().isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: highlight ? AppColors.softGreen : AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: highlight
+              ? AppColors.primary.withValues(alpha: 0.25)
+              : AppColors.border,
+        ),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 108,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.slate,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              Icon(icon, size: 14, color: AppColors.primary),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  style: const TextStyle(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10.5,
+                    height: 1.2,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: numeric ? TextAlign.right : TextAlign.left,
-              style: const TextStyle(
-                color: AppColors.navy,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: highlight ? AppColors.primary : AppColors.navy,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 22,
+                  ),
+                ),
+                if (unit.isNotEmpty) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    unit,
+                    style: const TextStyle(
+                      color: AppColors.slate,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
@@ -1417,57 +1701,263 @@ class _DetailLine extends StatelessWidget {
   }
 }
 
-class _MetricTile extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool emphasize;
-
-  const _MetricTile({
-    required this.label,
-    required this.value,
-    this.emphasize = false,
-  });
+class _LotHeaderRow extends StatelessWidget {
+  const _LotHeaderRow();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: emphasize
-            ? AppColors.softGreen
-            : AppColors.background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: emphasize
-              ? AppColors.primary.withValues(alpha: 0.28)
-              : AppColors.border,
-        ),
+        color: AppColors.softGreen,
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: const Row(
         children: [
-          Text(
+          Expanded(
+            flex: 3,
+            child: _LotHeaderCell(
+              icon: Icons.calendar_today_outlined,
+              label: 'Tgl Input',
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: _LotHeaderCell(
+              icon: Icons.move_to_inbox_outlined,
+              label: 'Stok Masuk',
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: _LotHeaderCell(
+              icon: Icons.shopping_cart_outlined,
+              label: 'Terjual',
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: _LotHeaderCell(
+              icon: Icons.inventory_outlined,
+              label: 'Sisa',
+            ),
+          ),
+          SizedBox(width: 18),
+        ],
+      ),
+    );
+  }
+}
+
+class _LotHeaderCell extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _LotHeaderCell({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 12, color: AppColors.primary),
+        const SizedBox(width: 3),
+        Flexible(
+          child: Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: emphasize ? AppColors.primary : AppColors.slate,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w800,
+              fontSize: 10.5,
             ),
           ),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: emphasize ? AppColors.primary : AppColors.navy,
-              fontSize: emphasize ? 16 : 13,
-              fontWeight: FontWeight.w900,
+        ),
+      ],
+    );
+  }
+}
+
+class _LotRow extends StatelessWidget {
+  final _ConsignmentEntry entry;
+  final String unitLabel;
+  final VoidCallback onTap;
+
+  const _LotRow({
+    required this.entry,
+    required this.unitLabel,
+    required this.onTap,
+  });
+
+  String _qtyWithUnit(double? value) {
+    final qty = _formatQty(value);
+    if (value == null || unitLabel.isEmpty) return qty;
+    return '$qty $unitLabel';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const cellStyle = TextStyle(
+      color: AppColors.navy,
+      fontWeight: FontWeight.w600,
+      fontSize: 12,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Material(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    _formatReportDate(entry.eventDate),
+                    style: cellStyle.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(_qtyWithUnit(entry.stockIn), style: cellStyle),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(_qtyWithUnit(entry.sold), style: cellStyle),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    _qtyWithUnit(entry.balance),
+                    style: cellStyle.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  width: 18,
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: AppColors.slate,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EntryDetailSheet extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final _ConsignmentEntry entry;
+  final List<_ReportColumn> columns;
+  final _ReportColumn? hiddenColumn;
+
+  const _EntryDetailSheet({
+    required this.title,
+    required this.subtitle,
+    required this.entry,
+    required this.columns,
+    this.hiddenColumn,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final details = <MapEntry<String, String>>[];
+    for (final column in columns) {
+      if (column == hiddenColumn) continue;
+      final value = _formatReportCell(entry.row, column);
+      if (value.isEmpty) continue;
+      details.add(MapEntry(column.label, value));
+    }
+
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.75,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.navy,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 17,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: AppColors.slate,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (details.isEmpty)
+                const Text(
+                  'Tidak ada detail untuk baris ini.',
+                  style: TextStyle(color: AppColors.slate, fontSize: 12),
+                ),
+              for (final detail in details)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: AppColors.border),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          detail.key,
+                          style: const TextStyle(
+                            color: AppColors.slate,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          detail.value,
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            color: AppColors.navy,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
