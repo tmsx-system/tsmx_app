@@ -525,7 +525,10 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
         title: group.name,
         subtitle: isSummary
             ? 'Ringkasan terakhir'
-            : 'Histori · ${_formatReportDate(entry.eventDate)}',
+            : [
+                if (entry.eventLabel.isNotEmpty) entry.eventLabel,
+                _formatReportDate(entry.eventDate),
+              ].join(' · '),
         entry: entry,
         columns: _columns,
         hiddenColumn: isSummary ? null : _resolvedColumns.name,
@@ -1336,7 +1339,19 @@ class _ConsignmentEntry {
         lower.replaceAll(RegExp(r'[^a-z]'), '') == 'history';
   }
 
-  DateTime? get eventDate => transferDate ?? saleDate;
+  bool get hasStockIn => (stockIn ?? 0) > 0;
+  bool get hasSale => (sold ?? 0) > 0;
+
+  DateTime? get eventDate => !hasStockIn && hasSale
+      ? saleDate ?? transferDate
+      : transferDate ?? saleDate;
+
+  String get eventLabel {
+    if (hasStockIn && hasSale) return 'Masuk & Terjual';
+    if (hasSale) return 'Terjual';
+    if (hasStockIn) return 'Masuk';
+    return '';
+  }
 }
 
 class _ConsignmentGroup {
@@ -1563,7 +1578,7 @@ class _ConsignmentCustomerCard extends StatelessWidget {
                         SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Stok tersisa dihitung per tanggal input',
+                            'Sisa stok dihitung berurutan per tanggal masuk & terjual',
                             style: TextStyle(
                               color: AppColors.slate,
                               fontWeight: FontWeight.w600,
@@ -1686,7 +1701,7 @@ class _LotHeaderRow extends StatelessWidget {
             flex: 3,
             child: _LotHeaderCell(
               icon: Icons.calendar_today_outlined,
-              label: 'Tgl Input',
+              label: 'Tanggal',
             ),
           ),
           Expanded(
@@ -1788,9 +1803,18 @@ class _LotRow extends StatelessWidget {
               children: [
                 Expanded(
                   flex: 3,
-                  child: Text(
-                    _formatReportDate(entry.eventDate),
-                    style: cellStyle.copyWith(fontWeight: FontWeight.w800),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _formatReportDate(entry.eventDate),
+                        style: cellStyle.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      if (entry.eventLabel.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        _EventBadge(entry: entry),
+                      ],
+                    ],
                   ),
                 ),
                 Expanded(
@@ -1822,6 +1846,36 @@ class _LotRow extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventBadge extends StatelessWidget {
+  final _ConsignmentEntry entry;
+
+  const _EventBadge({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = entry.hasSale && !entry.hasStockIn
+        ? AppColors.warning
+        : AppColors.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        entry.eventLabel,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 9.5,
         ),
       ),
     );
