@@ -1235,7 +1235,13 @@ class _ConsignmentColumns {
     final itemName = find(
       (c, k) =>
           c.field.toLowerCase() == 'item_name' ||
-          hasAny(k, const ['item name', 'nama item', 'nama barang']),
+          hasAny(k, const [
+            'item name',
+            'item_name',
+            'itemname',
+            'nama item',
+            'nama barang',
+          ]),
     );
     final itemCode = find(
       (c, k) =>
@@ -1366,7 +1372,6 @@ class _ConsignmentGroup {
   }
 
   String get name => summary.name.isEmpty ? '-' : summary.name;
-  String get itemCode => _firstNonEmpty((entry) => entry.itemCode);
   String get itemName => _firstNonEmpty((entry) => entry.itemName);
   String get uom => _firstNonEmpty((entry) => entry.uom);
 
@@ -1395,11 +1400,7 @@ class _ConsignmentCustomerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final uom = group.uom;
     final unitLabel = uom.toLowerCase();
-    final itemTitle = group.itemName.isNotEmpty ? group.itemName : group.itemCode;
-    final itemSubtitle =
-        group.itemName.isNotEmpty && group.itemCode.isNotEmpty
-            ? group.itemCode
-            : '';
+    final itemName = group.itemName;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1441,15 +1442,33 @@ class _ConsignmentCustomerCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(
-                                group.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppColors.navy,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 16,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    group.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: AppColors.navy,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  if (itemName.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      itemName,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: AppColors.slate,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12.5,
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                             const Icon(
@@ -1460,57 +1479,6 @@ class _ConsignmentCustomerCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (itemTitle.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: AppColors.accentYellow.withValues(
-                                alpha: 0.25,
-                              ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.inventory_2_outlined,
-                              size: 18,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  itemTitle,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: AppColors.navy,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                if (itemSubtitle.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    itemSubtitle,
-                                    style: const TextStyle(
-                                      color: AppColors.slate,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                     const SizedBox(height: 12),
                     Row(
                       children: [
