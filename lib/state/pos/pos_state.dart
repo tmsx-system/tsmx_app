@@ -470,12 +470,56 @@ class PosState extends AppStateProxyNotifier {
   List<String> paymentModesFromProfile(Map<String, dynamic> doc) {
     final raw = doc['payments'];
     if (raw is! List) return const [];
-    return raw
-        .whereType<Map>()
-        .map((row) => row['mode_of_payment']?.toString().trim() ?? '')
-        .where((mode) => mode.isNotEmpty)
-        .toSet()
-        .toList();
+    final rows = raw.whereType<Map>().toList();
+    bool isDefault(Map row) {
+      final value = row['default'];
+      return value == 1 || value == true || value?.toString() == '1';
+    }
+
+    rows.sort((a, b) {
+      final byDefault = (isDefault(a) ? 0 : 1).compareTo(isDefault(b) ? 0 : 1);
+      if (byDefault != 0) return byDefault;
+      final modeA = a['mode_of_payment']?.toString() ?? '';
+      final modeB = b['mode_of_payment']?.toString() ?? '';
+      return modeA.compareTo(modeB);
+    });
+
+    final modes = <String>[];
+    final seen = <String>{};
+    for (final row in rows) {
+      final mode = row['mode_of_payment']?.toString().trim() ?? '';
+      if (mode.isNotEmpty && seen.add(mode)) modes.add(mode);
+    }
+    return modes;
+  }
+
+  /// Prefer profile marked Default for the signed-in user.
+  Future<String?> preferredPosProfileName(List<String> profiles) async {
+    if (profiles.isEmpty) return null;
+    if (profiles.length == 1) return profiles.first;
+    final user = currentUser?.trim() ?? '';
+    if (user.isEmpty) return profiles.first;
+
+    try {
+      final rows = await frappeService.fetchResource(
+        'POS Profile User',
+        fields: const ['parent', 'user', 'default'],
+        filters: [
+          ['user', '=', user],
+          ['default', '=', 1],
+        ],
+        limit: 50,
+      );
+      final preferred = {
+        for (final row in rows)
+          if ((row['parent']?.toString() ?? '').trim().isNotEmpty)
+            row['parent'].toString().trim(),
+      };
+      for (final name in profiles) {
+        if (preferred.contains(name)) return name;
+      }
+    } catch (_) {}
+    return profiles.first;
   }
 
   List<String> assignedUsersFromProfile(Map<String, dynamic> doc) {

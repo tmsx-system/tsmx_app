@@ -294,6 +294,9 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         row.dispose();
       }
 
+      final preferredProfile = await state.preferredPosProfileName(profiles);
+      if (!mounted) return;
+
       setState(() {
         _profiles = profiles;
         _companies = companies;
@@ -302,13 +305,11 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
         _customers = customers;
         _items = items;
         _modes = modes;
-        _posProfile = profiles.isNotEmpty ? profiles.first : null;
+        _posProfile = preferredProfile;
         _company = companies.isNotEmpty ? companies.first : null;
         _customer = null;
         _itemRows = [_ItemRow()];
-        _paymentRows = [
-          _PaymentRow(modeOfPayment: modes.isNotEmpty ? modes.first : null),
-        ];
+        _paymentRows = [_PaymentRow()];
       });
 
       if (_posProfile != null) {
@@ -357,11 +358,10 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
             _companies = [company, ..._companies];
           }
         }
-        if (warehouse.isNotEmpty) {
-          _warehouse = warehouse;
-          if (!_warehouses.contains(warehouse)) {
-            _warehouses = [warehouse, ..._warehouses];
-          }
+        // Always sync warehouse from profile (blank clears sticky old value).
+        _warehouse = warehouse.isEmpty ? null : warehouse;
+        if (warehouse.isNotEmpty && !_warehouses.contains(warehouse)) {
+          _warehouses = [warehouse, ..._warehouses];
         }
         if (sellingPriceList.isNotEmpty) {
           _sellingPriceList = sellingPriceList;
@@ -375,26 +375,20 @@ class _CreatePosInvoiceScreenState extends State<CreatePosInvoiceScreen> {
             ];
           }
         }
-        if (changeAccount.isNotEmpty) {
-          _accountForChangeAmount = changeAccount;
-          _changeAccountMissing = false;
-        }
+        // Always sync change account from profile so switching profile
+        // does not keep the previous profile's account.
+        _accountForChangeAmount =
+            changeAccount.isEmpty ? null : changeAccount;
+        _changeAccountMissing = changeAccount.isEmpty;
         if (profileModes.isNotEmpty) {
-          _modes = {...profileModes, ..._modes}.toList();
-          if (_paymentRows.isEmpty) {
-            _paymentRows = [
-              for (final mode in profileModes)
-                _PaymentRow(modeOfPayment: mode),
-            ];
-          } else {
-            for (var i = 0; i < _paymentRows.length; i++) {
-              if (_paymentRows[i].modeOfPayment == null ||
-                  !_modes.contains(_paymentRows[i].modeOfPayment)) {
-                _paymentRows[i].modeOfPayment = profileModes[
-                    i < profileModes.length ? i : 0];
-              }
-            }
+          _modes = [...profileModes, for (final mode in _modes) if (!profileModes.contains(mode)) mode];
+          for (final row in _paymentRows) {
+            row.dispose();
           }
+          // Use profile default payment (first after sort) as the only row.
+          _paymentRows = [
+            _PaymentRow(modeOfPayment: profileModes.first),
+          ];
         }
         _updateStock = updateStock || _updateStock;
       });
