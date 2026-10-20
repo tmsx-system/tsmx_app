@@ -976,7 +976,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     _stockEntriesError = null;
     notifyListeners();
 
-    final filters = _stockEntryListFilters(
+    final query = _stockEntryListQuery(
       stockEntryType: stockEntryType,
       company: company,
       fromWarehouse: fromWarehouse,
@@ -1005,7 +1005,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
             'to_warehouse',
           ],
           orderBy: 'modified desc, name desc',
-          filters: filters,
+          filters: query.filters,
+          orFilters: query.orFilters,
           maxRows: _listLimit,
         );
       } catch (_) {
@@ -1028,7 +1029,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
             limit: limit,
             limitStart: start,
             orderBy: 'modified desc, name desc',
-            filters: filters,
+            filters: query.filters,
+            orFilters: query.orFilters,
           ),
         );
       }
@@ -1042,7 +1044,9 @@ class WarehouseStockState extends AppStateProxyNotifier {
     }
   }
 
-  List<List<dynamic>> _stockEntryListFilters({
+  /// Warehouse can live on header (`from_warehouse` / `to_warehouse`) or only
+  /// on item rows (`s_warehouse` / `t_warehouse`). Match either, like ERP list.
+  _StockEntryListQuery _stockEntryListQuery({
     String? stockEntryType,
     String? company,
     String? fromWarehouse,
@@ -1052,6 +1056,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     DateTime? toDate,
   }) {
     final filters = <List<dynamic>>[];
+    final orFilters = <List<dynamic>>[];
     final type = stockEntryType?.trim() ?? '';
     if (type.isNotEmpty) {
       filters.add(['stock_entry_type', '=', type]);
@@ -1063,12 +1068,17 @@ class WarehouseStockState extends AppStateProxyNotifier {
       filters.addAll(_companyScopeFilters(''));
     }
     final source = fromWarehouse?.trim() ?? '';
-    if (source.isNotEmpty) {
-      filters.add(['from_warehouse', '=', source]);
-    }
     final target = toWarehouse?.trim() ?? '';
-    if (target.isNotEmpty) {
-      filters.add(['to_warehouse', '=', target]);
+    if (source.isNotEmpty && target.isNotEmpty) {
+      // Same item row must match both warehouses (normal Material Transfer).
+      filters.add(['Stock Entry Detail', 's_warehouse', '=', source]);
+      filters.add(['Stock Entry Detail', 't_warehouse', '=', target]);
+    } else if (source.isNotEmpty) {
+      orFilters.add(['from_warehouse', '=', source]);
+      orFilters.add(['Stock Entry Detail', 's_warehouse', '=', source]);
+    } else if (target.isNotEmpty) {
+      orFilters.add(['to_warehouse', '=', target]);
+      orFilters.add(['Stock Entry Detail', 't_warehouse', '=', target]);
     }
     final query = name?.trim() ?? '';
     if (query.isNotEmpty) {
@@ -1096,7 +1106,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
         DateRangePresets.toFrappeDate(toDate),
       ]);
     }
-    return filters;
+    return _StockEntryListQuery(filters: filters, orFilters: orFilters);
   }
 
   String? preferredCompany(Iterable<String> options) {
@@ -1897,6 +1907,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
     required List<String> fields,
     String? orderBy,
     List<List<dynamic>>? filters,
+    List<List<dynamic>>? orFilters,
     required int? maxRows,
   }) {
     return walkFrappePages(
@@ -1909,6 +1920,7 @@ class WarehouseStockState extends AppStateProxyNotifier {
         limitStart: start,
         orderBy: orderBy,
         filters: filters,
+        orFilters: orFilters,
       ),
     );
   }
@@ -2037,6 +2049,16 @@ class _WarehouseItemMeta {
           : item.minStockThreshold,
     );
   }
+}
+
+class _StockEntryListQuery {
+  final List<List<dynamic>> filters;
+  final List<List<dynamic>> orFilters;
+
+  const _StockEntryListQuery({
+    required this.filters,
+    this.orFilters = const [],
+  });
 }
 
 class _CacheEntry<T> {
