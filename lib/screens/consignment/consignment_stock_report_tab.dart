@@ -203,9 +203,9 @@ class _ConsignmentStockReportTabState extends State<ConsignmentStockReportTab>
       }
 
       final reportColumns = columns
-          .map(_ReportColumn.fromQueryColumn)
-          .where((column) => column.field.isNotEmpty)
-          .toList(growable: false);
+            .map(_ReportColumn.fromQueryColumn)
+            .where((column) => column.field.isNotEmpty)
+            .toList(growable: false);
       final resolved = _ConsignmentColumns.resolve(reportColumns);
 
       if (!mounted) return;
@@ -1240,7 +1240,7 @@ class _ConsignmentColumns {
           c.field.toLowerCase() == 'item_name' ||
           hasAny(k, const [
             'item name',
-            'item_name',
+        'item_name',
             'itemname',
             'nama item',
             'nama barang',
@@ -1453,36 +1453,36 @@ class _ConsignmentCustomerCard extends StatelessWidget {
                             const Icon(
                               Icons.location_on_rounded,
                               size: 22,
-                              color: AppColors.primary,
-                            ),
+                color: AppColors.primary,
+                ),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
+            Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                      Text(
                                     group.name,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: AppColors.navy,
-                                      fontWeight: FontWeight.w900,
+                        style: const TextStyle(
+                          color: AppColors.navy,
+                          fontWeight: FontWeight.w900,
                                       fontSize: 16,
-                                    ),
-                                  ),
+                        ),
+                      ),
                                   if (itemName.isNotEmpty) ...[
                                     const SizedBox(height: 2),
-                                    Text(
+                      Text(
                                       itemName,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: AppColors.slate,
+                        style: const TextStyle(
+                          color: AppColors.slate,
                                         fontWeight: FontWeight.w700,
                                         fontSize: 12.5,
-                                      ),
-                                    ),
-                                  ],
+                        ),
+                      ),
+                    ],
                                 ],
                               ),
                             ),
@@ -1494,10 +1494,10 @@ class _ConsignmentCustomerCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                            Expanded(
                           child: _SummaryMetric(
                             icon: Icons.move_to_inbox_outlined,
                             label: 'Total Stok Masuk',
@@ -1538,7 +1538,7 @@ class _ConsignmentCustomerCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     const _LotHeaderRow(),
                     if (group.history.isEmpty)
-                      Padding(
+                        Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Container(
                           width: double.infinity,
@@ -1569,7 +1569,7 @@ class _ConsignmentCustomerCard extends StatelessWidget {
                         ),
                     const SizedBox(height: 10),
                     const Row(
-                      children: [
+                            children: [
                         Icon(
                           Icons.info_outline_rounded,
                           size: 14,
@@ -1577,15 +1577,15 @@ class _ConsignmentCustomerCard extends StatelessWidget {
                         ),
                         SizedBox(width: 6),
                         Expanded(
-                          child: Text(
+                                child: Text(
                             'Sisa stok dihitung berurutan per tanggal masuk & terjual',
                             style: TextStyle(
-                              color: AppColors.slate,
+                                    color: AppColors.slate,
                               fontWeight: FontWeight.w600,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
                       ],
                     ),
                   ],
@@ -1634,20 +1634,20 @@ class _SummaryMetric extends StatelessWidget {
             children: [
               Icon(icon, size: 14, color: AppColors.primary),
               const SizedBox(width: 4),
-              Expanded(
-                child: Text(
+                              Expanded(
+                                child: Text(
                   label,
                   maxLines: 2,
-                  style: const TextStyle(
-                    color: AppColors.navy,
+                                  style: const TextStyle(
+                                    color: AppColors.navy,
                     fontWeight: FontWeight.w700,
                     fontSize: 10.5,
                     height: 1.2,
-                  ),
-                ),
-              ),
-            ],
-          ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
           const SizedBox(height: 6),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -1914,11 +1914,11 @@ class _EntryDetailSheet extends StatelessWidget {
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
+        children: [
+          Text(
                 title,
                 style: const TextStyle(
                   color: AppColors.navy,
@@ -1929,8 +1929,8 @@ class _EntryDetailSheet extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: AppColors.slate,
+            style: const TextStyle(
+              color: AppColors.slate,
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
@@ -1957,7 +1957,7 @@ class _EntryDetailSheet extends StatelessWidget {
                           detail.key,
                           style: const TextStyle(
                             color: AppColors.slate,
-                            fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w700,
                             fontSize: 12,
                           ),
                         ),
@@ -1967,14 +1967,14 @@ class _EntryDetailSheet extends StatelessWidget {
                         child: Text(
                           detail.value,
                           textAlign: TextAlign.right,
-                          style: const TextStyle(
-                            color: AppColors.navy,
+            style: const TextStyle(
+              color: AppColors.navy,
                             fontWeight: FontWeight.w800,
                             fontSize: 12.5,
                           ),
-                        ),
-                      ),
-                    ],
+            ),
+          ),
+        ],
                   ),
                 ),
             ],

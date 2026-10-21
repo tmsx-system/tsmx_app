@@ -55,6 +55,8 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   bool get _needsSource => widget.kind.needsSource;
   bool get _needsTarget => widget.kind.needsTarget;
   bool get _itemWarehousesOptional => widget.kind.itemWarehousesOptional;
+  /// Material Transfer dkk: gudang di header (Default Warehouse), bukan per item.
+  bool get _useHeaderWarehouses => !_itemWarehousesOptional;
   bool get _isEdit => (widget.existingName ?? '').trim().isNotEmpty;
 
   String? _normalized(String? value) {
@@ -496,19 +498,44 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   }
 
   String? _rowSource(_StockEntryItemRow row) {
+    if (_useHeaderWarehouses) {
+      final fallback = _sourceWarehouse?.trim() ?? '';
+      return fallback.isEmpty ? null : fallback;
+    }
     final value = row.sourceWarehouse?.trim() ?? '';
     if (value.isNotEmpty) return value;
-    if (_itemWarehousesOptional) return null;
     final fallback = _sourceWarehouse?.trim() ?? '';
     return fallback.isEmpty ? null : fallback;
   }
 
   String? _rowTarget(_StockEntryItemRow row) {
+    if (_useHeaderWarehouses) {
+      final fallback = _targetWarehouse?.trim() ?? '';
+      return fallback.isEmpty ? null : fallback;
+    }
     final value = row.targetWarehouse?.trim() ?? '';
     if (value.isNotEmpty) return value;
-    if (_itemWarehousesOptional) return null;
     final fallback = _targetWarehouse?.trim() ?? '';
     return fallback.isEmpty ? null : fallback;
+  }
+
+  void _applyHeaderSourceWarehouse(String? value) {
+    setState(() {
+      _sourceWarehouse = value;
+      for (final row in _rows) {
+        row.sourceWarehouse = value;
+      }
+    });
+    _refreshFilledItemRates();
+  }
+
+  void _applyHeaderTargetWarehouse(String? value) {
+    setState(() {
+      _targetWarehouse = value;
+      for (final row in _rows) {
+        row.targetWarehouse = value;
+      }
+    });
   }
 
   Future<void> _save() async {
@@ -520,33 +547,40 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
       setState(() => _error = 'Tambahkan minimal satu item.');
       return;
     }
-    if (_needsSource &&
-        _needsTarget &&
-        !widget.kind.allowSameWarehouse &&
-        (_sourceWarehouse ?? '') == (_targetWarehouse ?? '') &&
-        (_sourceWarehouse ?? '').isNotEmpty) {
-      setState(() => _error = 'Gudang asal dan tujuan harus berbeda.');
-      return;
-    }
-    for (var i = 0; i < filled.length; i++) {
-      final row = filled[i];
-      final source = _rowSource(row);
-      final target = _rowTarget(row);
-      if (_itemWarehousesOptional) {
+    if (_useHeaderWarehouses) {
+      if (_needsSource && (_sourceWarehouse ?? '').trim().isEmpty) {
+        setState(() => _error = 'Default Source Warehouse wajib dipilih.');
+        return;
+      }
+      if (_needsTarget && (_targetWarehouse ?? '').trim().isEmpty) {
+        setState(() => _error = 'Default Target Warehouse wajib dipilih.');
+        return;
+      }
+      if (_needsSource &&
+          _needsTarget &&
+          !widget.kind.allowSameWarehouse &&
+          (_sourceWarehouse ?? '') == (_targetWarehouse ?? '')) {
+        setState(() => _error = 'Gudang asal dan tujuan harus berbeda.');
+        return;
+      }
+    } else {
+      if (_needsSource &&
+          _needsTarget &&
+          !widget.kind.allowSameWarehouse &&
+          (_sourceWarehouse ?? '') == (_targetWarehouse ?? '') &&
+          (_sourceWarehouse ?? '').isNotEmpty) {
+        setState(() => _error = 'Gudang asal dan tujuan harus berbeda.');
+        return;
+      }
+      for (var i = 0; i < filled.length; i++) {
+        final row = filled[i];
+        final source = _rowSource(row);
+        final target = _rowTarget(row);
         if ((source ?? '').isEmpty && (target ?? '').isEmpty) {
           setState(
             () => _error =
                 'Item ${i + 1}: isi Source Warehouse, Target Warehouse, atau keduanya.',
           );
-          return;
-        }
-      } else {
-        if (_needsSource && (source ?? '').isEmpty) {
-          setState(() => _error = 'Item ${i + 1}: Source Warehouse wajib.');
-          return;
-        }
-        if (_needsTarget && (target ?? '').isEmpty) {
-          setState(() => _error = 'Item ${i + 1}: Target Warehouse wajib.');
           return;
         }
       }
@@ -921,6 +955,26 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                   ? 'Cost Center wajib dipilih'
                                   : null,
                             ),
+                            if (_useHeaderWarehouses) ...[
+                              if (_needsSource) ...[
+                                const SizedBox(height: 12),
+                                _headerWarehouseField(
+                                  label: 'Default Source Warehouse',
+                                  selectedId: _sourceWarehouse,
+                                  onSelected: _applyHeaderSourceWarehouse,
+                                  requiredField: true,
+                                ),
+                              ],
+                              if (_needsTarget) ...[
+                                const SizedBox(height: 12),
+                                _headerWarehouseField(
+                                  label: 'Default Target Warehouse',
+                                  selectedId: _targetWarehouse,
+                                  onSelected: _applyHeaderTargetWarehouse,
+                                  requiredField: true,
+                                ),
+                              ],
+                            ],
                           ],
                         ),
                       ),
@@ -1147,7 +1201,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
               ),
             ],
           ),
-          if (_needsSource) ...[
+          if (!_useHeaderWarehouses && _needsSource) ...[
             const SizedBox(height: 10),
             _itemWarehouseField(
               index: index,
@@ -1159,7 +1213,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
               },
             ),
           ],
-          if (_needsTarget) ...[
+          if (!_useHeaderWarehouses && _needsTarget) ...[
             const SizedBox(height: 10),
             _itemWarehouseField(
               index: index,
@@ -1173,6 +1227,44 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _headerWarehouseField({
+    required String label,
+    required String? selectedId,
+    required ValueChanged<String?> onSelected,
+    bool requiredField = false,
+  }) {
+    final warehouses = _companyWarehouses;
+    final selected = selectedId?.trim() ?? '';
+    return ErpItemAutocompleteField(
+      key: ValueKey('header-$label-$selected'),
+      label: requiredField ? '$label *' : label,
+      selectedId: warehouses.any((row) => row.name == selected)
+          ? selected
+          : (selected.isEmpty ? null : selected),
+      decoration: _fieldDecoration(
+        requiredField ? '$label *' : label,
+        hint: 'Pilih gudang default',
+      ),
+      options: [
+        if (selected.isNotEmpty &&
+            !warehouses.any((row) => row.name == selected))
+          ErpItemOption(id: selected, label: selected),
+        for (final warehouse in warehouses)
+          ErpItemOption(
+            id: warehouse.name,
+            label: _warehouseOptionLabel(warehouse),
+          ),
+      ],
+      onSearch: _searchWarehouses,
+      onSelected: onSelected,
+      validator: requiredField
+          ? (value) => value == null || value.trim().isEmpty
+                ? '$label wajib dipilih'
+                : null
+          : null,
     );
   }
 
