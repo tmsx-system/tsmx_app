@@ -111,6 +111,7 @@ class StockEntryDetail {
   final int docStatus;
   final String postingDate;
   final String postingTime;
+  final bool setPostingTime;
   final String fromWarehouse;
   final String toWarehouse;
   final String remarks;
@@ -127,6 +128,7 @@ class StockEntryDetail {
     this.docStatus = 0,
     required this.postingDate,
     this.postingTime = '',
+    this.setPostingTime = false,
     this.fromWarehouse = '',
     this.toWarehouse = '',
     this.remarks = '',
@@ -137,6 +139,7 @@ class StockEntryDetail {
   factory StockEntryDetail.fromJson(Map<String, dynamic> json) {
     final docstatus = NumParse.asInt(json['docstatus']);
     final rawItems = json['items'];
+    final setPosting = json['set_posting_time'];
     return StockEntryDetail(
       id: json['name']?.toString() ?? '',
       namingSeries: json['naming_series']?.toString() ?? '',
@@ -150,6 +153,9 @@ class StockEntryDetail {
       docStatus: docstatus,
       postingDate: json['posting_date']?.toString() ?? '',
       postingTime: json['posting_time']?.toString() ?? '',
+      setPostingTime: setPosting == 1 ||
+          setPosting == true ||
+          setPosting?.toString() == '1',
       fromWarehouse: json['from_warehouse']?.toString() ?? '',
       toWarehouse: json['to_warehouse']?.toString() ?? '',
       remarks: json['remarks']?.toString() ?? '',

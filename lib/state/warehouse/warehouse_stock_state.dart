@@ -1350,6 +1350,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
     required List<Map<String, dynamic>> items,
     String? company,
     DateTime? postingDate,
+    String? postingTime,
+    bool setPostingTime = false,
     String? purpose,
     String? fromWarehouse,
     String? toWarehouse,
@@ -1358,13 +1360,18 @@ class WarehouseStockState extends AppStateProxyNotifier {
   }) async {
     await appState.frappeService.ensureLoggedIn();
 
+    final when = postingDate ?? DateTime.now();
     final payload = <String, dynamic>{
       'stock_entry_type': stockEntryType,
       'purpose': (purpose ?? stockEntryType).trim(),
       if (company?.trim().isNotEmpty == true) 'company': company!.trim(),
-      'posting_date': DateRangePresets.toFrappeDate(
-        postingDate ?? DateTime.now(),
-      ),
+      'set_posting_time': setPostingTime ? 1 : 0,
+      'posting_date': DateRangePresets.toFrappeDate(when),
+      if (setPostingTime)
+        'posting_time':
+            (postingTime?.trim().isNotEmpty == true)
+                ? postingTime!.trim()
+                : _formatPostingTime(when),
       if (fromWarehouse?.trim().isNotEmpty == true)
         'from_warehouse': fromWarehouse!.trim(),
       if (toWarehouse?.trim().isNotEmpty == true)
@@ -1391,6 +1398,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
     required List<Map<String, dynamic>> items,
     String? company,
     DateTime? postingDate,
+    String? postingTime,
+    bool setPostingTime = false,
     String? purpose,
     String? fromWarehouse,
     String? toWarehouse,
@@ -1401,13 +1410,18 @@ class WarehouseStockState extends AppStateProxyNotifier {
     if (id.isEmpty) {
       throw Exception('Stock Entry tidak valid.');
     }
+    final when = postingDate ?? DateTime.now();
     await appState.frappeService.updateDocument('Stock Entry', id, {
       'stock_entry_type': stockEntryType,
       'purpose': (purpose ?? stockEntryType).trim(),
       if (company?.trim().isNotEmpty == true) 'company': company!.trim(),
-      'posting_date': DateRangePresets.toFrappeDate(
-        postingDate ?? DateTime.now(),
-      ),
+      'set_posting_time': setPostingTime ? 1 : 0,
+      'posting_date': DateRangePresets.toFrappeDate(when),
+      if (setPostingTime)
+        'posting_time':
+            (postingTime?.trim().isNotEmpty == true)
+                ? postingTime!.trim()
+                : _formatPostingTime(when),
       if (fromWarehouse?.trim().isNotEmpty == true)
         'from_warehouse': fromWarehouse!.trim()
       else
@@ -1420,6 +1434,13 @@ class WarehouseStockState extends AppStateProxyNotifier {
       'items': items,
     });
     await refreshStockEntries();
+  }
+
+  String _formatPostingTime(DateTime value) {
+    final h = value.hour.toString().padLeft(2, '0');
+    final m = value.minute.toString().padLeft(2, '0');
+    final s = value.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
   }
 
   Future<StockEntryDetail> fetchStockEntryDetail(String name) async {

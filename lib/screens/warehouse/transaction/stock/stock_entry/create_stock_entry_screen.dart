@@ -47,6 +47,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
   String? _series;
   List<String> _seriesOptions = const [];
   DateTime _postingDate = DateTime.now();
+  bool _setPostingTime = false;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -175,8 +176,24 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
     }
     final parsedDate = DateTime.tryParse(detail.postingDate);
     if (parsedDate != null) {
-      _postingDate = parsedDate;
+      final timeParts = detail.postingTime.split(':');
+      final hour = timeParts.isNotEmpty ? int.tryParse(timeParts[0]) ?? 0 : 0;
+      final minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 0 : 0;
+      final second = timeParts.length > 2 ? int.tryParse(timeParts[2]) ?? 0 : 0;
+      _postingDate = DateTime(
+        parsedDate.year,
+        parsedDate.month,
+        parsedDate.day,
+        hour,
+        minute,
+        second,
+      );
     }
+    _setPostingTime = detail.setPostingTime ||
+        (parsedDate != null &&
+            (parsedDate.year != DateTime.now().year ||
+                parsedDate.month != DateTime.now().month ||
+                parsedDate.day != DateTime.now().day));
     _remarksController.text = detail.remarks;
     for (final row in _rows) {
       row.dispose();
@@ -569,6 +586,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
           purpose: widget.kind.purpose,
           company: _company,
           postingDate: _postingDate,
+          setPostingTime: _setPostingTime,
           fromWarehouse: _needsSource ? _sourceWarehouse : null,
           toWarehouse: _needsTarget ? _targetWarehouse : null,
           remarks: _remarksController.text,
@@ -580,6 +598,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
           purpose: widget.kind.purpose,
           company: _company,
           postingDate: _postingDate,
+          setPostingTime: _setPostingTime,
           fromWarehouse: _needsSource ? _sourceWarehouse : null,
           toWarehouse: _needsTarget ? _targetWarehouse : null,
           namingSeries: _series,
@@ -766,27 +785,66 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                   : null,
                             ),
                             const SizedBox(height: 12),
-                            GestureDetector(
-                              onTap: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: _postingDate,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime.now().add(
-                                    const Duration(days: 365),
-                                  ),
-                                );
-                                if (picked == null) return;
-                                setState(() => _postingDate = picked);
-                                _refreshFilledItemRates();
+                            CheckboxListTile(
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              value: _setPostingTime,
+                              activeColor: AppColors.primary,
+                              title: const Text(
+                                'Edit Posting Date and Time',
+                                style: TextStyle(
+                                  color: AppColors.navy,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  _setPostingTime = value ?? false;
+                                  if (!_setPostingTime) {
+                                    _postingDate = DateTime.now();
+                                  }
+                                });
+                                if (!_setPostingTime) {
+                                  _refreshFilledItemRates();
+                                }
                               },
+                            ),
+                            const SizedBox(height: 4),
+                            GestureDetector(
+                              onTap: !_setPostingTime
+                                  ? null
+                                  : () async {
+                                      final picked = await showDatePicker(
+                                        context: context,
+                                        initialDate: _postingDate,
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime.now().add(
+                                          const Duration(days: 365),
+                                        ),
+                                      );
+                                      if (picked == null) return;
+                                      setState(() {
+                                        _postingDate = DateTime(
+                                          picked.year,
+                                          picked.month,
+                                          picked.day,
+                                          _postingDate.hour,
+                                          _postingDate.minute,
+                                          _postingDate.second,
+                                        );
+                                        _setPostingTime = true;
+                                      });
+                                      _refreshFilledItemRates();
+                                    },
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: AppColors.background,
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
                                     color: AppColors.primary.withValues(
-                                      alpha: 0.2,
+                                      alpha: _setPostingTime ? 0.2 : 0.12,
                                     ),
                                   ),
                                 ),
@@ -794,19 +852,27 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Row(
+                                    Row(
                                       children: [
                                         Icon(
                                           Icons.calendar_today,
                                           size: 14,
-                                          color: AppColors.slate,
+                                          color: _setPostingTime
+                                              ? AppColors.slate
+                                              : AppColors.slate.withValues(
+                                                  alpha: 0.5,
+                                                ),
                                         ),
-                                        SizedBox(width: 6),
+                                        const SizedBox(width: 6),
                                         Text(
                                           'Posting Date',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: AppColors.slate,
+                                            color: _setPostingTime
+                                                ? AppColors.slate
+                                                : AppColors.slate.withValues(
+                                                    alpha: 0.5,
+                                                  ),
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
@@ -817,9 +883,11 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
                                       DateFormat(
                                         'dd-MM-yyyy',
                                       ).format(_postingDate),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 14,
-                                        color: AppColors.navy,
+                                        color: _setPostingTime
+                                            ? AppColors.navy
+                                            : AppColors.slate,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
