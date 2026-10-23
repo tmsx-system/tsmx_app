@@ -24,7 +24,8 @@ class ApprovalService {
     'Material Request',
   };
 
-  static const _approvalDoctypes = [
+  /// Fallback only when Workflow list cannot be read from ERP.
+  static const _fallbackApprovalDoctypes = [
     'Sales Order',
     'Purchase Order',
     'Purchase Invoice',
@@ -32,10 +33,41 @@ class ApprovalService {
     'Journal Entry',
   ];
 
+  /// Shared inbox fields; unknown fields are dropped by field fallback.
+  static const _genericInboxFields = [
+    'name',
+    'company',
+    'customer',
+    'customer_name',
+    'supplier',
+    'supplier_name',
+    'workflow_state',
+    'status',
+    'owner',
+    'posting_date',
+    'transaction_date',
+    'schedule_date',
+    'due_date',
+    'grand_total',
+    'rounded_total',
+    'outstanding_amount',
+    'total_qty',
+    'total_debit',
+    'total_credit',
+    'title',
+    'material_request_type',
+    'keterangan',
+    'docstatus',
+    'modified',
+  ];
+
   final FrappeService frappe;
   final Map<String, _CachedDocument> _documentCache = {};
   Future<List<ErpApprovalTodo>>? _approvalTodoFetchInFlight;
   Future<Map<String, int>>? _workflowStateDocStatusInFlight;
+  Future<List<String>>? _activeWorkflowDoctypesInFlight;
+  List<String> _activeWorkflowDoctypesCache = const [];
+  DateTime? _activeWorkflowDoctypesAt;
   Map<String, int> _workflowStateDocStatus = const {};
   DateTime? _workflowStateDocStatusAt;
 
@@ -103,6 +135,7 @@ class ApprovalService {
         .trim()
         .toLowerCase();
     if (normalizedUser.isEmpty) return const [];
+    final workflowDoctypes = await _activeWorkflowDoctypes();
 
     final commentsFuture = _fetchAllResourcePages(
       doctype: 'Comment',
@@ -117,7 +150,7 @@ class ApprovalService {
         'creation',
       ],
       filters: [
-        ['reference_doctype', 'in', _approvalDoctypes],
+        ['reference_doctype', 'in', workflowDoctypes],
       ],
       orFilters: [
         ['owner', '=', normalizedUser],
@@ -137,7 +170,7 @@ class ApprovalService {
         'creation',
       ],
       filters: [
-        ['ref_doctype', 'in', _approvalDoctypes],
+        ['ref_doctype', 'in', workflowDoctypes],
         ['owner', '=', normalizedUser],
       ],
       orderBy: 'creation desc',
@@ -546,87 +579,59 @@ class ApprovalService {
     );
   }
 
+  Future<List<String>> _activeWorkflowDoctypes() async {
+    final cachedAt = _activeWorkflowDoctypesAt;
+    if (cachedAt != null &&
+        DateTime.now().difference(cachedAt) < const Duration(minutes: 10) &&
+        _activeWorkflowDoctypesCache.isNotEmpty) {
+      return _activeWorkflowDoctypesCache;
+    }
+    final inFlight = _activeWorkflowDoctypesInFlight;
+    if (inFlight != null) return inFlight;
+
+    final request = () async {
+      try {
+        await frappe.ensureLoggedIn();
+        final rows = await frappe.fetchResource(
+          'Workflow',
+          fields: const ['name', 'document_type', 'is_active'],
+          filters: const [
+            ['is_active', '=', 1],
+          ],
+          orderBy: 'document_type asc',
+          limit: 200,
+        );
+        final names = <String>{
+          for (final row in rows)
+            if ((row['document_type']?.toString().trim() ?? '').isNotEmpty)
+              row['document_type'].toString().trim(),
+        };
+        if (names.isNotEmpty) return names.toList()..sort();
+      } catch (_) {}
+      return List<String>.from(_fallbackApprovalDoctypes);
+    }();
+
+    _activeWorkflowDoctypesInFlight = request;
+    try {
+      final names = await request;
+      _activeWorkflowDoctypesCache = names;
+      _activeWorkflowDoctypesAt = DateTime.now();
+      return names;
+    } finally {
+      if (identical(_activeWorkflowDoctypesInFlight, request)) {
+        _activeWorkflowDoctypesInFlight = null;
+      }
+    }
+  }
+
   Future<List<ErpApprovalTodo>> _fetchApprovalTodosFromErp({
     void Function(List<ErpApprovalTodo> rows)? onProgress,
   }) async {
     await frappe.ensureLoggedIn();
-    const configs = [
-      (
-        doctype: 'Sales Order',
-        fields: [
-          'name',
-          'customer',
-          'customer_name',
-          'company',
-          'workflow_state',
-          'status',
-          'owner',
-          'transaction_date',
-          'grand_total',
-          'docstatus',
-        ],
-      ),
-      (
-        doctype: 'Purchase Order',
-        fields: [
-          'name',
-          'supplier',
-          'supplier_name',
-          'company',
-          'workflow_state',
-          'status',
-          'owner',
-          'transaction_date',
-          'grand_total',
-          'docstatus',
-        ],
-      ),
-      (
-        doctype: 'Purchase Invoice',
-        fields: [
-          'name',
-          'supplier',
-          'supplier_name',
-          'company',
-          'workflow_state',
-          'status',
-          'owner',
-          'posting_date',
-          'due_date',
-          'grand_total',
-          'outstanding_amount',
-          'docstatus',
-        ],
-      ),
-      (
-        doctype: 'Material Request',
-        fields: [
-          'name',
-          'material_request_type',
-          'workflow_state',
-          'status',
-          'owner',
-          'company',
-          'transaction_date',
-          'schedule_date',
-          'total_qty',
-          'docstatus',
-        ],
-      ),
-      (
-        doctype: 'Journal Entry',
-        fields: [
-          'name',
-          'title',
-          'workflow_state',
-          'owner',
-          'company',
-          'posting_date',
-          'total_debit',
-          'total_credit',
-          'docstatus',
-        ],
-      ),
+    final doctypes = await _activeWorkflowDoctypes();
+    final configs = [
+      for (final doctype in doctypes)
+        (doctype: doctype, fields: _genericInboxFields),
     ];
 
     final todosByKey = <String, ErpApprovalTodo>{};

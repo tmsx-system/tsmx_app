@@ -8,10 +8,10 @@ import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
 import '../shared/role_main_screen.dart';
 import '../tabs/selling_tab.dart';
-import '../tabs/stock_tab.dart';
 import 'sales_order/create_sales_order_screen.dart';
 import 'customer/customer_request_tab.dart';
 import 'overview/sales_overview_tab.dart';
+import 'tukar_guling/tukar_guling_tab.dart';
 import '../spg/spg_main_screen.dart';
 
 class SalesMainScreen extends StatefulWidget {
@@ -148,16 +148,16 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
         ),
       );
     }
-    if (permissions.canReadStock) {
+    if (permissions.canReadTukarGuling) {
       entries.add(
         _SalesMenuEntry(
-          key: 'stock',
+          key: 'tukar_guling',
           destination: const NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2_rounded),
-            label: 'Stock',
+            icon: Icon(Icons.swap_horiz_outlined),
+            selectedIcon: Icon(Icons.swap_horiz_rounded),
+            label: 'Tukar Guling',
           ),
-          builder: (_) => const StockTab(),
+          builder: (_) => const TukarGulingTab(),
         ),
       );
     }
@@ -185,7 +185,7 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       state.canReadDoctype('Delivery Note'),
       state.canReadDoctype('Sales Invoice'),
       state.canReadDoctype('Customer'),
-      state.canReadDoctype('Bin'),
+      state.canReadDoctype('Tukar Guling'),
     ]);
     return _SalesDoctypePermissions(
       canReadSalesOrder: results[0],
@@ -193,7 +193,7 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       canReadDeliveryNote: results[2],
       canReadSalesInvoice: results[3],
       canReadCustomer: results[4],
-      canReadStock: results[5],
+      canReadTukarGuling: results[5],
     );
   }
 
@@ -248,7 +248,7 @@ class _SalesDoctypePermissions {
   final bool canReadDeliveryNote;
   final bool canReadSalesInvoice;
   final bool canReadCustomer;
-  final bool canReadStock;
+  final bool canReadTukarGuling;
 
   const _SalesDoctypePermissions({
     required this.canReadSalesOrder,
@@ -256,7 +256,7 @@ class _SalesDoctypePermissions {
     required this.canReadDeliveryNote,
     required this.canReadSalesInvoice,
     required this.canReadCustomer,
-    required this.canReadStock,
+    required this.canReadTukarGuling,
   });
 
   List<String> get sellingSegments => [
@@ -270,7 +270,7 @@ class _SalesDoctypePermissions {
       canReadDeliveryNote ||
       canReadSalesInvoice ||
       canReadCustomer ||
-      canReadStock;
+      canReadTukarGuling;
 }
 
 class _SalesMenuEntry {
@@ -294,7 +294,7 @@ class _SalesMenuRouter {
   void selectLegacySalesIndex(int legacyIndex) {
     final key = switch (legacyIndex) {
       1 => 'order',
-      2 => 'stock',
+      2 => 'tukar_guling',
       3 => 'customer',
       _ => 'home',
     };

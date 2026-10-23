@@ -49,13 +49,19 @@ class ErpApprovalTodo {
     Map<String, dynamic> json, {
     required List<String> actions,
   }) {
+    // Prefer known mappings, then generic ERP fields so new workflow
+    // doctypes (e.g. Tukar Guling) work without app hardcoding.
     final party = switch (doctype) {
       'Sales Order' => json['customer']?.toString() ?? '',
       'Purchase Order' ||
       'Purchase Invoice' => json['supplier']?.toString() ?? '',
       'Material Request' => json['material_request_type']?.toString() ?? '',
       'Journal Entry' => json['company']?.toString() ?? '',
-      _ => '',
+      _ =>
+        json['customer']?.toString() ??
+            json['supplier']?.toString() ??
+            json['company']?.toString() ??
+            '',
     };
     final partyName = switch (doctype) {
       'Sales Order' =>
@@ -68,7 +74,15 @@ class ErpApprovalTodo {
             '',
       'Journal Entry' =>
         json['title']?.toString() ?? json['company']?.toString() ?? '',
-      _ => '',
+      _ =>
+        json['customer_name']?.toString() ??
+            json['customer']?.toString() ??
+            json['supplier_name']?.toString() ??
+            json['supplier']?.toString() ??
+            json['title']?.toString() ??
+            json['company']?.toString() ??
+            json['keterangan']?.toString() ??
+            '',
     };
     final date = switch (doctype) {
       'Purchase Invoice' => json['posting_date']?.toString() ?? '',
@@ -83,7 +97,9 @@ class ErpApprovalTodo {
       'Journal Entry' => NumParse.asDouble(
         json['total_debit'] ?? json['total_credit'],
       ),
-      _ => NumParse.asDouble(json['grand_total'] ?? json['rounded_total']),
+      _ => NumParse.asDouble(
+        json['grand_total'] ?? json['rounded_total'] ?? json['total_qty'],
+      ),
     };
 
     return ErpApprovalTodo(

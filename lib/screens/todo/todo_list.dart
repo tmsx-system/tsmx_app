@@ -690,6 +690,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     'Purchase Invoice' => Icons.receipt_long_rounded,
     'Material Request' => Icons.assignment_turned_in_rounded,
     'Journal Entry' => Icons.auto_stories_rounded,
+    'Tukar Guling' => Icons.swap_horiz_rounded,
     _ => Icons.approval_outlined,
   };
 
@@ -699,6 +700,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     'Purchase Invoice' => const Color(0xFF3B82F6),
     'Material Request' => const Color(0xFF6366F1),
     'Journal Entry' => const Color(0xFF0EA5E9),
+    'Tukar Guling' => AppColors.primary,
     _ => AppColors.primary,
   };
 
@@ -718,6 +720,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     'Material Request' => 'MR',
     'Journal Entry' => 'JE',
     'Sales Order' => 'SO',
+    'Tukar Guling' => 'TG',
     _ => doctype,
   };
 
@@ -1822,7 +1825,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
   @override
   Widget build(BuildContext context) {
     final detail = _detail;
-    final items = _mapRows(detail?['items']);
+    final items = _documentItemRows(detail);
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -2044,6 +2047,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     'Purchase Invoice' => Icons.receipt_long_rounded,
     'Material Request' => Icons.assignment_turned_in_rounded,
     'Journal Entry' => Icons.auto_stories_rounded,
+    'Tukar Guling' => Icons.swap_horiz_rounded,
     _ => Icons.approval_outlined,
   };
 
@@ -2053,6 +2057,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     'Purchase Invoice' => const Color(0xFF3B82F6),
     'Material Request' => const Color(0xFF6366F1),
     'Journal Entry' => const Color(0xFF0EA5E9),
+    'Tukar Guling' => AppColors.primary,
     _ => AppColors.primary,
   };
 
@@ -2095,6 +2100,32 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       return [
         _moneyRow('Total Debit', detail['total_debit']),
         _moneyRow('Total Credit', detail['total_credit']),
+        _detailRow('Status Dokumen', docStatusLabel(widget.approval.docStatus)),
+      ];
+    }
+    final hasMoney = NumParse.asDouble(
+          detail['grand_total'] ?? detail['rounded_total'] ?? detail['net_total'],
+        ) >
+        0;
+    if (!hasMoney) {
+      return [
+        _detailRow('Customer', _text(detail['customer_name']).isNotEmpty
+            ? _text(detail['customer_name'])
+            : _text(detail['customer'])),
+        _detailRow('Company', _text(detail['company'])),
+        _detailRow(
+          'Tanggal',
+          _text(detail['posting_date']).isNotEmpty
+              ? _text(detail['posting_date'])
+              : _text(detail['transaction_date']),
+        ),
+        _detailRow('Keterangan', _text(detail['keterangan'])),
+        _detailRow(
+          'Workflow',
+          _text(detail['workflow_state']).isNotEmpty
+              ? _text(detail['workflow_state'])
+              : widget.approval.workflowState,
+        ),
         _detailRow('Status Dokumen', docStatusLabel(widget.approval.docStatus)),
       ];
     }
@@ -2759,6 +2790,19 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList();
+  }
+
+  List<Map<String, dynamic>> _documentItemRows(Map<String, dynamic>? detail) {
+    if (detail == null) return const [];
+    for (final key in const [
+      'items',
+      'tukar_guling_item',
+      'tukar_guling_items',
+    ]) {
+      final rows = _mapRows(detail[key]);
+      if (rows.isNotEmpty) return rows;
+    }
+    return const [];
   }
 
   String _text(dynamic value) => value?.toString().trim() ?? '';
