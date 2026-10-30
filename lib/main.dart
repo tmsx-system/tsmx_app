@@ -26,6 +26,7 @@ import 'state/selling/delivery_note_state.dart';
 import 'state/selling/noo_state.dart';
 import 'state/selling/promo_state.dart';
 import 'state/selling/tukar_guling_state.dart';
+import 'state/selling/reject_state.dart';
 import 'state/selling/sales_invoice_state.dart';
 import 'state/selling/sales_order_state.dart';
 import 'state/selling/sales_overview_state.dart';
@@ -227,6 +228,13 @@ void main() {
               TukarGulingState(appState: context.read<AppState>()),
           update: (_, appState, state) =>
               (state ?? TukarGulingState(appState: appState))
+                ..updateAppState(appState),
+        ),
+        ChangeNotifierProxyProvider<AppState, RejectState>(
+          create: (context) =>
+              RejectState(appState: context.read<AppState>()),
+          update: (_, appState, state) =>
+              (state ?? RejectState(appState: appState))
                 ..updateAppState(appState),
         ),
         ChangeNotifierProxyProvider<AppState, PromoState>(

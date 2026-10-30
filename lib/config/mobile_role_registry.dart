@@ -277,6 +277,7 @@ class MobileRoleRegistry {
         'Customer',
         'Sales Visit',
         'Tukar Guling',
+        'Reject',
       ],
     ),
     MobileModuleAccessRule(

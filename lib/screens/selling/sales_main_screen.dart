@@ -12,6 +12,7 @@ import 'sales_order/create_sales_order_screen.dart';
 import 'customer/customer_request_tab.dart';
 import 'overview/sales_overview_tab.dart';
 import 'tukar_guling/tukar_guling_tab.dart';
+import 'reject/reject_tab.dart';
 import '../spg/spg_main_screen.dart';
 
 class SalesMainScreen extends StatefulWidget {
@@ -161,6 +162,19 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
         ),
       );
     }
+    if (permissions.canReadReject) {
+      entries.add(
+        _SalesMenuEntry(
+          key: 'reject',
+          destination: const NavigationDestination(
+            icon: Icon(Icons.highlight_off_outlined),
+            selectedIcon: Icon(Icons.highlight_off_rounded),
+            label: 'Rejected',
+          ),
+          builder: (_) => const RejectTab(),
+        ),
+      );
+    }
     if (permissions.canReadCustomer) {
       entries.add(
         _SalesMenuEntry(
@@ -186,6 +200,7 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       state.canReadDoctype('Sales Invoice'),
       state.canReadDoctype('Customer'),
       state.canReadDoctype('Tukar Guling'),
+      state.canReadDoctype('Reject'),
     ]);
     return _SalesDoctypePermissions(
       canReadSalesOrder: results[0],
@@ -194,6 +209,7 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       canReadSalesInvoice: results[3],
       canReadCustomer: results[4],
       canReadTukarGuling: results[5],
+      canReadReject: results[6],
     );
   }
 
@@ -249,6 +265,7 @@ class _SalesDoctypePermissions {
   final bool canReadSalesInvoice;
   final bool canReadCustomer;
   final bool canReadTukarGuling;
+  final bool canReadReject;
 
   const _SalesDoctypePermissions({
     required this.canReadSalesOrder,
@@ -257,6 +274,7 @@ class _SalesDoctypePermissions {
     required this.canReadSalesInvoice,
     required this.canReadCustomer,
     required this.canReadTukarGuling,
+    required this.canReadReject,
   });
 
   List<String> get sellingSegments => [
@@ -270,7 +288,8 @@ class _SalesDoctypePermissions {
       canReadDeliveryNote ||
       canReadSalesInvoice ||
       canReadCustomer ||
-      canReadTukarGuling;
+      canReadTukarGuling ||
+      canReadReject;
 }
 
 class _SalesMenuEntry {
