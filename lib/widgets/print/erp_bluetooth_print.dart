@@ -14,15 +14,7 @@ Future<void> printErpPdfViaBluetooth(
 }) async {
   final messenger = ScaffoldMessenger.of(context);
   try {
-    var printer = await BluetoothPrinterService.savedPrinter();
-    if (printer == null) {
-      if (!context.mounted) return;
-      printer = await showBluetoothPrinterPicker(context);
-      if (printer == null) {
-        throw Exception('Pilih printer Bluetooth dulu, lalu tekan Print lagi.');
-      }
-    }
-
+    final printer = await BluetoothPrinterService.savedPrinter();
     if (!context.mounted) return;
     showDialog<void>(
       context: context,
@@ -52,7 +44,7 @@ Future<void> printErpPdfViaBluetooth(
           builder: (_) => PrintPreviewScreen(
             title: title,
             pdfBytes: pdfBytes,
-            printerName: printer!.name,
+            printerName: printer?.name,
           ),
         ),
       );

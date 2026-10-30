@@ -21,13 +21,13 @@ double receiptPreviewWidth(double viewportWidth) {
 class PrintPreviewScreen extends StatefulWidget {
   final String title;
   final Uint8List pdfBytes;
-  final String printerName;
+  final String? printerName;
 
   const PrintPreviewScreen({
     super.key,
     required this.title,
     required this.pdfBytes,
-    required this.printerName,
+    this.printerName,
   });
 
   @override
@@ -123,7 +123,7 @@ class _PrintPreviewScreenState extends State<PrintPreviewScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Text(
-              'Tampilan kertas 58 mm. Ketuk dua kali atau cubit untuk memperbesar.',
+              'Tampilan kertas 58 mm.',
               style: TextStyle(
                 color: AppColors.slate.withValues(alpha: 0.95),
                 fontWeight: FontWeight.w700,
@@ -161,6 +161,8 @@ class _PrintPreviewScreenState extends State<PrintPreviewScreen> {
                   Text(
                     preparing
                         ? 'Menyiapkan data cetak 58 mm...'
+                        : widget.printerName == null
+                        ? 'Belum ada printer. Preview tetap bisa dilihat.'
                         : 'Printer: ${widget.printerName}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
@@ -199,80 +201,47 @@ class _PrintPreviewScreenState extends State<PrintPreviewScreen> {
   }
 }
 
-class _ReceiptStrip extends StatefulWidget {
+class _ReceiptStrip extends StatelessWidget {
   final List<Uint8List> pages;
 
   const _ReceiptStrip({required this.pages});
-
-  @override
-  State<_ReceiptStrip> createState() => _ReceiptStripState();
-}
-
-class _ReceiptStripState extends State<_ReceiptStrip> {
-  final TransformationController _transform = TransformationController();
-
-  @override
-  void dispose() {
-    _transform.dispose();
-    super.dispose();
-  }
-
-  void _toggleZoom() {
-    final zoomed = _transform.value.getMaxScaleOnAxis() > 1.05;
-    _transform.value = zoomed
-        ? Matrix4.identity()
-        : (Matrix4.identity()..scaleByDouble(2, 2, 1, 1));
-  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = receiptPreviewWidth(constraints.maxWidth);
-        return GestureDetector(
-          onDoubleTap: _toggleZoom,
-          child: InteractiveViewer(
-            transformationController: _transform,
-            minScale: 1,
-            maxScale: 4,
-            constrained: false,
-            boundaryMargin: const EdgeInsets.all(48),
-            child: SizedBox(
-              width: constraints.maxWidth,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                child: Column(
-                  children: [
-                    for (var i = 0; i < widget.pages.length; i++)
-                      Padding(
-                        padding: EdgeInsets.only(
-                          bottom: i == widget.pages.length - 1 ? 0 : 12,
-                        ),
-                        child: Center(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: AppColors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: AppColors.cardShadow,
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.memory(
-                                widget.pages[i],
-                                width: width,
-                                fit: BoxFit.fitWidth,
-                                filterQuality: FilterQuality.medium,
-                                gaplessPlayback: true,
-                              ),
-                            ),
-                          ),
-                        ),
+        return ListView(
+          scrollDirection: Axis.vertical,
+          physics: const ClampingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          children: [
+            for (var i = 0; i < pages.length; i++)
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: i == pages.length - 1 ? 0 : 12,
+                ),
+                child: Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: AppColors.cardShadow,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        pages[i],
+                        width: width,
+                        fit: BoxFit.fitWidth,
+                        filterQuality: FilterQuality.medium,
+                        gaplessPlayback: true,
                       ),
-                  ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+          ],
         );
       },
     );
