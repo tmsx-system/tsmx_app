@@ -374,6 +374,21 @@ class TukarGulingState extends AppStateProxyNotifier {
     );
   }
 
+  Future<void> uploadAttachment(String name, String filePath) {
+    return appState.uploadAttachment(
+      doctype: doctype,
+      documentName: name,
+      filePath: filePath,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchAttachments(String name) {
+    return appState.fetchDocumentAttachments(
+      doctype: doctype,
+      documentName: name,
+    );
+  }
+
   Future<List<Map<String, dynamic>>> searchCustomers({
     String query = '',
     int limit = 40,

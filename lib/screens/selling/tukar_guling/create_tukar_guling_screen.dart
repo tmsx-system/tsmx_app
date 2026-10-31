@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +9,7 @@ import '../../../theme/app_colors.dart';
 import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
+import '../shared/sales_attachment_card.dart';
 import '../shared/sales_ui.dart';
 
 class CreateTukarGulingScreen extends StatefulWidget {
@@ -24,6 +26,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _keteranganCtrl = TextEditingController();
   final _rows = <_ItemRow>[];
+  final _imagePicker = ImagePicker();
+  final _photos = <XFile>[];
 
   bool _loading = true;
   bool _saving = false;
@@ -40,6 +44,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   List<String> _workflowActions = const [];
   Map<String, dynamic>? _loadedDocument;
   final _itemMeta = <String, ({String name, String uom})>{};
+  List<String> _existingAttachmentNames = const [];
 
   bool get _isEdit =>
       (widget.existingName ?? '').trim().isNotEmpty ||
@@ -113,6 +118,19 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     _workflowState = doc['workflow_state']?.toString().trim();
     _stockEntry = doc['stock_entry']?.toString().trim();
     _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
+    try {
+      final files = await state.fetchAttachments(name);
+      _existingAttachmentNames = [
+        for (final row in files)
+          () {
+            final fileName = row['file_name']?.toString().trim() ?? '';
+            if (fileName.isNotEmpty) return fileName;
+            return row['name']?.toString().trim() ?? '';
+          }(),
+      ].where((item) => item.isNotEmpty).toList();
+    } catch (_) {
+      _existingAttachmentNames = const [];
+    }
     final parsed = DateTime.tryParse(doc['posting_date']?.toString() ?? '');
     if (parsed != null) {
       _postingDate = DateTime(parsed.year, parsed.month, parsed.day);
@@ -219,6 +237,37 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     ];
   }
 
+  Future<void> _pickCamera() async {
+    final photo = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 75,
+      maxWidth: 1600,
+    );
+    if (photo != null && mounted) setState(() => _photos.add(photo));
+  }
+
+  Future<void> _pickGallery() async {
+    final photos = await _imagePicker.pickMultiImage(
+      imageQuality: 75,
+      maxWidth: 1600,
+    );
+    if (photos.isNotEmpty && mounted) {
+      setState(() => _photos.addAll(photos));
+    }
+  }
+
+  Future<int> _uploadPhotos(TukarGulingState state, String name) async {
+    var failed = 0;
+    for (final photo in _photos) {
+      try {
+        await state.uploadAttachment(name, photo.path);
+      } catch (_) {
+        failed++;
+      }
+    }
+    return failed;
+  }
+
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
@@ -273,35 +322,42 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       );
       final state = context.read<TukarGulingState>();
       final existing = _documentName;
+      final String savedName;
+      final bool createdNew;
       if (existing != null) {
         await state.update(existing, draft);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Tukar Guling $existing berhasil diperbarui.'),
-            backgroundColor: AppColors.primary,
-          ),
-        );
-        Navigator.pop(context, true);
+        savedName = existing;
+        createdNew = false;
       } else {
         final created = await state.create(draft);
         final name = created['name']?.toString().trim() ?? '';
         if (name.isEmpty) {
           throw Exception('ERP tidak mengembalikan nomor dokumen.');
         }
+        savedName = name;
+        createdNew = true;
         if (!mounted) return;
         setState(() {
           _savedName = name;
           _workflowState = created['workflow_state']?.toString() ?? 'Draft';
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Tukar Guling $name berhasil dibuat.'),
-            backgroundColor: AppColors.primary,
-          ),
-        );
-        Navigator.pop(context, true);
       }
+      final failedUploads = await _uploadPhotos(state, savedName);
+      if (!mounted) return;
+      final savedLabel = createdNew ? 'dibuat' : 'diperbarui';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failedUploads > 0
+                ? 'Tukar Guling $savedName berhasil $savedLabel, tetapi $failedUploads foto gagal diunggah.'
+                : 'Tukar Guling $savedName berhasil $savedLabel.',
+          ),
+          backgroundColor: failedUploads > 0
+              ? AppColors.warning
+              : AppColors.primary,
+        ),
+      );
+      Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = captureErpError(context, error));
@@ -566,6 +622,15 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                         label: const Text('Add Row'),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  SalesAttachmentCard(
+                    title: 'Attachment',
+                    existingNames: _existingAttachmentNames,
+                    photos: _photos,
+                    onCamera: _saving ? null : _pickCamera,
+                    onGallery: _saving ? null : _pickGallery,
+                    onRemove: (index) => setState(() => _photos.removeAt(index)),
                   ),
                   if (_workflowActions.isNotEmpty) ...[
                     const SizedBox(height: 12),
