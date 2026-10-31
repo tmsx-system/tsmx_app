@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../models/reject.dart';
-import '../../../state/selling/reject_state.dart';
+import '../../../models/delivery_return.dart';
+import '../../../state/selling/delivery_return_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/date_range_presets.dart';
 import '../../../utils/erp_error_message.dart';
@@ -14,23 +14,23 @@ import '../../../widgets/erp/erp_status_badge.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
 import '../shared/sales_ui.dart';
 import '../shared/selling_document_detail_sheet.dart';
-import 'create_reject_screen.dart';
+import 'create_delivery_return_screen.dart';
 
-class RejectTab extends StatefulWidget {
-  const RejectTab({super.key});
+class DeliveryReturnTab extends StatefulWidget {
+  const DeliveryReturnTab({super.key});
 
   @override
-  State<RejectTab> createState() => _RejectTabState();
+  State<DeliveryReturnTab> createState() => _DeliveryReturnTabState();
 }
 
-class _RejectTabState extends State<RejectTab> {
+class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
   bool _loading = true;
   bool _canCreate = false;
   bool _canWrite = false;
   bool _isOpeningDetail = false;
   bool _actionBusy = false;
   String? _error;
-  List<RejectSummary> _rows = const [];
+  List<DeliveryReturnSummary> _rows = const [];
   Map<String, List<String>> _actionsByName = const {};
   String _company = '';
   DateTime? _postingFrom;
@@ -44,7 +44,9 @@ class _RejectTabState extends State<RejectTab> {
   }
 
   Future<void> _bootstrap() async {
-    final state = context.read<RejectState>();
+    final state = context.read<DeliveryReturnState>();
+    await state.ensureCompanies();
+    if (!mounted) return;
     final preferred = state.preferredCompany(state.sellingCompanies) ?? '';
     final permissions = await Future.wait([
       state.canCreate(),
@@ -65,7 +67,7 @@ class _RejectTabState extends State<RejectTab> {
       _error = null;
     });
     try {
-      final state = context.read<RejectState>();
+      final state = context.read<DeliveryReturnState>();
       final rows = await state.fetchList(
         company: _company,
         postingDateFrom: _postingFrom,
@@ -87,11 +89,11 @@ class _RejectTabState extends State<RejectTab> {
     }
   }
 
-  Future<void> _preloadWorkflowActions(List<RejectSummary> rows) async {
+  Future<void> _preloadWorkflowActions(List<DeliveryReturnSummary> rows) async {
     if (rows.isEmpty) return;
     try {
       final actions = await context
-          .read<RejectState>()
+          .read<DeliveryReturnState>()
           .fetchWorkflowActionsForRows(rows);
       if (!mounted) return;
       setState(() => _actionsByName = actions);
@@ -101,23 +103,23 @@ class _RejectTabState extends State<RejectTab> {
   Future<void> _openCreate({String? existingName}) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => CreateRejectScreen(existingName: existingName),
+        builder: (_) => CreateDeliveryReturnScreen(existingName: existingName),
       ),
     );
     if (saved == true && mounted) await _load();
   }
 
-  /// Matches Reject Workflow: QC may edit Draft + Rejected (Revise path).
-  bool _isDraftLike(RejectSummary row) {
+  /// States still at docstatus 0 can be edited by the role that owns them.
+  bool _isDraftLike(DeliveryReturnSummary row) {
     final state = row.statusLabel.toLowerCase().trim();
-    return state.isEmpty ||
-        state == 'draft' ||
-        state == 'rejected' ||
-        state.contains('revisi') ||
-        state.contains('revise');
+    if (state.isEmpty || state == 'draft') return true;
+    if (state.contains('revisi') || state.contains('revise')) return true;
+    if (state.contains('rejected') && !state.contains('qc')) return true;
+    if (state.contains('pending') && !state.contains('qc')) return true;
+    return false;
   }
 
-  bool _isRejectWorkflowAction(String action) {
+  bool _isDeliveryReturnWorkflowAction(String action) {
     final value = action.toLowerCase();
     // Workflow action "Reject" needs a reason; Cancel does not.
     return value.contains('reject') ||
@@ -135,7 +137,7 @@ class _RejectTabState extends State<RejectTab> {
 
   IconData _workflowActionIcon(String action) {
     final value = action.toLowerCase();
-    if (_isRejectWorkflowAction(action)) return Icons.close_rounded;
+    if (_isDeliveryReturnWorkflowAction(action)) return Icons.close_rounded;
     if (value.contains('cancel')) return Icons.cancel_outlined;
     if (value.contains('approve')) return Icons.verified_rounded;
     if (value.contains('submit')) return Icons.send_rounded;
@@ -182,11 +184,11 @@ class _RejectTabState extends State<RejectTab> {
     unawaited(_load());
   }
 
-  Future<void> _openDetail(RejectSummary row) async {
+  Future<void> _openDetail(DeliveryReturnSummary row) async {
     if (_isOpeningDetail) return;
     setState(() => _isOpeningDetail = true);
     try {
-      final state = context.read<RejectState>();
+      final state = context.read<DeliveryReturnState>();
       final cachedActions = _actionsByName[row.id] ?? const <String>[];
 
       // Single GET for detail; derive transitions from that doc (no 2nd GET).
@@ -215,17 +217,17 @@ class _RejectTabState extends State<RejectTab> {
       final postingDate =
           detail['posting_date']?.toString() ?? row.postingDate;
       final keterangan = detail['keterangan']?.toString() ?? row.keterangan;
-      final stockEntry = detail['stock_entry']?.toString() ?? row.stockEntry;
       final workflowState =
           detail['workflow_state']?.toString() ?? row.statusLabel;
-      final rawItems = detail['reject_item'] ??
+      final rawItems = detail['return_detail'] ??
           detail['items'] ??
-          detail['reject_items'];
+          detail['delivery_return_detail'];
       final items = <SellingDetailItem>[];
       if (rawItems is List) {
         for (final raw in rawItems.whereType<Map>()) {
           final map = Map<String, dynamic>.from(raw);
-          final qty = map['qty']?.toString() ?? '';
+          final qtyDn = map['qty_dn']?.toString() ?? '';
+          final qtyTolak = map['qty_tolak']?.toString() ?? '';
           final uom = map['uom']?.toString() ?? '';
           items.add(
             SellingDetailItem(
@@ -233,11 +235,8 @@ class _RejectTabState extends State<RejectTab> {
                   map['item_code']?.toString() ??
                   '-',
               subtitle: map['item_code']?.toString() ?? '',
-              qty: uom.isEmpty ? qty : '$qty $uom',
-              note: map['source_warehouse']?.toString() ??
-                  map['s_warehouse']?.toString() ??
-                  map['warehouse']?.toString() ??
-                  '',
+              qty: 'DN $qtyDn • Tolak $qtyTolak${uom.isEmpty ? '' : ' $uom'}',
+              note: '',
             ),
           );
         }
@@ -250,7 +249,7 @@ class _RejectTabState extends State<RejectTab> {
         title: row.id,
         subtitle: customer.isEmpty ? company : customer,
         statusText: workflowState.isEmpty ? 'Draft' : workflowState,
-        icon: Icons.highlight_off_rounded,
+        icon: Icons.assignment_return_rounded,
         metrics: [
           SellingDetailMetric(
             label: 'Item',
@@ -268,8 +267,6 @@ class _RejectTabState extends State<RejectTab> {
           SellingDetailInfo(label: 'Company', value: company),
           SellingDetailInfo(label: 'Posting Date', value: postingDate),
           SellingDetailInfo(label: 'Workflow', value: workflowState),
-          if (stockEntry.isNotEmpty)
-            SellingDetailInfo(label: 'Stock Entry', value: stockEntry),
           if (keterangan.isNotEmpty)
             SellingDetailInfo(label: 'Keterangan', value: keterangan),
         ],
@@ -279,7 +276,7 @@ class _RejectTabState extends State<RejectTab> {
           children: [
             if (canEdit)
               erpActionButton(
-                label: 'Edit Reject',
+                label: 'Edit Delivery Return',
                 icon: Icons.edit_outlined,
                 onPressed: () {
                   Navigator.pop(context);
@@ -359,7 +356,7 @@ class _RejectTabState extends State<RejectTab> {
   }) async {
     if (_actionBusy) return;
     var reason = '';
-    if (_isRejectWorkflowAction(action)) {
+    if (_isDeliveryReturnWorkflowAction(action)) {
       reason = await _askWorkflowReason(id, action) ?? '';
       if (reason.isEmpty || !mounted) return;
     } else {
@@ -372,7 +369,7 @@ class _RejectTabState extends State<RejectTab> {
     }
 
     setState(() => _actionBusy = true);
-    final rejectState = context.read<RejectState>();
+    final rejectState = context.read<DeliveryReturnState>();
     final doc = currentDocument ??
         (_detailCache != null && _detailCache!['name']?.toString() == id
             ? _detailCache
@@ -385,7 +382,7 @@ class _RejectTabState extends State<RejectTab> {
             reason: reason,
             currentDocument: doc,
           ),
-      successMessage: 'Reject: $action berhasil',
+      successMessage: 'Delivery Return: $action berhasil',
     );
     if (!mounted) return;
     setState(() => _actionBusy = false);
@@ -395,7 +392,7 @@ class _RejectTabState extends State<RejectTab> {
     }
   }
 
-  void _onMenuSelected(RejectSummary row, String value) {
+  void _onMenuSelected(DeliveryReturnSummary row, String value) {
     switch (value) {
       case 'detail':
         unawaited(_openDetail(row));
@@ -497,7 +494,7 @@ class _RejectTabState extends State<RejectTab> {
 
   @override
   Widget build(BuildContext context) {
-    final companies = context.watch<RejectState>().sellingCompanies;
+    final companies = context.watch<DeliveryReturnState>().sellingCompanies;
     return Stack(
       children: [
         RefreshIndicator(
@@ -527,10 +524,10 @@ class _RejectTabState extends State<RejectTab> {
                 )
               else if (_rows.isEmpty)
                 const ErpEmptyState(
-                  title: 'Belum ada Reject',
+                  title: 'Belum ada Delivery Return',
                   message:
                       'Belum ada dokumen untuk filter / akses Anda. Ubah filter atau buat transaksi baru.',
-                  icon: Icons.highlight_off_rounded,
+                  icon: Icons.assignment_return_rounded,
                 )
               else
                 ..._rows.map(_card),
@@ -543,13 +540,13 @@ class _RejectTabState extends State<RejectTab> {
             right: 16,
             bottom: 16,
             child: FloatingActionButton.extended(
-              heroTag: 'create-reject',
+              heroTag: 'create-delivery-return',
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.white,
               onPressed: () => _openCreate(),
               icon: const Icon(Icons.add_rounded),
               label: const Text(
-                'Buat Reject',
+                'Buat Delivery Return',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
@@ -558,7 +555,7 @@ class _RejectTabState extends State<RejectTab> {
     );
   }
 
-  Widget _card(RejectSummary row) {
+  Widget _card(DeliveryReturnSummary row) {
     final workflowActions = _actionsByName[row.id] ?? const <String>[];
     final canEdit = _canWrite && _isDraftLike(row);
     return Padding(
@@ -575,7 +572,7 @@ class _RejectTabState extends State<RejectTab> {
                 const CircleAvatar(
                   backgroundColor: AppColors.softGreen,
                   foregroundColor: AppColors.primary,
-                  child: Icon(Icons.highlight_off_rounded),
+                  child: Icon(Icons.assignment_return_rounded),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -595,8 +592,6 @@ class _RejectTabState extends State<RejectTab> {
                           if (row.customer.isNotEmpty) row.customer,
                           if (row.company.isNotEmpty) row.company,
                           if (row.postingDate.isNotEmpty) row.postingDate,
-                          if (row.stockEntry.isNotEmpty)
-                            'SE: ${row.stockEntry}',
                         ].join('\n'),
                         style: const TextStyle(
                           color: AppColors.slate,

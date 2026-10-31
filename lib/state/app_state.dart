@@ -151,6 +151,10 @@ class AppState with ChangeNotifier {
   bool get canUseAccounting => mobileAccess.canUse(MobileModule.accounting);
   bool get canUsePlantation => mobileAccess.canUse(MobileModule.plantation);
 
+  void invalidateDoctypePermissionCache() {
+    _doctypeSubmitPermissionCache.clear();
+  }
+
   Future<bool> canReadDoctype(String doctype) =>
       _hasDoctypePermission(doctype, 'read');
 
@@ -629,8 +633,6 @@ class AppState with ChangeNotifier {
   String? get salesOrdersError => _salesOrdersError;
   String _salesOrderSearch = '';
   String? _salesOrderStatus;
-  int _salesOrderQueryVersion = 0;
-  Future<void>? _salesOrdersFetchInFlight;
 
   int _sellingPeriodYear = DateTime.now().year;
   int _sellingPeriodMonth = DateTime.now().month;
@@ -794,8 +796,6 @@ class AppState with ChangeNotifier {
   String? get deliveryNotesError => _deliveryNotesError;
   String _deliveryNoteSearch = '';
   String? _deliveryNoteStatus;
-  int _deliveryNoteQueryVersion = 0;
-  Future<void>? _deliveryNotesFetchInFlight;
 
   bool _isSalesInvoicesLoading = false;
   bool get isSalesInvoicesLoading => _isSalesInvoicesLoading;
@@ -807,8 +807,6 @@ class AppState with ChangeNotifier {
   String? get salesInvoicesError => _salesInvoicesError;
   String _salesInvoiceSearch = '';
   String? _salesInvoiceStatus;
-  int _salesInvoiceQueryVersion = 0;
-  Future<void>? _salesInvoicesFetchInFlight;
 
   bool _isPurchaseReceiptsLoading = false;
   bool get isPurchaseReceiptsLoading => _isPurchaseReceiptsLoading;
@@ -1514,10 +1512,7 @@ class AppState with ChangeNotifier {
     _purchaseReceiptStatus = null;
     _purchaseInvoiceStatus = null;
     _materialRequestStatus = null;
-    _salesOrderQueryVersion++;
     _purchaseOrderQueryVersion++;
-    _deliveryNoteQueryVersion++;
-    _salesInvoiceQueryVersion++;
     _purchaseReceiptQueryVersion++;
     _purchaseInvoiceQueryVersion++;
     _materialRequestQueryVersion++;
@@ -8295,7 +8290,6 @@ class AppState with ChangeNotifier {
     }
     _salesOrderSearch = nextSearch;
     _salesOrderStatus = nextStatus;
-    _salesOrdersFetchInFlight = null;
     await fetchSalesOrdersFromFrappe();
   }
 
@@ -8308,7 +8302,6 @@ class AppState with ChangeNotifier {
     }
     _deliveryNoteSearch = nextSearch;
     _deliveryNoteStatus = nextStatus;
-    _deliveryNotesFetchInFlight = null;
     await fetchDeliveryNotesFromFrappe();
   }
 
@@ -8321,7 +8314,6 @@ class AppState with ChangeNotifier {
     }
     _salesInvoiceSearch = nextSearch;
     _salesInvoiceStatus = nextStatus;
-    _salesInvoicesFetchInFlight = null;
     await fetchSalesInvoicesFromFrappe();
   }
 

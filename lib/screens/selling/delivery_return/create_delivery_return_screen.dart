@@ -3,8 +3,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../../models/reject.dart';
-import '../../../state/selling/reject_state.dart';
+import '../../../models/delivery_return.dart';
+import '../../../state/selling/delivery_return_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
@@ -12,17 +12,17 @@ import '../../../widgets/erp/erp_workflow_helper.dart';
 import '../shared/sales_attachment_card.dart';
 import '../shared/sales_ui.dart';
 
-class CreateRejectScreen extends StatefulWidget {
+class CreateDeliveryReturnScreen extends StatefulWidget {
   final String? existingName;
 
-  const CreateRejectScreen({super.key, this.existingName});
+  const CreateDeliveryReturnScreen({super.key, this.existingName});
 
   @override
-  State<CreateRejectScreen> createState() =>
-      _CreateRejectScreenState();
+  State<CreateDeliveryReturnScreen> createState() =>
+      _CreateDeliveryReturnScreenState();
 }
 
-class _CreateRejectScreenState extends State<CreateRejectScreen> {
+class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen> {
   final _formKey = GlobalKey<FormState>();
   final _keteranganCtrl = TextEditingController();
   final _rows = <_ItemRow>[];
@@ -37,9 +37,9 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
   List<String> _seriesOptions = const [];
   String? _company;
   String? _customer;
+  String _customerName = '';
+  String? _deliveryNote;
   DateTime _postingDate = DateTime.now();
-  String? _workflowState;
-  String? _stockEntry;
   String? _savedName;
   List<String> _workflowActions = const [];
   Map<String, dynamic>? _loadedDocument;
@@ -79,7 +79,7 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
       _error = null;
     });
     try {
-      final state = context.read<RejectState>();
+      final state = context.read<DeliveryReturnState>();
       final companies = state.sellingCompanies;
       _company ??= state.preferredCompany(companies) ??
           (companies.isNotEmpty ? companies.first : null);
@@ -109,14 +109,16 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
     }
   }
 
-  Future<void> _applyExisting(RejectState state, String name) async {
+  Future<void> _applyExisting(DeliveryReturnState state, String name) async {
     final doc = await state.fetchDetail(name);
     _loadedDocument = doc;
     _series = doc['naming_series']?.toString().trim() ?? _series;
     _company = doc['company']?.toString().trim() ?? _company;
     _customer = doc['customer']?.toString().trim() ?? _customer;
-    _workflowState = doc['workflow_state']?.toString().trim();
-    _stockEntry = doc['stock_entry']?.toString().trim();
+    _customerName = doc['customer_name']?.toString().trim() ?? _customerName;
+    _deliveryNote = doc['delivery_asal']?.toString().trim() ??
+        doc['delivery_note']?.toString().trim() ??
+        _deliveryNote;
     _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
     try {
       final files = await state.fetchAttachments(name);
@@ -136,7 +138,7 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
       _postingDate = DateTime(parsed.year, parsed.month, parsed.day);
     }
     final rawItems =
-        doc['reject_item'] ?? doc['items'] ?? doc['reject_items'];
+        doc['return_detail'] ?? doc['items'] ?? doc['delivery_return_detail'];
     for (final row in _rows) {
       row.dispose();
     }
@@ -148,16 +150,9 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
             _ItemRow(
               itemCode: raw['item_code']?.toString(),
               itemName: raw['item_name']?.toString() ?? '',
-              sourceWarehouse: raw['source_warehouse']?.toString() ??
-                  raw['s_warehouse']?.toString() ??
-                  raw['warehouse']?.toString(),
               uom: raw['uom']?.toString() ?? '',
-              qtyText: () {
-                final qty = double.tryParse(raw['qty']?.toString() ?? '') ?? 1;
-                return qty == qty.roundToDouble()
-                    ? qty.toInt().toString()
-                    : qty.toString();
-              }(),
+              qtyDnText: _qtyText(raw['qty_dn']),
+              qtyTolakText: _qtyText(raw['qty_tolak']),
             ),
       ]);
     if (_rows.isEmpty) _rows.add(_ItemRow());
@@ -182,7 +177,59 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
   }
 
   Future<List<ErpItemOption>> _searchCustomers(String query) async {
-    final rows = await context.read<RejectState>().searchCustomers(
+    final rows = await context.read<DeliveryReturnState>().searchCustomers(
+      query: query,
+    );
+    return [
+      for (final row in rows)
+        if ((row['name']?.toString() ?? '').isNotEmpty)
+          () {
+            final id = row['name'].toString();
+            final name = row['customer_name']?.toString().trim() ?? '';
+            if (name.isNotEmpty) _customerNames[id] = name;
+            return ErpItemOption(
+              id: id,
+              label: name.isNotEmpty ? '$name ($id)' : id,
+            );
+          }(),
+    ];
+  }
+
+  final _customerNames = <String, String>{};
+
+  Future<void> _selectCustomer(String? value) async {
+    setState(() {
+      _customer = value;
+      _customerName = value == null ? '' : (_customerNames[value] ?? '');
+      _deliveryNote = null;
+      for (final row in _rows) {
+        row.dispose();
+      }
+      _rows
+        ..clear()
+        ..add(_ItemRow());
+    });
+    if (value == null || _customerName.isNotEmpty) return;
+    final rows = await context.read<DeliveryReturnState>().searchCustomers(
+      query: value,
+    );
+    if (!mounted || _customer != value) return;
+    for (final row in rows) {
+      if (row['name']?.toString() == value) {
+        setState(() {
+          _customerName = row['customer_name']?.toString().trim() ?? '';
+        });
+        break;
+      }
+    }
+  }
+
+  Future<List<ErpItemOption>> _searchDeliveryNotes(String query) async {
+    final customer = _customer?.trim() ?? '';
+    if (customer.isEmpty) return const [];
+    final rows = await context.read<DeliveryReturnState>().searchDeliveryNotes(
+      customer: customer,
+      company: _company,
       query: query,
     );
     return [
@@ -190,16 +237,50 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
         if ((row['name']?.toString() ?? '').isNotEmpty)
           ErpItemOption(
             id: row['name'].toString(),
-            label: (row['customer_name']?.toString().trim().isNotEmpty == true)
-                ? '${row['customer_name']} (${row['name']})'
-                : row['name'].toString(),
+            label: () {
+              final date = row['posting_date']?.toString().trim() ?? '';
+              final id = row['name'].toString();
+              return date.isEmpty ? id : '$id • $date';
+            }(),
           ),
     ];
   }
 
+  Future<void> _selectDeliveryNote(String? value) async {
+    setState(() => _deliveryNote = value);
+    if (value == null || value.trim().isEmpty) return;
+    try {
+      final items = await context
+          .read<DeliveryReturnState>()
+          .itemsFromDeliveryNote(value);
+      if (!mounted || _deliveryNote != value) return;
+      setState(() {
+        for (final row in _rows) {
+          row.dispose();
+        }
+        _rows
+          ..clear()
+          ..addAll([
+            for (final item in items)
+              _ItemRow(
+                itemCode: item.itemCode,
+                itemName: item.itemName,
+                uom: item.uom,
+                qtyDnText: _qtyText(item.qtyDn),
+                qtyTolakText: '0',
+              ),
+          ]);
+        if (_rows.isEmpty) _rows.add(_ItemRow());
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = captureErpError(context, error));
+    }
+  }
+
   Future<List<ErpItemOption>> _searchItems(String query) async {
     final rows =
-        await context.read<RejectState>().searchItems(query: query);
+        await context.read<DeliveryReturnState>().searchItems(query: query);
     for (final row in rows) {
       final id = row['name']?.toString().trim() ?? '';
       if (id.isEmpty) continue;
@@ -215,23 +296,6 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
             id: row['name'].toString(),
             label: (row['item_name']?.toString().trim().isNotEmpty == true)
                 ? '${row['item_name']} (${row['name']})'
-                : row['name'].toString(),
-          ),
-    ];
-  }
-
-  Future<List<ErpItemOption>> _searchWarehouses(String query) async {
-    final rows = await context.read<RejectState>().searchWarehouses(
-      query: query,
-      company: _company,
-    );
-    return [
-      for (final row in rows)
-        if ((row['name']?.toString() ?? '').isNotEmpty)
-          ErpItemOption(
-            id: row['name'].toString(),
-            label: (row['warehouse_name']?.toString().trim().isNotEmpty == true)
-                ? '${row['warehouse_name']} (${row['name']})'
                 : row['name'].toString(),
           ),
     ];
@@ -256,7 +320,7 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
     }
   }
 
-  Future<int> _uploadPhotos(RejectState state, String name) async {
+  Future<int> _uploadPhotos(DeliveryReturnState state, String name) async {
     var failed = 0;
     for (final photo in _photos) {
       try {
@@ -288,12 +352,10 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
     }
     for (var i = 0; i < filled.length; i++) {
       final row = filled[i];
-      if ((row.sourceWarehouse ?? '').trim().isEmpty) {
-        setState(() => _error = 'Item ${i + 1}: Source Warehouse wajib.');
-        return;
-      }
-      if (row.qty <= 0) {
-        setState(() => _error = 'Item ${i + 1}: Qty harus lebih dari 0.');
+      if (row.qtyDn < 0 || row.qtyTolak <= 0) {
+        setState(
+          () => _error = 'Item ${i + 1}: Qty DN dan Qty Tolak harus valid.',
+        );
         return;
       }
     }
@@ -303,24 +365,26 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
       _error = null;
     });
     try {
-      final draft = RejectDraft(
+      final draft = DeliveryReturnDraft(
         namingSeries: _series,
         postingDate: _postingDate,
         company: _company!.trim(),
         customer: _customer!.trim(),
+        customerName: _customerName,
+        deliveryNote: _deliveryNote?.trim() ?? '',
         keterangan: _keteranganCtrl.text,
         items: [
           for (final row in filled)
-            RejectItemDraft(
+            DeliveryReturnItemDraft(
               itemCode: row.itemCode!,
               itemName: row.itemName,
-              sourceWarehouse: row.sourceWarehouse!,
-              qty: row.qty,
+              qtyDn: row.qtyDn,
+              qtyTolak: row.qtyTolak,
               uom: row.uom,
             ),
         ],
       );
-      final state = context.read<RejectState>();
+      final state = context.read<DeliveryReturnState>();
       final existing = _documentName;
       final String savedName;
       final bool createdNew;
@@ -337,10 +401,7 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
         savedName = name;
         createdNew = true;
         if (!mounted) return;
-        setState(() {
-          _savedName = name;
-          _workflowState = created['workflow_state']?.toString() ?? 'Draft';
-        });
+        setState(() => _savedName = name);
       }
       final failedUploads = await _uploadPhotos(state, savedName);
       if (!mounted) return;
@@ -349,8 +410,8 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
         SnackBar(
           content: Text(
             failedUploads > 0
-                ? 'Reject $savedName berhasil $savedLabel, tetapi $failedUploads foto gagal diunggah.'
-                : 'Reject $savedName berhasil $savedLabel.',
+                ? 'Delivery Return $savedName berhasil $savedLabel, tetapi $failedUploads foto gagal diunggah.'
+                : 'Delivery Return $savedName berhasil $savedLabel.',
           ),
           backgroundColor: failedUploads > 0
               ? AppColors.warning
@@ -417,7 +478,7 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
 
     setState(() => _workflowBusy = true);
     if (!mounted) return;
-    final rejectState = context.read<RejectState>();
+    final rejectState = context.read<DeliveryReturnState>();
     final ok = await runErpWorkflowAction(
       context,
       action: () => rejectState.applyDocumentWorkflow(
@@ -460,7 +521,7 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<RejectState>();
+    final state = context.watch<DeliveryReturnState>();
     final companies = state.sellingCompanies;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
@@ -473,7 +534,7 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         title: Text(
-          _isEdit ? 'Edit Reject' : 'Buat Reject',
+          _isEdit ? 'Edit Delivery Return' : 'Buat Delivery Return',
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
@@ -544,12 +605,7 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
                           for (final company in companies)
                             ErpItemOption(id: company, label: company),
                         ],
-                        onSelected: (value) => setState(() {
-                          _company = value;
-                          for (final row in _rows) {
-                            row.sourceWarehouse = null;
-                          }
-                        }),
+                        onSelected: (value) => setState(() => _company = value),
                         validator: (value) =>
                             value == null || value.trim().isEmpty
                                 ? 'Company wajib'
@@ -569,48 +625,52 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
                             ),
                         ],
                         onSearch: _searchCustomers,
-                        onSelected: (value) =>
-                            setState(() => _customer = value),
+                        onSelected: (value) => _selectCustomer(value),
                         validator: (value) =>
                             value == null || value.trim().isEmpty
                                 ? 'Customer wajib'
                                 : null,
                       ),
-                      if ((_workflowState ?? '').isNotEmpty) ...[
+                      if (_customerName.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         InputDecorator(
-                          decoration: _decoration('Workflow State'),
+                          decoration: _decoration('Customer Name'),
                           child: Text(
-                            _workflowState!,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ],
-                      if ((_stockEntry ?? '').isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        InputDecorator(
-                          decoration: _decoration('Stock Entry'),
-                          child: Text(
-                            _stockEntry!,
+                            _customerName,
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ),
                       ],
                       const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _keteranganCtrl,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: _decoration(
-                          'Keterangan',
-                          hint: 'Catatan (opsional)',
+                      ErpItemAutocompleteField(
+                        key: ValueKey(
+                          'dn-${_customer ?? ''}-${_deliveryNote ?? ''}',
                         ),
+                        label: 'Delivery Note',
+                        selectedId: _deliveryNote,
+                        decoration: _decoration(
+                          'Delivery Note',
+                          hint: (_customer ?? '').isEmpty
+                              ? 'Pilih customer dulu'
+                              : 'Delivery Note milik customer',
+                        ),
+                        options: [
+                          if ((_deliveryNote ?? '').isNotEmpty)
+                            ErpItemOption(
+                              id: _deliveryNote!,
+                              label: _deliveryNote!,
+                            ),
+                        ],
+                        onSearch: (_customer ?? '').isEmpty
+                            ? null
+                            : _searchDeliveryNotes,
+                        onSelected: (value) => _selectDeliveryNote(value),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   _section(
-                    title: 'Reject Item',
+                    title: 'Return Detail',
                     children: [
                       for (var i = 0; i < _rows.length; i++) ...[
                         _itemCard(i),
@@ -620,6 +680,21 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
                         onPressed: () => setState(() => _rows.add(_ItemRow())),
                         icon: const Icon(Icons.add_rounded),
                         label: const Text('Add Row'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _section(
+                    title: 'Keterangan',
+                    children: [
+                      TextFormField(
+                        controller: _keteranganCtrl,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: _decoration(
+                          'Keterangan',
+                          hint: 'Catatan (opsional)',
+                        ),
                       ),
                     ],
                   ),
@@ -823,36 +898,31 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
             ),
           ],
           const SizedBox(height: 12),
-          ErpItemAutocompleteField(
-            key: ValueKey('wh-$index-${row.sourceWarehouse ?? ''}'),
-            label: 'Source Warehouse *',
-            selectedId: row.sourceWarehouse,
-            decoration: _decoration('Source Warehouse *'),
-            options: [
-              if ((row.sourceWarehouse ?? '').isNotEmpty)
-                ErpItemOption(
-                  id: row.sourceWarehouse!,
-                  label: row.sourceWarehouse!,
-                ),
-            ],
-            onSearch: _searchWarehouses,
-            onSelected: (value) =>
-                setState(() => row.sourceWarehouse = value),
-          ),
-          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final narrow = constraints.maxWidth < 340;
-              final qtyField = TextFormField(
-                controller: row.qtyCtrl,
+              final qtyDnField = TextFormField(
+                controller: row.qtyDnCtrl,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: _decoration('Qty *'),
+                decoration: _decoration('Qty DN'),
                 validator: (value) {
                   if ((row.itemCode ?? '').isEmpty) return null;
                   final qty = double.tryParse(value?.trim() ?? '');
-                  return qty == null || qty <= 0 ? 'Qty > 0' : null;
+                  return qty == null || qty < 0 ? 'Qty DN tidak valid' : null;
+                },
+              );
+              final qtyTolakField = TextFormField(
+                controller: row.qtyTolakCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: _decoration('Qty Tolak *'),
+                validator: (value) {
+                  if ((row.itemCode ?? '').isEmpty) return null;
+                  final qty = double.tryParse(value?.trim() ?? '');
+                  return qty == null || qty <= 0 ? 'Qty Tolak > 0' : null;
                 },
               );
               final uomField = InputDecorator(
@@ -865,18 +935,26 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
               if (narrow) {
                 return Column(
                   children: [
-                    qtyField,
+                    qtyDnField,
+                    const SizedBox(height: 12),
+                    qtyTolakField,
                     const SizedBox(height: 12),
                     uomField,
                   ],
                 );
               }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              return Column(
                 children: [
-                  Expanded(child: qtyField),
-                  const SizedBox(width: 10),
-                  Expanded(child: uomField),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: qtyDnField),
+                      const SizedBox(width: 10),
+                      Expanded(child: qtyTolakField),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  uomField,
                 ],
               );
             },
@@ -890,19 +968,29 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
 class _ItemRow {
   String? itemCode;
   String itemName;
-  String? sourceWarehouse;
   String uom;
-  final TextEditingController qtyCtrl;
+  final TextEditingController qtyDnCtrl;
+  final TextEditingController qtyTolakCtrl;
 
   _ItemRow({
     this.itemCode,
     this.itemName = '',
-    this.sourceWarehouse,
     this.uom = '',
-    String qtyText = '1',
-  }) : qtyCtrl = TextEditingController(text: qtyText);
+    String qtyDnText = '0',
+    String qtyTolakText = '1',
+  }) : qtyDnCtrl = TextEditingController(text: qtyDnText),
+       qtyTolakCtrl = TextEditingController(text: qtyTolakText);
 
-  double get qty => double.tryParse(qtyCtrl.text.trim()) ?? 0;
+  double get qtyDn => double.tryParse(qtyDnCtrl.text.trim()) ?? 0;
+  double get qtyTolak => double.tryParse(qtyTolakCtrl.text.trim()) ?? 0;
 
-  void dispose() => qtyCtrl.dispose();
+  void dispose() {
+    qtyDnCtrl.dispose();
+    qtyTolakCtrl.dispose();
+  }
+}
+
+String _qtyText(Object? raw) {
+  final qty = double.tryParse(raw?.toString() ?? '') ?? 0;
+  return qty == qty.roundToDouble() ? qty.toInt().toString() : qty.toString();
 }

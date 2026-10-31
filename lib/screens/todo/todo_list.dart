@@ -691,6 +691,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     'Material Request' => Icons.assignment_turned_in_rounded,
     'Journal Entry' => Icons.auto_stories_rounded,
     'Tukar Guling' => Icons.swap_horiz_rounded,
+    'Delivery Return' => Icons.assignment_return_rounded,
     'Reject' => Icons.highlight_off_rounded,
     _ => Icons.approval_outlined,
   };
@@ -702,6 +703,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     'Material Request' => const Color(0xFF6366F1),
     'Journal Entry' => const Color(0xFF0EA5E9),
     'Tukar Guling' => AppColors.primary,
+    'Delivery Return' => AppColors.primary,
     'Reject' => AppColors.danger,
     _ => AppColors.primary,
   };
@@ -723,6 +725,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     'Journal Entry' => 'JE',
     'Sales Order' => 'SO',
     'Tukar Guling' => 'TG',
+    'Delivery Return' => 'DR',
     'Reject' => 'RJ',
     _ => doctype,
   };
@@ -2051,6 +2054,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     'Material Request' => Icons.assignment_turned_in_rounded,
     'Journal Entry' => Icons.auto_stories_rounded,
     'Tukar Guling' => Icons.swap_horiz_rounded,
+    'Delivery Return' => Icons.assignment_return_rounded,
     'Reject' => Icons.highlight_off_rounded,
     _ => Icons.approval_outlined,
   };
@@ -2062,6 +2066,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     'Material Request' => const Color(0xFF6366F1),
     'Journal Entry' => const Color(0xFF0EA5E9),
     'Tukar Guling' => AppColors.primary,
+    'Delivery Return' => AppColors.primary,
     'Reject' => AppColors.danger,
     _ => AppColors.primary,
   };

@@ -277,7 +277,7 @@ class MobileRoleRegistry {
         'Customer',
         'Sales Visit',
         'Tukar Guling',
-        'Reject',
+        'Delivery Return',
       ],
     ),
     MobileModuleAccessRule(
@@ -322,7 +322,12 @@ class MobileRoleRegistry {
     ),
     MobileModuleAccessRule(
       module: MobileModule.warehouse,
-      readDoctypes: ['Warehouse', 'Stock Entry', 'Stock Reconciliation'],
+      readDoctypes: [
+        'Warehouse',
+        'Stock Entry',
+        'Stock Reconciliation',
+        'Reject',
+      ],
     ),
     MobileModuleAccessRule(
       module: MobileModule.qualityControl,
@@ -348,6 +353,9 @@ class MobileRoleRegistry {
     'executive': MobileRole.director,
     'sales admin': MobileRole.salesManager,
     'sales manager': MobileRole.salesManager,
+    'manager operational': MobileRole.salesManager,
+    'operational manager': MobileRole.salesManager,
+    'admin warehouse': MobileRole.warehouse,
     'sales user': MobileRole.sales,
     'selling user': MobileRole.sales,
     'sales': MobileRole.sales,

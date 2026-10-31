@@ -32,6 +32,11 @@ class RejectState extends AppStateProxyNotifier {
     return appState.preferredCompany(options);
   }
 
+  Future<void> ensureCompanies() async {
+    if (sellingCompanies.isNotEmpty) return;
+    await appState.loadSellingFilterOptions();
+  }
+
   Future<List<RejectSummary>> fetchList({
     String? company,
     String? customer,

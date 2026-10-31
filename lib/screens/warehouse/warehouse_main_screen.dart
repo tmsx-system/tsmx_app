@@ -9,6 +9,7 @@ import 'inventory/warehouse_inventory_tab.dart';
 import 'transaction/warehouse_operations_tab.dart';
 import 'overview/warehouse_overview_tab.dart';
 import 'quality/warehouse_quality_tab.dart';
+import 'reject/reject_tab.dart';
 
 class WarehouseMainScreen extends StatefulWidget {
   final int initialTabIndex;
@@ -96,6 +97,7 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
         break;
       case 'stock':
       case 'qc':
+      case 'reject':
         break;
     }
   }
@@ -144,6 +146,19 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
         ),
       );
     }
+    if (!widget.qualityOnly && permissions.canReadReject) {
+      entries.add(
+        const _WarehouseMenuEntry(
+          key: 'reject',
+          destination: NavigationDestination(
+            icon: Icon(Icons.highlight_off_outlined),
+            selectedIcon: Icon(Icons.highlight_off_rounded),
+            label: 'Rejected',
+          ),
+          builder: _rejectTab,
+        ),
+      );
+    }
     if (!widget.stockOnly && permissions.canReadQualityInspection) {
       entries.add(
         const _WarehouseMenuEntry(
@@ -172,6 +187,7 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
       state.canCreateDoctype('Stock Reconciliation'),
       state.canReadDoctype('Quality Inspection'),
       state.canCreateDoctype('Quality Inspection'),
+      state.canReadDoctype('Reject'),
     ]);
     final permissions = _WarehouseDoctypePermissions(
       canReadWarehouse: results[0],
@@ -183,6 +199,7 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
       canCreateStockReconciliation: results[6],
       canReadQualityInspection: results[7],
       canCreateQualityInspection: results[8],
+      canReadReject: results[9],
     );
     return permissions;
   }
@@ -191,6 +208,7 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
 Widget _operationsTab(ValueChanged<int> _) => const WarehouseOperationsTab();
 Widget _inventoryTab(ValueChanged<int> _) => const WarehouseInventoryTab();
 Widget _qualityTab(ValueChanged<int> _) => const WarehouseQualityTab();
+Widget _rejectTab(ValueChanged<int> _) => const RejectTab();
 
 class _WarehouseDoctypePermissions {
   final bool canReadWarehouse;
@@ -202,6 +220,7 @@ class _WarehouseDoctypePermissions {
   final bool canCreateStockReconciliation;
   final bool canReadQualityInspection;
   final bool canCreateQualityInspection;
+  final bool canReadReject;
 
   const _WarehouseDoctypePermissions({
     required this.canReadWarehouse,
@@ -213,6 +232,7 @@ class _WarehouseDoctypePermissions {
     required this.canCreateStockReconciliation,
     required this.canReadQualityInspection,
     required this.canCreateQualityInspection,
+    required this.canReadReject,
   });
 
   bool get canReadStock => canReadBin || canReadStockLedger;
@@ -223,7 +243,10 @@ class _WarehouseDoctypePermissions {
       canCreateStockReconciliation;
   bool get canShowHome => canReadWarehouse || canReadStock || canUseOps;
   bool get hasAnyAccess =>
-      canShowHome || canReadQualityInspection || canCreateQualityInspection;
+      canShowHome ||
+      canReadQualityInspection ||
+      canCreateQualityInspection ||
+      canReadReject;
 }
 
 class _WarehouseMenuEntry {
