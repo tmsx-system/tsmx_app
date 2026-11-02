@@ -8,7 +8,6 @@ import '../../../state/selling/tukar_guling_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
-import '../../../widgets/erp/erp_workflow_helper.dart';
 import '../shared/sales_attachment_card.dart';
 import '../shared/sales_ui.dart';
 
@@ -31,18 +30,14 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
 
   bool _loading = true;
   bool _saving = false;
-  bool _workflowBusy = false;
   String? _error;
   String? _series;
   List<String> _seriesOptions = const [];
   String? _company;
   String? _customer;
   DateTime _postingDate = DateTime.now();
-  String? _workflowState;
   String? _stockEntry;
   String? _savedName;
-  List<String> _workflowActions = const [];
-  Map<String, dynamic>? _loadedDocument;
   final _itemMeta = <String, ({String name, String uom})>{};
   List<String> _existingAttachmentNames = const [];
 
@@ -111,11 +106,9 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
 
   Future<void> _applyExisting(TukarGulingState state, String name) async {
     final doc = await state.fetchDetail(name);
-    _loadedDocument = doc;
     _series = doc['naming_series']?.toString().trim() ?? _series;
     _company = doc['company']?.toString().trim() ?? _company;
     _customer = doc['customer']?.toString().trim() ?? _customer;
-    _workflowState = doc['workflow_state']?.toString().trim();
     _stockEntry = doc['stock_entry']?.toString().trim();
     _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
     try {
@@ -161,13 +154,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
             ),
       ]);
     if (_rows.isEmpty) _rows.add(_ItemRow());
-
-    // Transitions from the same doc — skip extra GET.
-    try {
-      _workflowActions = await state.fetchWorkflowActionsForDocument(doc);
-    } catch (_) {
-      _workflowActions = const [];
-    }
   }
 
   Future<void> _pickDate() async {
@@ -337,10 +323,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         savedName = name;
         createdNew = true;
         if (!mounted) return;
-        setState(() {
-          _savedName = name;
-          _workflowState = created['workflow_state']?.toString() ?? 'Draft';
-        });
+        setState(() => _savedName = name);
       }
       final failedUploads = await _uploadPhotos(state, savedName);
       if (!mounted) return;
@@ -366,75 +349,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     }
   }
 
-  Future<void> _runWorkflow(String action) async {
-    final name = _documentName;
-    if (name == null || _workflowBusy) return;
-    final lower = action.toLowerCase();
-    final needsReason = lower.contains('reject') ||
-        lower.contains('tolak') ||
-        lower.contains('decline');
-    var reason = '';
-    if (needsReason) {
-      final controller = TextEditingController();
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(action),
-          content: TextField(
-            controller: controller,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Alasan',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Lanjut'),
-            ),
-          ],
-        ),
-      );
-      if (ok != true) return;
-      reason = controller.text.trim();
-      if (reason.isEmpty) {
-        setState(() => _error = 'Alasan wajib diisi untuk $action.');
-        return;
-      }
-    } else {
-      final confirmed = await confirmErpAction(
-        context,
-        title: '$action?',
-        message: 'Jalankan "$action" untuk $name?',
-      );
-      if (!confirmed || !mounted) return;
-    }
-
-    setState(() => _workflowBusy = true);
-    if (!mounted) return;
-    final tukarState = context.read<TukarGulingState>();
-    final ok = await runErpWorkflowAction(
-      context,
-      action: () => tukarState.applyDocumentWorkflow(
-            name: name,
-            action: action,
-            reason: reason,
-            currentDocument: _loadedDocument,
-          ),
-      successMessage: '$action berhasil untuk $name.',
-    );
-    if (!mounted) return;
-    setState(() => _workflowBusy = false);
-    if (ok) {
-      await _load();
-      if (mounted) Navigator.pop(context, true);
-    }
-  }
 
   InputDecoration _decoration(String label, {String? hint, Widget? suffix}) {
     return InputDecoration(
@@ -576,16 +490,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                                 ? 'Customer wajib'
                                 : null,
                       ),
-                      if ((_workflowState ?? '').isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        InputDecorator(
-                          decoration: _decoration('Workflow State'),
-                          child: Text(
-                            _workflowState!,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ],
                       if ((_stockEntry ?? '').isNotEmpty) ...[
                         const SizedBox(height: 14),
                         InputDecorator(
@@ -596,16 +500,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _keteranganCtrl,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: _decoration(
-                          'Keterangan',
-                          hint: 'Catatan (opsional)',
-                        ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -632,27 +526,21 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                     onGallery: _saving ? null : _pickGallery,
                     onRemove: (index) => setState(() => _photos.removeAt(index)),
                   ),
-                  if (_workflowActions.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _section(
-                      title: 'Workflow',
-                      children: [
-                        for (final action in _workflowActions)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: erpActionButton(
-                              label: action,
-                              icon: _workflowIcon(action),
-                              filled: action.toLowerCase().contains('approve') ||
-                                  action.toLowerCase().contains('submit'),
-                              onPressed: _workflowBusy || _saving
-                                  ? null
-                                  : () => _runWorkflow(action),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
+                  const SizedBox(height: 12),
+                  _section(
+                    title: 'Keterangan',
+                    children: [
+                      TextFormField(
+                        controller: _keteranganCtrl,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: _decoration(
+                          'Keterangan',
+                          hint: 'Catatan (opsional)',
+                        ),
+                      ),
+                    ],
+                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Container(
@@ -726,19 +614,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     );
   }
 
-  IconData _workflowIcon(String action) {
-    final lower = action.toLowerCase();
-    if (lower.contains('reject') || lower.contains('tolak')) {
-      return Icons.cancel_outlined;
-    }
-    if (lower.contains('revise') || lower.contains('revisi')) {
-      return Icons.edit_outlined;
-    }
-    if (lower.contains('submit') || lower.contains('approve')) {
-      return Icons.check_circle_outline_rounded;
-    }
-    return Icons.play_circle_outline_rounded;
-  }
 
   Widget _itemCard(int index) {
     final row = _rows[index];

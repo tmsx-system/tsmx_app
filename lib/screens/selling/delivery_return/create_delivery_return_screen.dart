@@ -8,7 +8,6 @@ import '../../../state/selling/delivery_return_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
-import '../../../widgets/erp/erp_workflow_helper.dart';
 import '../shared/sales_attachment_card.dart';
 import '../shared/sales_ui.dart';
 
@@ -31,7 +30,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
 
   bool _loading = true;
   bool _saving = false;
-  bool _workflowBusy = false;
   String? _error;
   String? _series;
   List<String> _seriesOptions = const [];
@@ -41,8 +39,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
   String? _deliveryNote;
   DateTime _postingDate = DateTime.now();
   String? _savedName;
-  List<String> _workflowActions = const [];
-  Map<String, dynamic>? _loadedDocument;
   final _itemMeta = <String, ({String name, String uom})>{};
   List<String> _existingAttachmentNames = const [];
 
@@ -111,7 +107,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
 
   Future<void> _applyExisting(DeliveryReturnState state, String name) async {
     final doc = await state.fetchDetail(name);
-    _loadedDocument = doc;
     _series = doc['naming_series']?.toString().trim() ?? _series;
     _company = doc['company']?.toString().trim() ?? _company;
     _customer = doc['customer']?.toString().trim() ?? _customer;
@@ -156,13 +151,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
             ),
       ]);
     if (_rows.isEmpty) _rows.add(_ItemRow());
-
-    // Transitions from the same doc — skip extra GET.
-    try {
-      _workflowActions = await state.fetchWorkflowActionsForDocument(doc);
-    } catch (_) {
-      _workflowActions = const [];
-    }
   }
 
   Future<void> _pickDate() async {
@@ -427,75 +415,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
     }
   }
 
-  Future<void> _runWorkflow(String action) async {
-    final name = _documentName;
-    if (name == null || _workflowBusy) return;
-    final lower = action.toLowerCase();
-    final needsReason = lower.contains('reject') ||
-        lower.contains('tolak') ||
-        lower.contains('decline');
-    var reason = '';
-    if (needsReason) {
-      final controller = TextEditingController();
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(action),
-          content: TextField(
-            controller: controller,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Alasan',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Lanjut'),
-            ),
-          ],
-        ),
-      );
-      if (ok != true) return;
-      reason = controller.text.trim();
-      if (reason.isEmpty) {
-        setState(() => _error = 'Alasan wajib diisi untuk $action.');
-        return;
-      }
-    } else {
-      final confirmed = await confirmErpAction(
-        context,
-        title: '$action?',
-        message: 'Jalankan "$action" untuk $name?',
-      );
-      if (!confirmed || !mounted) return;
-    }
-
-    setState(() => _workflowBusy = true);
-    if (!mounted) return;
-    final rejectState = context.read<DeliveryReturnState>();
-    final ok = await runErpWorkflowAction(
-      context,
-      action: () => rejectState.applyDocumentWorkflow(
-            name: name,
-            action: action,
-            reason: reason,
-            currentDocument: _loadedDocument,
-          ),
-      successMessage: '$action berhasil untuk $name.',
-    );
-    if (!mounted) return;
-    setState(() => _workflowBusy = false);
-    if (ok) {
-      await _load();
-      if (mounted) Navigator.pop(context, true);
-    }
-  }
 
   InputDecoration _decoration(String label, {String? hint, Widget? suffix}) {
     return InputDecoration(
@@ -684,6 +603,15 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
                     ],
                   ),
                   const SizedBox(height: 12),
+                  SalesAttachmentCard(
+                    title: 'Attachment',
+                    existingNames: _existingAttachmentNames,
+                    photos: _photos,
+                    onCamera: _saving ? null : _pickCamera,
+                    onGallery: _saving ? null : _pickGallery,
+                    onRemove: (index) => setState(() => _photos.removeAt(index)),
+                  ),
+                  const SizedBox(height: 12),
                   _section(
                     title: 'Keterangan',
                     children: [
@@ -698,37 +626,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  SalesAttachmentCard(
-                    title: 'Attachment',
-                    existingNames: _existingAttachmentNames,
-                    photos: _photos,
-                    onCamera: _saving ? null : _pickCamera,
-                    onGallery: _saving ? null : _pickGallery,
-                    onRemove: (index) => setState(() => _photos.removeAt(index)),
-                  ),
-                  if (_workflowActions.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _section(
-                      title: 'Workflow',
-                      children: [
-                        for (final action in _workflowActions)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: erpActionButton(
-                              label: action,
-                              icon: _workflowIcon(action),
-                              filled: action.toLowerCase().contains('approve') ||
-                                  action.toLowerCase().contains('submit') ||
-                                  action.toLowerCase().contains('revise'),
-                              onPressed: _workflowBusy || _saving
-                                  ? null
-                                  : () => _runWorkflow(action),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Container(
@@ -802,19 +699,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
     );
   }
 
-  IconData _workflowIcon(String action) {
-    final lower = action.toLowerCase();
-    if (lower.contains('reject') || lower.contains('tolak')) {
-      return Icons.cancel_outlined;
-    }
-    if (lower.contains('revise') || lower.contains('revisi')) {
-      return Icons.edit_outlined;
-    }
-    if (lower.contains('submit') || lower.contains('approve')) {
-      return Icons.check_circle_outline_rounded;
-    }
-    return Icons.play_circle_outline_rounded;
-  }
 
   Widget _itemCard(int index) {
     final row = _rows[index];
