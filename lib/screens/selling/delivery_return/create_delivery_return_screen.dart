@@ -901,17 +901,14 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
           LayoutBuilder(
             builder: (context, constraints) {
               final narrow = constraints.maxWidth < 340;
-              final qtyDnField = TextFormField(
-                controller: row.qtyDnCtrl,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+              final qtyDnField = InputDecorator(
                 decoration: _decoration('Qty DN'),
-                validator: (value) {
-                  if ((row.itemCode ?? '').isEmpty) return null;
-                  final qty = double.tryParse(value?.trim() ?? '');
-                  return qty == null || qty < 0 ? 'Qty DN tidak valid' : null;
-                },
+                child: Text(
+                  row.qtyDnCtrl.text.trim().isEmpty
+                      ? '0'
+                      : row.qtyDnCtrl.text.trim(),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               );
               final qtyTolakField = TextFormField(
                 controller: row.qtyTolakCtrl,
