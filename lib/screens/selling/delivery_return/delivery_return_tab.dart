@@ -212,31 +212,58 @@ class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
       }
       if (!mounted) return;
 
+      final meta = await state.resolveMeta();
+      if (!mounted) return;
       final customer = detail['customer']?.toString() ?? row.customer;
+      final customerName = _detailText(detail, [
+        meta.customerNameField,
+        'customer_name',
+      ]);
+      final deliveryNote = _detailText(detail, [
+        meta.deliveryNoteField,
+        'delivery_asal',
+        'delivery_note',
+      ]);
       final company = detail['company']?.toString() ?? row.company;
       final postingDate =
           detail['posting_date']?.toString() ?? row.postingDate;
       final keterangan = detail['keterangan']?.toString() ?? row.keterangan;
       final workflowState =
           detail['workflow_state']?.toString() ?? row.statusLabel;
-      final rawItems = detail['return_detail'] ??
+      final rawItems = detail[meta.childTableField] ??
+          detail['return_detail'] ??
           detail['items'] ??
           detail['delivery_return_detail'];
       final items = <SellingDetailItem>[];
       if (rawItems is List) {
         for (final raw in rawItems.whereType<Map>()) {
           final map = Map<String, dynamic>.from(raw);
-          final qtyDn = map['qty_dn']?.toString() ?? '';
-          final qtyTolak = map['qty_tolak']?.toString() ?? '';
-          final uom = map['uom']?.toString() ?? '';
+          final qtyDn = _detailText(map, [meta.qtyDnField, 'qty_dn']);
+          final qtyTolak = _detailText(map, [
+            meta.qtyTolakField,
+            'qty_tolak',
+            ...map.keys.where(
+              (key) => key.toLowerCase().contains('tolak'),
+            ),
+          ]);
+          final uom = _detailText(map, const ['uom', 'stock_uom']);
           items.add(
             SellingDetailItem(
-              title: map['item_name']?.toString() ??
-                  map['item_code']?.toString() ??
-                  '-',
+              title: map['item_name']?.toString().trim().isNotEmpty == true
+                  ? map['item_name'].toString()
+                  : (map['item_code']?.toString() ?? '-'),
               subtitle: map['item_code']?.toString() ?? '',
-              qty: 'DN $qtyDn • Tolak $qtyTolak${uom.isEmpty ? '' : ' $uom'}',
-              note: '',
+              stats: [
+                SellingDetailStat(label: 'Qty DN', value: _qtyLabel(qtyDn)),
+                SellingDetailStat(
+                  label: 'Qty Tolak',
+                  value: _qtyLabel(qtyTolak),
+                ),
+                SellingDetailStat(
+                  label: 'UOM',
+                  value: uom.isEmpty ? '-' : uom,
+                ),
+              ],
             ),
           );
         }
@@ -264,6 +291,10 @@ class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
         ],
         infos: [
           SellingDetailInfo(label: 'Customer', value: customer),
+          if (customerName.isNotEmpty)
+            SellingDetailInfo(label: 'Customer Name', value: customerName),
+          if (deliveryNote.isNotEmpty)
+            SellingDetailInfo(label: 'Delivery Note', value: deliveryNote),
           SellingDetailInfo(label: 'Company', value: company),
           SellingDetailInfo(label: 'Posting Date', value: postingDate),
           SellingDetailInfo(label: 'Workflow', value: workflowState),
@@ -679,4 +710,20 @@ class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
       ),
     );
   }
+}
+
+String _detailText(Map map, List<String> keys) {
+  for (final key in keys) {
+    if (!map.containsKey(key)) continue;
+    final text = map[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && text != 'null') return text;
+  }
+  return '';
+}
+
+String _qtyLabel(String raw) {
+  if (raw.isEmpty) return '0';
+  final qty = double.tryParse(raw);
+  if (qty == null) return raw;
+  return qty == qty.roundToDouble() ? qty.toInt().toString() : qty.toString();
 }

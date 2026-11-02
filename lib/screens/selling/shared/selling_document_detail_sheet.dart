@@ -23,6 +23,13 @@ class SellingDetailInfo {
   const SellingDetailInfo({required this.label, required this.value});
 }
 
+class SellingDetailStat {
+  final String label;
+  final String value;
+
+  const SellingDetailStat({required this.label, required this.value});
+}
+
 class SellingDetailItem {
   final String title;
   final String subtitle;
@@ -31,6 +38,7 @@ class SellingDetailItem {
   final String discount;
   final String amount;
   final String note;
+  final List<SellingDetailStat> stats;
 
   const SellingDetailItem({
     required this.title,
@@ -40,6 +48,7 @@ class SellingDetailItem {
     this.discount = '',
     this.amount = '',
     this.note = '',
+    this.stats = const [],
   });
 }
 
@@ -482,17 +491,40 @@ class _SellingItemCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _ItemStat(label: 'Qty', value: item.qty),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ItemStat(label: 'Rate', value: item.rate),
-              ),
-            ],
-          ),
+          if (item.stats.isNotEmpty)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final tileWidth = (constraints.maxWidth - 8) / 2;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var i = 0; i < item.stats.length; i++)
+                      _ItemStatTile(
+                        width: item.stats.length == 1 ||
+                                (item.stats.length.isOdd &&
+                                    i == item.stats.length - 1)
+                            ? constraints.maxWidth
+                            : tileWidth,
+                        label: item.stats[i].label,
+                        value: item.stats[i].value,
+                      ),
+                  ],
+                );
+              },
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: _ItemStat(label: 'Qty', value: item.qty),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ItemStat(label: 'Rate', value: item.rate),
+                ),
+              ],
+            ),
           if (item.discount.isNotEmpty ||
               item.amount.isNotEmpty ||
               item.note.isNotEmpty) ...[
