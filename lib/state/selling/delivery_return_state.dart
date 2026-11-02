@@ -148,10 +148,10 @@ class DeliveryReturnState extends AppStateProxyNotifier {
     }
   }
 
-  /// Workflow actions for the signed-in role, from the saved document.
+  /// Batch get_transitions from list rows (no full GET per row).
   Future<Map<String, List<String>>> fetchWorkflowActionsForRows(
     List<DeliveryReturnSummary> rows, {
-    int batchSize = 6,
+    int batchSize = 8,
   }) async {
     await frappeService.ensureLoggedIn();
     final actionsByName = <String, List<String>>{};
@@ -164,8 +164,26 @@ class DeliveryReturnState extends AppStateProxyNotifier {
       final results = await Future.wait(
         batch.map((row) async {
           try {
-            final actions = await _workflowActionsForName(row.id);
-            return (name: row.id, actions: actions);
+            final raw = await frappeService.callMethod(
+              'frappe.model.workflow.get_transitions',
+              args: {
+                'doc': {
+                  'doctype': doctype,
+                  'name': row.id,
+                  'workflow_state': row.workflowState.isEmpty
+                      ? 'Draft'
+                      : row.workflowState,
+                  'company': row.company,
+                  'customer': row.customer,
+                  'posting_date': row.postingDate,
+                  'docstatus': row.docstatus,
+                },
+              },
+            );
+            return (
+              name: row.id,
+              actions: inboxActionsFromWorkflowTransitions(raw),
+            );
           } catch (_) {
             return (name: row.id, actions: const <String>[]);
           }
@@ -184,23 +202,8 @@ class DeliveryReturnState extends AppStateProxyNotifier {
     Map<String, dynamic> doc,
   ) async {
     await frappeService.ensureLoggedIn();
-    final name = doc['name']?.toString().trim() ?? '';
-    if (name.isEmpty) return const [];
-    return _workflowActionsForName(name, fallback: doc);
-  }
-
-  Future<List<String>> _workflowActionsForName(
-    String name, {
-    Map<String, dynamic>? fallback,
-  }) async {
-    Map<String, dynamic> payload;
-    try {
-      payload = await frappeService.fetchDocument(doctype, name);
-    } catch (_) {
-      payload = Map<String, dynamic>.from(fallback ?? const {});
-    }
+    final payload = Map<String, dynamic>.from(doc);
     payload['doctype'] = doctype;
-    payload['name'] = name;
     if ((payload['workflow_state']?.toString().trim() ?? '').isEmpty) {
       payload['workflow_state'] = 'Draft';
     }

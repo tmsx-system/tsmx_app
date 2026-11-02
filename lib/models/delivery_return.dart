@@ -5,6 +5,7 @@ class DeliveryReturnSummary {
   final String customer;
   final String workflowState;
   final String keterangan;
+  final int docstatus;
 
   const DeliveryReturnSummary({
     required this.id,
@@ -13,6 +14,7 @@ class DeliveryReturnSummary {
     this.customer = '',
     this.workflowState = '',
     this.keterangan = '',
+    this.docstatus = 0,
   });
 
   factory DeliveryReturnSummary.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class DeliveryReturnSummary {
           json['status']?.toString() ??
           '',
       keterangan: json['keterangan']?.toString() ?? '',
+      docstatus: int.tryParse(json['docstatus']?.toString() ?? '') ?? 0,
     );
   }
 

@@ -174,7 +174,7 @@ class RejectState extends AppStateProxyNotifier {
               'company': row.company,
               'customer': row.customer,
               'posting_date': row.postingDate,
-              'docstatus': 0,
+              'docstatus': row.docstatus,
             };
             final raw = await frappeService.callMethod(
               'frappe.model.workflow.get_transitions',

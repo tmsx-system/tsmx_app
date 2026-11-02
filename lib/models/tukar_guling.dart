@@ -6,6 +6,7 @@ class TukarGulingSummary {
   final String stockEntry;
   final String workflowState;
   final String keterangan;
+  final int docstatus;
 
   const TukarGulingSummary({
     required this.id,
@@ -15,6 +16,7 @@ class TukarGulingSummary {
     this.stockEntry = '',
     this.workflowState = '',
     this.keterangan = '',
+    this.docstatus = 0,
   });
 
   factory TukarGulingSummary.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class TukarGulingSummary {
           json['status']?.toString() ??
           '',
       keterangan: json['keterangan']?.toString() ?? '',
+      docstatus: int.tryParse(json['docstatus']?.toString() ?? '') ?? 0,
     );
   }
 
