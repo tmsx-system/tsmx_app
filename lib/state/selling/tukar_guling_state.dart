@@ -219,51 +219,110 @@ class TukarGulingState extends AppStateProxyNotifier {
     var childTableField = 'tukar_guling_item';
     var childDoctype = 'Tukar Guling Item';
     var warehouseField = 'source_warehouse';
+    var jenisField = 'custom_jenis_input';
+    var customerNameField = 'customer_name';
+    var claimTableField = 'custom_claim_details';
+    var claimDoctype = 'Tukar Guling Harian';
+    var claimDateField = 'posting_date';
+    var claimItemField = 'item';
+    var claimQtyField = 'qty_kg';
+    var claimNoteField = 'keterangan';
+    var claimSourceField = 'notg';
+    var claimAllocatedField = 'allocated_kg';
 
     try {
-      final rows = await frappeService.fetchResource(
-        'DocField',
-        fields: const [
-          'fieldname',
-          'fieldtype',
-          'options',
-          'label',
-          'parent',
-        ],
-        filters: [
-          ['parent', 'in', [doctype, 'Tukar Guling Item']],
-        ],
-        limit: 200,
-      );
-      for (final row in rows) {
-        if (row['parent']?.toString() != doctype) continue;
-        if (row['fieldtype']?.toString() != 'Table') continue;
+      final forms = await _formFields(doctype);
+      final parentRows = forms[doctype] ?? const <Map<String, dynamic>>[];
+      for (final row in parentRows) {
         final fieldname = row['fieldname']?.toString().trim() ?? '';
+        final fieldtype = row['fieldtype']?.toString() ?? '';
         final options = row['options']?.toString().trim() ?? '';
+        final label = '${row['label'] ?? ''} $fieldname'.toLowerCase();
         if (fieldname.isEmpty) continue;
-        childTableField = fieldname;
-        if (options.isNotEmpty) childDoctype = options;
+        if (fieldtype == 'Table') {
+          final optionName = options.toLowerCase();
+          final isClaim = label.contains('klaim') ||
+              label.contains('claim') ||
+              optionName.contains('harian');
+          final isItem = !isClaim &&
+              (optionName.contains('item') || label.contains('item'));
+          if (isClaim) {
+            claimTableField = fieldname;
+            if (options.isNotEmpty) claimDoctype = options;
+          } else if (isItem) {
+            childTableField = fieldname;
+            if (options.isNotEmpty) childDoctype = options;
+          }
+        } else if (fieldtype == 'Select' &&
+            options.toLowerCase().contains('harian') &&
+            options.toLowerCase().contains('final')) {
+          jenisField = fieldname;
+        } else if (label.contains('customer name')) {
+          customerNameField = fieldname;
+        }
       }
-      for (final row in rows) {
-        if (row['parent']?.toString() != childDoctype) continue;
+
+      final itemFields =
+          forms[childDoctype] ?? await _schemaFields(childDoctype);
+      for (final row in itemFields) {
         final fieldname = row['fieldname']?.toString().trim() ?? '';
         final label = '${row['label'] ?? ''} $fieldname'.toLowerCase();
         if (fieldname.isEmpty) continue;
-        if (fieldname.contains('warehouse') ||
-            label.contains('source warehouse') ||
-            label.contains('gudang')) {
+        if (fieldname.contains('warehouse') || label.contains('gudang')) {
           warehouseField = fieldname;
           break;
         }
       }
+
+      final claimFields =
+          forms[claimDoctype] ?? await _schemaFields(claimDoctype);
+      String? qtyKg;
+      String? itemLink;
+      for (final row in claimFields) {
+        final fieldname = row['fieldname']?.toString().trim() ?? '';
+        final fieldtype = row['fieldtype']?.toString() ?? '';
+        final label = '${row['label'] ?? ''} $fieldname'.toLowerCase();
+        final options = row['options']?.toString().trim() ?? '';
+        if (fieldname.isEmpty) continue;
+        if (fieldname == 'posting_date' ||
+            label.contains('tanggal') ||
+            fieldname.contains('tanggal')) {
+          claimDateField = fieldname;
+        } else if (fieldname.contains('allocat')) {
+          claimAllocatedField = fieldname;
+        } else if (fieldname == 'qty_kg' ||
+            (fieldname.contains('qty') && fieldname.contains('kg'))) {
+          qtyKg = fieldname;
+        } else if (fieldname == 'qty' && qtyKg == null) {
+          claimQtyField = fieldname;
+        } else if (fieldtype == 'Link' && options == 'Item') {
+          itemLink = fieldname;
+        } else if (fieldname == 'keterangan' || label.contains('keterangan')) {
+          claimNoteField = fieldname;
+        } else if (fieldtype == 'Link' && options == doctype) {
+          claimSourceField = fieldname;
+        }
+      }
+      if (qtyKg != null) claimQtyField = qtyKg;
+      if (itemLink != null) claimItemField = itemLink;
     } catch (_) {
-      // Keep defaults; create() still tries known fieldname fallbacks.
+      // The form can still save with the field names already used by ERP.
     }
 
     _metaCache = TukarGulingMeta(
       childTableField: childTableField,
       childDoctype: childDoctype,
       warehouseField: warehouseField,
+      jenisField: jenisField,
+      customerNameField: customerNameField,
+      claimTableField: claimTableField,
+      claimDoctype: claimDoctype,
+      claimDateField: claimDateField,
+      claimItemField: claimItemField,
+      claimQtyField: claimQtyField,
+      claimNoteField: claimNoteField,
+      claimSourceField: claimSourceField,
+      claimAllocatedField: claimAllocatedField,
     );
     return _metaCache!;
   }
@@ -273,22 +332,22 @@ class TukarGulingState extends AppStateProxyNotifier {
     final meta = await resolveMeta();
     final attempts = <TukarGulingMeta>[
       meta,
-      const TukarGulingMeta(
+      meta.copyWith(
         childTableField: 'tukar_guling_item',
         childDoctype: 'Tukar Guling Item',
         warehouseField: 'source_warehouse',
       ),
-      const TukarGulingMeta(
+      meta.copyWith(
         childTableField: 'items',
         childDoctype: 'Tukar Guling Item',
         warehouseField: 'source_warehouse',
       ),
-      const TukarGulingMeta(
+      meta.copyWith(
         childTableField: 'tukar_guling_item',
         childDoctype: 'Tukar Guling Item',
         warehouseField: 's_warehouse',
       ),
-      const TukarGulingMeta(
+      meta.copyWith(
         childTableField: 'items',
         childDoctype: 'Tukar Guling Item',
         warehouseField: 's_warehouse',
@@ -304,11 +363,7 @@ class TukarGulingState extends AppStateProxyNotifier {
       try {
         final created = await frappeService.createDocument(
           doctype,
-          draft.toFrappeJson(
-            childTableField: attempt.childTableField,
-            childDoctype: attempt.childDoctype,
-            warehouseField: attempt.warehouseField,
-          ),
+          draft.toFrappeJson(meta: attempt),
         );
         final name = created['name']?.toString().trim() ?? '';
         if (name.isEmpty) {
@@ -332,22 +387,192 @@ class TukarGulingState extends AppStateProxyNotifier {
       await frappeService.updateDocument(
         doctype,
         id,
-        draft.toFrappeJson(
-          childTableField: meta.childTableField,
-          childDoctype: meta.childDoctype,
-          warehouseField: meta.warehouseField,
-        ),
+        draft.toFrappeJson(meta: meta),
       );
     } catch (_) {
       await frappeService.updateDocument(
         doctype,
         id,
         draft.toFrappeJson(
-          childTableField: 'items',
-          childDoctype: meta.childDoctype,
-          warehouseField: meta.warehouseField,
+          meta: meta.copyWith(
+            childTableField: 'items',
+            warehouseField: meta.warehouseField,
+          ),
         ),
       );
+    }
+  }
+
+  /// Draft Harian claims for one customer, still counted in kg.
+  Future<List<TukarGulingDailyClaim>> fetchDailyClaims({
+    required String customer,
+    String? company,
+    String? excludeName,
+    DateTime? postingDate,
+  }) async {
+    await frappeService.ensureLoggedIn();
+    final meta = await resolveMeta();
+    final selectedCustomer = customer.trim();
+    if (selectedCustomer.isEmpty) return const [];
+    final date = postingDate == null
+        ? ''
+        : '${postingDate.year.toString().padLeft(4, '0')}-'
+            '${postingDate.month.toString().padLeft(2, '0')}-'
+            '${postingDate.day.toString().padLeft(2, '0')}';
+    final filters = <List<dynamic>>[
+      ['customer', '=', selectedCustomer],
+      ['docstatus', '=', 0],
+      if ((company ?? '').trim().isNotEmpty) ['company', '=', company!.trim()],
+      [meta.jenisField, '=', 'Harian'],
+      ['workflow_state', '=', 'Draft'],
+      if (date.isNotEmpty) ['posting_date', '<=', date],
+    ];
+    final rows = await _fetchListDroppingBlockedFields(
+      fields: const ['name', 'posting_date', 'customer', 'company', 'docstatus'],
+      filters: filters,
+    );
+    final claims = <TukarGulingDailyClaim>[];
+    for (final row in rows) {
+      final name = row['name']?.toString().trim() ?? '';
+      if (name.isEmpty || name == excludeName?.trim()) continue;
+      final doc = await frappeService.fetchDocument(doctype, name);
+      final jenis = doc[meta.jenisField]?.toString().trim().toLowerCase() ?? '';
+      if (jenis != 'harian') continue;
+      final workflow = doc['workflow_state']?.toString().trim().toLowerCase() ?? '';
+      if (workflow.isNotEmpty && workflow != 'draft') continue;
+      if (postingDate != null) {
+        final docDate = DateTime.tryParse(doc['posting_date']?.toString() ?? '');
+        if (docDate != null &&
+            DateTime(docDate.year, docDate.month, docDate.day).isAfter(
+              DateTime(postingDate.year, postingDate.month, postingDate.day),
+            )) {
+          continue;
+        }
+      }
+      final lines = claimRowsOf(doc);
+      if (lines.isEmpty) continue;
+      for (final line in lines) {
+        final claim = _claimFromLine(doc, line, meta);
+        if (claim != null) claims.add(claim);
+      }
+    }
+    return claims;
+  }
+
+  TukarGulingDailyClaim? _claimFromLine(
+    Map<String, dynamic> doc,
+    Map line,
+    TukarGulingMeta meta,
+  ) {
+    final item = line[meta.claimItemField]?.toString().trim() ??
+        line['item_code']?.toString().trim() ??
+        line['item']?.toString().trim() ??
+        '';
+    if (item.isEmpty) return null;
+    final qty = double.tryParse(
+          (line[meta.claimQtyField] ?? line['qty'] ?? line['qty_kg'])
+                  ?.toString()
+                  .replaceAll(',', '.') ??
+              '',
+        ) ??
+        0;
+    if (qty <= 0) return null;
+    final parsed = DateTime.tryParse(
+      line[meta.claimDateField]?.toString() ??
+          doc['posting_date']?.toString() ??
+          '',
+    );
+    return TukarGulingDailyClaim(
+      sourceName: doc['name']?.toString() ?? '',
+      claimDate: parsed ?? DateTime.now(),
+      itemCode: item,
+      itemName: line['item_name']?.toString() ?? '',
+      qtyKg: qty,
+      keterangan: line[meta.claimNoteField]?.toString() ??
+          line['keterangan']?.toString() ??
+          '',
+    );
+  }
+
+  /// Same kg/box as the ERP client script, keyed by Item Group.
+  /// Used only when the Item itself has no Box conversion.
+  static const boxKgByItemGroup = <String, double>{
+    'Cavendish': 13,
+    'Ambon Lumut': 13,
+    'Lakatan': 13,
+    'Barangan Medan': 11,
+    'Barangan Curah': 11,
+    'Kepok': 11,
+  };
+
+    /// How many kg make one box. Known item groups follow the ERP script.
+    /// Any other group uses the Item's own Box or Kg conversion.
+  Future<double?> kgPerBox(String itemCode) async {
+    await frappeService.ensureLoggedIn();
+    final doc = await frappeService.fetchDocument('Item', itemCode.trim());
+    final group = doc['item_group']?.toString().trim() ?? '';
+    final mapped = boxKgByItemGroup[group];
+    if (mapped != null) return mapped;
+    final stock = (doc['stock_uom'] ?? '').toString().toLowerCase();
+    final weightUom = (doc['weight_uom'] ?? '').toString().toLowerCase();
+    final weight = double.tryParse(
+      doc['weight_per_unit']?.toString().replaceAll(',', '.') ?? '',
+    );
+    final rawUoms = doc['uoms'];
+    double? factorWhere(bool Function(String uom) match) {
+      if (rawUoms is! List) return null;
+      for (final row in rawUoms.whereType<Map>()) {
+        final uom = (row['uom'] ?? '').toString().toLowerCase();
+        if (!match(uom)) continue;
+        final factor = double.tryParse(
+          row['conversion_factor']?.toString().replaceAll(',', '.') ?? '',
+        );
+        if (factor != null && factor > 0) return factor;
+      }
+      return null;
+    }
+
+    bool isKg(String uom) => uom == 'kg' || uom.contains('kilogram');
+    bool isBox(String uom) => uom == 'box' || uom.contains('box');
+
+    if (weight != null && weight > 0 && isKg(weightUom) && !isKg(stock)) {
+      return weight;
+    }
+    if (isKg(stock)) return factorWhere(isBox);
+    if (isBox(stock)) {
+      final kgFactor = factorWhere(isKg);
+      if (kgFactor != null) {
+        return kgFactor >= 1 ? kgFactor : 1 / kgFactor;
+      }
+    }
+    final box = factorWhere(isBox);
+    if (box != null && box > 1) return box;
+    return boxKgByItemGroup[group];
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchListDroppingBlockedFields({
+    required List<String> fields,
+    required List<List<dynamic>> filters,
+  }) async {
+    var remaining = [for (final filter in filters) [...filter]];
+    while (true) {
+      try {
+        return await frappeService.fetchResource(
+          doctype,
+          fields: fields,
+          filters: remaining,
+          orderBy: 'posting_date asc',
+          limit: 100,
+        );
+      } catch (error) {
+        final blocked = RegExp(
+          r'Field not permitted in query:\s*([A-Za-z0-9_]+)',
+        ).firstMatch(error.toString())?.group(1);
+        if (blocked == null) rethrow;
+        final next = remaining.where((filter) => filter.first != blocked).toList();
+        if (next.length == remaining.length) rethrow;
+        remaining = next;
+      }
     }
   }
 
@@ -466,4 +691,144 @@ class TukarGulingState extends AppStateProxyNotifier {
 
   String formatDisplayDate(DateTime date) =>
       DateRangePresets.formatDisplay(date);
+
+  String? preferredWarehouseName(String? company) {
+    final selected = (company ?? '').trim();
+    final matches = appState.warehouses.where((warehouse) {
+      if (warehouse.isGroup || warehouse.isDisabled == true) return false;
+      if (selected.isEmpty) return true;
+      return warehouse.company.trim() == selected;
+    });
+    final picked = appState.preferredWarehouse(matches);
+    if (picked != null && picked.trim().isNotEmpty) return picked.trim();
+    return appState.preferredWarehouse(
+      appState.warehouses.where(
+        (warehouse) => !warehouse.isGroup && warehouse.isDisabled != true,
+      ),
+    );
+  }
+
+  Future<Map<String, List<Map<String, dynamic>>>> _formFields(
+    String parent,
+  ) async {
+    try {
+      final message = await frappeService.callMethod(
+        'frappe.desk.form.load.getdoctype',
+        args: {'doctype': parent},
+      );
+      if (message is Map) {
+        final docs = message['docs'];
+        if (docs is List) {
+          final forms = <String, List<Map<String, dynamic>>>{};
+          for (final doc in docs.whereType<Map>()) {
+            final name = doc['name']?.toString().trim() ?? '';
+            final fields = doc['fields'];
+            if (name.isEmpty || fields is! List) continue;
+            forms[name] = [
+              for (final field in fields.whereType<Map>())
+                Map<String, dynamic>.from(field),
+            ];
+          }
+          if (forms.containsKey(parent)) return forms;
+        }
+      }
+    } catch (_) {}
+    return {parent: await _schemaFields(parent)};
+  }
+
+  Future<List<Map<String, dynamic>>> _schemaFields(String parent) async {
+    final rows = <Map<String, dynamic>>[];
+    try {
+      rows.addAll(
+        await frappeService.fetchResource(
+          'DocField',
+          fields: const [
+            'fieldname',
+            'fieldtype',
+            'options',
+            'label',
+            'parent',
+          ],
+          filters: [
+            ['parent', '=', parent],
+          ],
+          limit: 200,
+        ),
+      );
+    } catch (_) {}
+    try {
+      rows.addAll(
+        await frappeService.fetchResource(
+          'Custom Field',
+          fields: const ['fieldname', 'fieldtype', 'options', 'label', 'dt'],
+          filters: [
+            ['dt', '=', parent],
+          ],
+          limit: 200,
+        ),
+      );
+    } catch (_) {}
+    return rows;
+  }
+
+  List<Map<String, dynamic>> claimRowsOf(Map<String, dynamic> doc) {
+    return _childRows(doc, claims: true);
+  }
+
+  List<Map<String, dynamic>> itemRowsOf(Map<String, dynamic> doc) {
+    return _childRows(doc, claims: false);
+  }
+
+  List<Map<String, dynamic>> _childRows(
+    Map<String, dynamic> doc, {
+    required bool claims,
+  }) {
+    final lists = <String, List<Map<String, dynamic>>>{};
+    for (final entry in doc.entries) {
+      final value = entry.value;
+      if (value is! List || value.isEmpty) continue;
+      final rows = [
+        for (final raw in value.whereType<Map>())
+          Map<String, dynamic>.from(raw),
+      ];
+      if (rows.isEmpty) continue;
+      lists[entry.key.toString()] = rows;
+    }
+    final meta = _metaCache;
+    final preferred = claims
+        ? [
+            meta?.claimTableField,
+            'custom_claim_details',
+            'klaim_harian',
+          ]
+        : [meta?.childTableField, 'tukar_guling_item', 'items'];
+    for (final key in preferred) {
+      if (key == null || key.isEmpty) continue;
+      final rows = lists[key];
+      if (rows != null) return rows;
+    }
+    for (final entry in lists.entries) {
+      final key = entry.key.toLowerCase();
+      final doctype =
+          entry.value.first['doctype']?.toString().toLowerCase() ?? '';
+      final isClaim = key.contains('klaim') || doctype.contains('klaim');
+      final isItem = !isClaim &&
+          (key.contains('item') || doctype.contains('tukar guling item'));
+      if (claims && isClaim) return entry.value;
+      if (!claims && isItem) return entry.value;
+    }
+    if (claims) {
+      for (final entry in lists.entries) {
+        final sample = entry.value.first;
+        final keys = sample.keys.map((key) => key.toString().toLowerCase());
+        final hasQty = keys.any((key) => key.contains('qty'));
+        final hasItem = keys.any((key) => key.contains('item'));
+        final isBox = keys.any(
+          (key) => key.contains('warehouse') || key == 'uom',
+        );
+        if (hasQty && hasItem && !isBox) return entry.value;
+      }
+    }
+    return const [];
+  }
 }

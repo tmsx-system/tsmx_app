@@ -63,6 +63,7 @@ Future<void> showSellingDocumentDetailSheet({
   required List<SellingDetailMetric> metrics,
   List<SellingDetailInfo> infos = const [],
   List<SellingDetailItem> items = const [],
+  String itemsTitle = 'Detail Item',
   Widget? footer,
 }) async {
   if (_sellingDetailSheetOpen) return;
@@ -124,7 +125,7 @@ Future<void> showSellingDocumentDetailSheet({
                       _SellingInfoCard(infos: infos),
                     ],
                     const SizedBox(height: 14),
-                    _SellingItemsSection(items: items),
+                    _SellingItemsSection(items: items, title: itemsTitle),
                     if (footer != null) ...[const SizedBox(height: 16), footer],
                   ],
                 ),
@@ -371,8 +372,9 @@ class _SellingInfoCard extends StatelessWidget {
 
 class _SellingItemsSection extends StatelessWidget {
   final List<SellingDetailItem> items;
+  final String title;
 
-  const _SellingItemsSection({required this.items});
+  const _SellingItemsSection({required this.items, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -408,9 +410,9 @@ class _SellingItemsSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
-                'Detail Item',
+                title,
                 style: TextStyle(
                   color: AppColors.navy,
                   fontSize: 15,

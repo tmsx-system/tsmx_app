@@ -13,8 +13,13 @@ import '../shared/sales_ui.dart';
 
 class CreateTukarGulingScreen extends StatefulWidget {
   final String? existingName;
+  final String? initialCompany;
 
-  const CreateTukarGulingScreen({super.key, this.existingName});
+  const CreateTukarGulingScreen({
+    super.key,
+    this.existingName,
+    this.initialCompany,
+  });
 
   @override
   State<CreateTukarGulingScreen> createState() =>
@@ -35,15 +40,24 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   List<String> _seriesOptions = const [];
   String? _company;
   String? _customer;
+  String _customerName = '';
+  String _jenis = '';
+  bool _jenisLocked = false;
+  String _pullSummary = '';
   DateTime _postingDate = DateTime.now();
   String? _stockEntry;
   String? _savedName;
+  final _customerNames = <String, String>{};
+  final _claims = <_ClaimRow>[];
   final _itemMeta = <String, ({String name, String uom})>{};
   List<String> _existingAttachmentNames = const [];
 
   bool get _isEdit =>
       (widget.existingName ?? '').trim().isNotEmpty ||
       (_savedName ?? '').trim().isNotEmpty;
+
+  bool get _isFinal => _jenis.toLowerCase() == 'final';
+  bool get _isHarian => _jenis.toLowerCase() == 'harian';
 
   String? get _documentName {
     final existing = widget.existingName?.trim() ?? '';
@@ -55,7 +69,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   @override
   void initState() {
     super.initState();
-    _rows.add(_ItemRow());
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -64,6 +77,9 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     _keteranganCtrl.dispose();
     for (final row in _rows) {
       row.dispose();
+    }
+    for (final claim in _claims) {
+      claim.dispose();
     }
     super.dispose();
   }
@@ -76,8 +92,12 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     try {
       final state = context.read<TukarGulingState>();
       final companies = state.sellingCompanies;
-      _company ??= state.preferredCompany(companies) ??
-          (companies.isNotEmpty ? companies.first : null);
+      final fromList = widget.initialCompany?.trim() ?? '';
+      _company ??= fromList.isNotEmpty &&
+              (companies.isEmpty || companies.contains(fromList))
+          ? fromList
+          : state.preferredCompany(companies) ??
+              (companies.isNotEmpty ? companies.first : null);
 
       // Meta + naming series in parallel (create/edit bootstrap).
       final boot = await Future.wait<Object?>([
@@ -105,10 +125,19 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   }
 
   Future<void> _applyExisting(TukarGulingState state, String name) async {
+    final meta = await state.resolveMeta();
     final doc = await state.fetchDetail(name);
     _series = doc['naming_series']?.toString().trim() ?? _series;
     _company = doc['company']?.toString().trim() ?? _company;
     _customer = doc['customer']?.toString().trim() ?? _customer;
+    _customerName = doc[meta.customerNameField]?.toString().trim() ??
+        doc['customer_name']?.toString().trim() ??
+        '';
+    final jenis = doc[meta.jenisField]?.toString().trim() ??
+        doc['jenis_input']?.toString().trim() ??
+        '';
+    _jenis = jenis;
+    _jenisLocked = true;
     _stockEntry = doc['stock_entry']?.toString().trim();
     _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
     try {
@@ -128,17 +157,34 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     if (parsed != null) {
       _postingDate = DateTime(parsed.year, parsed.month, parsed.day);
     }
-    final rawItems =
-        doc['tukar_guling_item'] ?? doc['items'] ?? doc['tukar_guling_items'];
+    final rawClaims = state.claimRowsOf(doc);
+    for (final claim in _claims) {
+      claim.dispose();
+    }
+    _claims
+      ..clear()
+      ..addAll([
+        for (final raw in rawClaims)
+            _ClaimRow(
+              claimDate: DateTime.tryParse(_claimDateText(raw)) ?? _postingDate,
+              itemCode: _claimItemCode(raw),
+              itemName: _claimItemName(raw),
+              keterangan: _claimNote(raw),
+              sourceName: meta.claimSourceField.isEmpty
+                  ? ''
+                  : raw[meta.claimSourceField]?.toString() ?? '',
+              qtyText: _qtyText(_claimQty(raw)),
+            ),
+      ]);
+    final rawItems = state.itemRowsOf(doc);
     for (final row in _rows) {
       row.dispose();
     }
     _rows
       ..clear()
       ..addAll([
-        if (rawItems is List)
-          for (final raw in rawItems.whereType<Map>())
-            _ItemRow(
+        for (final raw in rawItems)
+          _ItemRow(
               itemCode: raw['item_code']?.toString(),
               itemName: raw['item_name']?.toString() ?? '',
               sourceWarehouse: raw['source_warehouse']?.toString() ??
@@ -153,7 +199,9 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
               }(),
             ),
       ]);
-    if (_rows.isEmpty) _rows.add(_ItemRow());
+    final hasItems = _rows.any((row) => (row.itemCode ?? '').isNotEmpty);
+    if (jenis.isEmpty && hasItems) _jenis = 'Final';
+    if (_isHarian && _claims.isEmpty) _claims.add(_ClaimRow());
   }
 
   Future<void> _pickDate() async {
@@ -171,6 +219,11 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     final rows = await context.read<TukarGulingState>().searchCustomers(
       query: query,
     );
+    for (final row in rows) {
+      final id = row['name']?.toString().trim() ?? '';
+      if (id.isEmpty) continue;
+      _customerNames[id] = row['customer_name']?.toString().trim() ?? '';
+    }
     return [
       for (final row in rows)
         if ((row['name']?.toString() ?? '').isNotEmpty)
@@ -256,7 +309,14 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
 
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
+    if (!_jenisLocked) {
+      setState(() => _error = 'Pilih Harian atau Final.');
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
+    final filledClaims = _claims
+        .where((row) => (row.itemCode ?? '').trim().isNotEmpty)
+        .toList();
     final filled = _rows
         .where((row) => (row.itemCode ?? '').trim().isNotEmpty)
         .toList();
@@ -268,20 +328,42 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       setState(() => _error = 'Customer wajib dipilih.');
       return;
     }
-    if (filled.isEmpty) {
+    if (_isHarian) {
+      if (filledClaims.isEmpty) {
+        setState(() => _error = 'Tambahkan minimal satu klaim dalam kg.');
+        return;
+      }
+      for (var i = 0; i < filledClaims.length; i++) {
+        if (filledClaims[i].qtyKg <= 0) {
+          setState(() => _error = 'Klaim ${i + 1}: Qty kg harus lebih dari 0.');
+          return;
+        }
+      }
+    } else if (_isFinal) {
+      if (filledClaims.isEmpty) {
+        setState(
+          () => _error = 'Tarik klaim Harian dulu. Final tetap dihitung dari kg.',
+        );
+        return;
+      }
+      if (filled.isEmpty) {
+        setState(() => _error = 'Kg yang ditarik belum cukup untuk 1 box.');
+        return;
+      }
+      for (var i = 0; i < filled.length; i++) {
+        final row = filled[i];
+        if ((row.sourceWarehouse ?? '').trim().isEmpty) {
+          setState(() => _error = 'Item ${i + 1}: Source Warehouse wajib.');
+          return;
+        }
+        if (row.qty <= 0) {
+          setState(() => _error = 'Item ${i + 1}: Qty box harus lebih dari 0.');
+          return;
+        }
+      }
+    } else if (filled.isEmpty) {
       setState(() => _error = 'Tambahkan minimal satu item.');
       return;
-    }
-    for (var i = 0; i < filled.length; i++) {
-      final row = filled[i];
-      if ((row.sourceWarehouse ?? '').trim().isEmpty) {
-        setState(() => _error = 'Item ${i + 1}: Source Warehouse wajib.');
-        return;
-      }
-      if (row.qty <= 0) {
-        setState(() => _error = 'Item ${i + 1}: Qty harus lebih dari 0.');
-        return;
-      }
     }
 
     setState(() {
@@ -294,7 +376,20 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         postingDate: _postingDate,
         company: _company!.trim(),
         customer: _customer!.trim(),
-        keterangan: _keteranganCtrl.text,
+        customerName: _customerName,
+        jenisInput: _isFinal ? 'Final' : 'Harian',
+        keterangan: _isFinal ? '' : _keteranganCtrl.text,
+        claims: [
+          for (final claim in filledClaims)
+            TukarGulingClaimDraft(
+              claimDate: claim.claimDate,
+              itemCode: claim.itemCode!,
+              itemName: claim.itemName,
+              qtyKg: claim.qtyKg,
+              keterangan: claim.keteranganCtrl.text,
+              sourceName: claim.sourceName,
+            ),
+        ],
         items: [
           for (final row in filled)
             TukarGulingItemDraft(
@@ -483,14 +578,66 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                             ),
                         ],
                         onSearch: _searchCustomers,
-                        onSelected: (value) =>
-                            setState(() => _customer = value),
+                        onSelected: (value) => setState(() {
+                          _customer = value;
+                          _customerName = value == null
+                              ? ''
+                              : (_customerNames[value] ?? '');
+                          if (_isFinal) {
+                            _pullSummary = '';
+                            for (final claim in _claims) {
+                              claim.dispose();
+                            }
+                            _claims.clear();
+                            for (final row in _rows) {
+                              row.dispose();
+                            }
+                            _rows.clear();
+                          }
+                        }),
                         validator: (value) =>
                             value == null || value.trim().isEmpty
                                 ? 'Customer wajib'
                                 : null,
                       ),
-                      if ((_stockEntry ?? '').isNotEmpty) ...[
+                      if (_customerName.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        InputDecorator(
+                          decoration: _decoration('Customer Name'),
+                          child: Text(
+                            _customerName,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      if (_jenisLocked)
+                        InputDecorator(
+                          decoration: _decoration('Jenis'),
+                          child: Text(
+                            _isFinal ? 'Final' : 'Harian',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => _chooseJenis('Harian'),
+                                child: const Text('Harian'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => _chooseJenis('Final'),
+                                child: const Text('Final'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      if (!_isFinal && (_stockEntry ?? '').isNotEmpty) ...[
                         const SizedBox(height: 14),
                         InputDecorator(
                           decoration: _decoration('Stock Entry'),
@@ -502,21 +649,93 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                       ],
                     ],
                   ),
+                  if (_jenisLocked) ...[
                   const SizedBox(height: 12),
-                  _section(
-                    title: 'Tukar Guling Item',
-                    children: [
-                      for (var i = 0; i < _rows.length; i++) ...[
-                        _itemCard(i),
-                        const SizedBox(height: 12),
+                  if (_isFinal) ...[
+                    _section(
+                      title: 'Klaim Harian',
+                      children: [
+                        const Text(
+                          'Tarik beberapa transaksi Harian. Qty tetap kg, lalu dikonversi ke box.',
+                          style: TextStyle(
+                            color: AppColors.slate,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: _saving ? null : _openDailyClaims,
+                          icon: const Icon(Icons.download_rounded),
+                          label: const Text('Tarik Tukar Guling Harian'),
+                        ),
+                        if (_pullSummary.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F6EE),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _pullSummary,
+                              style: const TextStyle(
+                                color: AppColors.navy,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                        for (var i = 0; i < _claims.length; i++) ...[
+                          const SizedBox(height: 8),
+                          _pulledClaimTile(i),
+                        ],
                       ],
-                      OutlinedButton.icon(
-                        onPressed: () => setState(() => _rows.add(_ItemRow())),
-                        icon: const Icon(Icons.add_rounded),
+                    ),
+                    if (_rows.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _section(
+                        title: 'Tukar Guling Item',
+                        children: [
+                          for (var i = 0; i < _rows.length; i++) ...[
+                            _itemCard(i),
+                            if (i != _rows.length - 1) const SizedBox(height: 12),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ] else
+                    _section(
+                      title: 'Klaim Harian',
+                      children: [
+                        const Text(
+                          'Isi tanggal, item, dan qty kg.',
+                          style: TextStyle(
+                            color: AppColors.slate,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        for (var i = 0; i < _claims.length; i++) ...[
+                          const SizedBox(height: 12),
+                          _claimCard(i),
+                        ],
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => setState(
+                            () => _claims.add(_ClaimRow(claimDate: _postingDate)),
+                          ),
+                          icon: const Icon(Icons.add_rounded),
                         label: const Text('Add Row'),
                       ),
                     ],
-                  ),
+                    ),
+                  ],
+                  if (_jenisLocked) ...[
                   const SizedBox(height: 12),
                   SalesAttachmentCard(
                     title: 'Attachment',
@@ -526,6 +745,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                     onGallery: _saving ? null : _pickGallery,
                     onRemove: (index) => setState(() => _photos.removeAt(index)),
                   ),
+                  if (!_isFinal) ...[
                   const SizedBox(height: 12),
                   _section(
                     title: 'Keterangan',
@@ -541,6 +761,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                       ),
                     ],
                   ),
+                  ],
+                  ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Container(
@@ -581,6 +803,352 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  void _chooseJenis(String jenis) {
+    setState(() {
+      _jenis = jenis;
+      _jenisLocked = true;
+      _pullSummary = '';
+      if (_isHarian && _claims.isEmpty) {
+        _claims.add(_ClaimRow(claimDate: _postingDate));
+      }
+    });
+  }
+
+  Future<void> _openDailyClaims() async {
+    final customer = _customer?.trim() ?? '';
+    if (customer.isEmpty) {
+      setState(() => _error = 'Pilih customer dulu.');
+      return;
+    }
+    if (_claims.isNotEmpty ||
+        _rows.any((row) => (row.itemCode ?? '').trim().isNotEmpty)) {
+      setState(() => _error = 'Draft Final sudah memiliki data.');
+      return;
+    }
+    final state = context.read<TukarGulingState>();
+    List<TukarGulingDailyClaim> claims;
+    try {
+      claims = await state.fetchDailyClaims(
+        customer: customer,
+        company: _company,
+        excludeName: _documentName,
+        postingDate: _postingDate,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = captureErpError(context, error));
+      return;
+    }
+    if (!mounted) return;
+    claims = claims.where((claim) => claim.itemCode.isNotEmpty).toList();
+    if (claims.isEmpty) {
+      setState(
+        () => _error = 'Belum ada klaim Harian dalam kg untuk customer ini.',
+      );
+      return;
+    }
+    final selected = await showModalBottomSheet<List<TukarGulingDailyClaim>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _DailyClaimSheet(state: state, claims: claims),
+    );
+    if (selected == null || selected.isEmpty || !mounted) return;
+    await _applyPulledClaims(state, selected);
+  }
+
+  Future<void> _applyPulledClaims(
+    TukarGulingState state,
+    List<TukarGulingDailyClaim> selected,
+  ) async {
+    final ordered = [...selected]..sort((a, b) {
+        final byDate = a.claimDate.compareTo(b.claimDate);
+        if (byDate != 0) return byDate;
+        return a.sourceName.compareTo(b.sourceName);
+      });
+    final grouped = <String, ({String name, double kg, List<TukarGulingDailyClaim> rows})>{};
+    for (final claim in ordered) {
+      final current = grouped[claim.itemCode];
+      grouped[claim.itemCode] = (
+        name: claim.itemName.isNotEmpty
+            ? claim.itemName
+            : (current?.name ?? claim.itemCode),
+        kg: (current?.kg ?? 0) + claim.qtyKg,
+        rows: [...?current?.rows, claim],
+      );
+    }
+    final summaries = <String>[];
+    final nextRows = <_ItemRow>[];
+    final allocated = <TukarGulingDailyClaim>[];
+    final warehouse = state.preferredWarehouseName(_company) ?? '';
+    for (final entry in grouped.entries) {
+      final perBox = await state.kgPerBox(entry.key);
+      if (perBox == null || perBox <= 0) {
+        if (!mounted) return;
+        setState(() {
+          _error =
+              '${entry.value.name}: konversi Kg/Box belum ada untuk item group ini.';
+        });
+        return;
+      }
+      final boxes = ((entry.value.kg + 0.000001) / perBox).floor();
+      var needed = _round3(boxes * perBox);
+      final remainder = _round3(entry.value.kg - needed);
+      summaries.add(
+        '${entry.value.name}: ${_qtyText(entry.value.kg)} kg = $boxes box'
+        '${remainder > 0.001 ? ', sisa ${_qtyText(remainder)} kg' : ''}',
+      );
+      if (boxes <= 0) continue;
+      for (final claim in entry.value.rows) {
+        if (needed <= 0) break;
+        final used = _round3(claim.qtyKg < needed ? claim.qtyKg : needed);
+        if (used <= 0) continue;
+        allocated.add(
+          TukarGulingDailyClaim(
+            sourceName: claim.sourceName,
+            claimDate: claim.claimDate,
+            itemCode: claim.itemCode,
+            itemName: entry.value.name,
+            qtyKg: used,
+            keterangan: claim.keterangan,
+          ),
+        );
+        needed = _round3(needed - used);
+      }
+      nextRows.add(
+        _ItemRow(
+          itemCode: entry.key,
+          itemName: entry.value.name,
+          sourceWarehouse: warehouse,
+          uom: 'Box',
+          qtyText: boxes.toString(),
+        ),
+      );
+    }
+    if (nextRows.isEmpty) {
+      if (!mounted) return;
+      setState(
+        () => _error = 'Total kg belum cukup untuk 1 box. Kumpulkan klaim lagi.',
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _error = null;
+      _pullSummary = summaries.join('\n');
+      for (final claim in _claims) {
+        claim.dispose();
+      }
+      _claims
+        ..clear()
+        ..addAll([
+          for (final claim in allocated)
+            _ClaimRow(
+              claimDate: claim.claimDate,
+              itemCode: claim.itemCode,
+              itemName: claim.itemName,
+              keterangan: claim.keterangan,
+              sourceName: claim.sourceName,
+              qtyText: _qtyText(claim.qtyKg),
+              locked: true,
+            ),
+        ]);
+      for (final row in _rows) {
+        row.dispose();
+      }
+      _rows
+        ..clear()
+        ..addAll(nextRows);
+    });
+  }
+
+  Widget _pulledClaimTile(int index) {
+    final claim = _claims[index];
+    final code = claim.itemCode ?? '';
+    final item = claim.itemName.isEmpty || claim.itemName == code
+        ? code
+        : claim.itemName;
+    final note = claim.keteranganCtrl.text.trim();
+    final date = DateFormat('dd-MM-yyyy').format(claim.claimDate);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  claim.sourceName.isEmpty ? 'Klaim ${index + 1}' : claim.sourceName,
+                  style: const TextStyle(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$date · $item',
+                  style: const TextStyle(
+                    color: AppColors.slate,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (note.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    note,
+                    style: const TextStyle(
+                      color: AppColors.slate,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '${_qtyText(claim.qtyKg)} kg',
+            style: const TextStyle(
+              color: AppColors.navy,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _claimCard(int index, {bool readOnly = false}) {
+    final claim = _claims[index];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  claim.sourceName.isEmpty
+                      ? 'Klaim ${index + 1}'
+                      : claim.sourceName,
+                  style: const TextStyle(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (!readOnly && _claims.length > 1)
+                IconButton(
+                  tooltip: 'Hapus baris',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setState(() => _claims.removeAt(index).dispose()),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+            ],
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: readOnly
+                      ? null
+                      : () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: claim.claimDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked == null || !mounted) return;
+                          setState(() => claim.claimDate = picked);
+                        },
+                  child: InputDecorator(
+                    decoration: _decoration('Tanggal'),
+                    child: Text(DateFormat('dd-MM-yyyy').format(claim.claimDate)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: claim.qtyCtrl,
+                  readOnly: readOnly,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: _decoration('Qty (kg) *'),
+                  validator: (value) {
+                    if ((claim.itemCode ?? '').isEmpty) return null;
+                    return claim.qtyKg <= 0 ? 'Qty kg > 0' : null;
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (readOnly)
+            InputDecorator(
+              decoration: _decoration('Item'),
+              child: Text(
+                claim.itemName.isEmpty
+                    ? (claim.itemCode ?? '-')
+                    : '${claim.itemName} (${claim.itemCode})',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            )
+          else
+            ErpItemAutocompleteField(
+              label: 'Item *',
+              selectedId: claim.itemCode,
+              decoration: _decoration('Item *'),
+              options: [
+                if ((claim.itemCode ?? '').isNotEmpty)
+                  ErpItemOption(
+                    id: claim.itemCode!,
+                    label: claim.itemName.isEmpty
+                        ? claim.itemCode!
+                        : '${claim.itemName} (${claim.itemCode})',
+                  ),
+              ],
+              onSearch: _searchItems,
+              onSelected: (value) async {
+                if (value == null) {
+                  setState(() {
+                    claim.itemCode = null;
+                    claim.itemName = '';
+                  });
+                  return;
+                }
+                if (!_itemMeta.containsKey(value)) await _searchItems(value);
+                setState(() {
+                  claim.itemCode = value;
+                  claim.itemName = _itemMeta[value]?.name ?? '';
+                });
+              },
+            ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: claim.keteranganCtrl,
+            readOnly: readOnly,
+            decoration: _decoration('Keterangan'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -776,7 +1344,226 @@ class _ItemRow {
     String qtyText = '1',
   }) : qtyCtrl = TextEditingController(text: qtyText);
 
-  double get qty => double.tryParse(qtyCtrl.text.trim()) ?? 0;
+  double get qty =>
+      double.tryParse(qtyCtrl.text.trim().replaceAll(',', '.')) ?? 0;
 
   void dispose() => qtyCtrl.dispose();
+}
+
+class _ClaimRow {
+  DateTime claimDate;
+  String? itemCode;
+  String itemName;
+  String sourceName;
+  final bool locked;
+  final TextEditingController qtyCtrl;
+  final TextEditingController keteranganCtrl;
+
+  _ClaimRow({
+    DateTime? claimDate,
+    this.itemCode,
+    this.itemName = '',
+    this.sourceName = '',
+    String keterangan = '',
+    this.locked = false,
+    String qtyText = '',
+  }) : claimDate = claimDate ?? DateTime.now(),
+       qtyCtrl = TextEditingController(text: qtyText),
+       keteranganCtrl = TextEditingController(text: keterangan);
+
+  double get qtyKg =>
+      double.tryParse(qtyCtrl.text.trim().replaceAll(',', '.')) ?? 0;
+
+  void dispose() {
+    qtyCtrl.dispose();
+    keteranganCtrl.dispose();
+  }
+}
+
+String _claimItemCode(Map map) {
+  for (final key in ['item_code', 'item']) {
+    final text = map[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && text != 'null') return text;
+  }
+  return _mapText(
+    map,
+    (key) =>
+        key.contains('item') && !key.contains('name') && !key.contains('group'),
+  );
+}
+
+String _claimItemName(Map map) {
+  final named = map['item_name']?.toString().trim() ?? '';
+  if (named.isNotEmpty && named != 'null') return named;
+  return _mapText(map, (key) => key.contains('item') && key.contains('name'));
+}
+
+String _claimNote(Map map) {
+  final note = map['keterangan']?.toString().trim() ?? '';
+  if (note.isNotEmpty && note != 'null') return note;
+  return _mapText(map, (key) => key.contains('keterangan') || key == 'note');
+}
+
+String _claimDateText(Map map) {
+  for (final key in ['tanggal_klaim', 'claim_date', 'posting_date']) {
+    final text = map[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && text != 'null') return text;
+  }
+  return _mapText(map, (key) => key.contains('tanggal') || key.endsWith('_date'));
+}
+
+Object? _claimQty(Map map) {
+  Object? fallback;
+  for (final entry in map.entries) {
+    final key = entry.key.toString().toLowerCase();
+    if (!key.contains('qty')) continue;
+    if (key.contains('kg')) return entry.value;
+    fallback ??= entry.value;
+  }
+  return fallback;
+}
+
+String _mapText(Map map, bool Function(String key) match) {
+  for (final entry in map.entries) {
+    final key = entry.key.toString().toLowerCase();
+    if (!match(key)) continue;
+    final text = entry.value?.toString().trim() ?? '';
+    if (text.isNotEmpty && text != 'null') return text;
+  }
+  return '';
+}
+
+double _round3(double value) => (value * 1000).roundToDouble() / 1000;
+
+String _qtyText(Object? raw) {
+  final qty = double.tryParse(raw?.toString().replaceAll(',', '.') ?? '') ?? 0;
+  return qty == qty.roundToDouble() ? qty.toInt().toString() : qty.toString();
+}
+
+class _DailyClaimSheet extends StatefulWidget {
+  final TukarGulingState state;
+  final List<TukarGulingDailyClaim> claims;
+
+  const _DailyClaimSheet({required this.state, required this.claims});
+
+  @override
+  State<_DailyClaimSheet> createState() => _DailyClaimSheetState();
+}
+
+class _DailyClaimSheetState extends State<_DailyClaimSheet> {
+  late final Set<int> _selected = {
+    for (var i = 0; i < widget.claims.length; i++) i,
+  };
+  final _perBox = <String, double?>{};
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFactors();
+  }
+
+  Future<void> _loadFactors() async {
+    final codes = widget.claims.map((claim) => claim.itemCode).toSet();
+    for (final code in codes) {
+      try {
+        _perBox[code] = await widget.state.kgPerBox(code);
+      } catch (_) {
+        _perBox[code] = null;
+      }
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = [
+      for (final index in _selected) widget.claims[index],
+    ];
+    final grouped = <String, ({String name, double kg})>{};
+    for (final claim in selected) {
+      final current = grouped[claim.itemCode];
+      grouped[claim.itemCode] = (
+        name: claim.itemName.isEmpty ? claim.itemCode : claim.itemName,
+        kg: (current?.kg ?? 0) + claim.qtyKg,
+      );
+    }
+    var totalKg = 0.0;
+    var totalBox = 0;
+    for (final entry in grouped.entries) {
+      totalKg += entry.value.kg;
+      final perBox = _perBox[entry.key];
+      if (perBox != null && perBox > 0) {
+        totalBox += (entry.value.kg / perBox).floor();
+      }
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Tukar Guling Harian',
+              style: TextStyle(
+                color: AppColors.navy,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Pilih klaim. Qty masih kg, konversi ke box ditampilkan di bawah.',
+              style: TextStyle(color: AppColors.slate, fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (var i = 0; i < widget.claims.length; i++)
+                    CheckboxListTile(
+                      value: _selected.contains(i),
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(widget.claims[i].sourceName),
+                      subtitle: Text(
+                        '${DateFormat('dd-MM-yyyy').format(widget.claims[i].claimDate)}'
+                        ' · ${widget.claims[i].itemName.isEmpty ? widget.claims[i].itemCode : widget.claims[i].itemName}'
+                        ' · ${_qtyText(widget.claims[i].qtyKg)} kg',
+                      ),
+                      onChanged: (value) => setState(() {
+                        if (value == true) {
+                          _selected.add(i);
+                        } else {
+                          _selected.remove(i);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _loading
+                  ? 'Menghitung konversi...'
+                  : 'Total ${_qtyText(totalKg)} kg → $totalBox box',
+              style: const TextStyle(
+                color: AppColors.navy,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _selected.isEmpty || _loading
+                  ? null
+                  : () => Navigator.pop(context, selected),
+              child: const Text('Tarik ke Tukar Guling Final'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

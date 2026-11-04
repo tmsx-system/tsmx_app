@@ -101,7 +101,10 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
   Future<void> _openCreate({String? existingName}) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => CreateTukarGulingScreen(existingName: existingName),
+        builder: (_) => CreateTukarGulingScreen(
+          existingName: existingName,
+          initialCompany: _company.trim().isEmpty ? null : _company,
+        ),
       ),
     );
     if (saved == true && mounted) await _load();
@@ -213,28 +216,71 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
           detail['posting_date']?.toString() ?? row.postingDate;
       final keterangan = detail['keterangan']?.toString() ?? row.keterangan;
       final stockEntry = detail['stock_entry']?.toString() ?? row.stockEntry;
+      final jenis = detail['jenis_input']?.toString().trim() ?? '';
+      final isFinal = jenis.toLowerCase() == 'final';
       final workflowState =
           detail['workflow_state']?.toString() ?? row.statusLabel;
-      final rawItems = detail['tukar_guling_item'] ??
-          detail['items'] ??
-          detail['tukar_guling_items'];
+      final rawClaims = state.claimRowsOf(detail);
+      final rawItems = state.itemRowsOf(detail);
       final items = <SellingDetailItem>[];
-      if (rawItems is List) {
-        for (final raw in rawItems.whereType<Map>()) {
-          final map = Map<String, dynamic>.from(raw);
-          final qty = map['qty']?.toString() ?? '';
-          final uom = map['uom']?.toString() ?? '';
+      if (!isFinal) {
+        for (final map in rawClaims) {
+          final note = _detailNote(map);
+          final date = _detailDate(map);
           items.add(
             SellingDetailItem(
-              title: map['item_name']?.toString() ??
-                  map['item_code']?.toString() ??
-                  '-',
+              title: _detailItemTitle(map),
+              subtitle: _detailItemCode(map),
+              stats: [
+                if (date.isNotEmpty)
+                  SellingDetailStat(label: 'Tanggal Klaim', value: date),
+                SellingDetailStat(label: 'Qty (kg)', value: _detailQty(map)),
+                if (note.isNotEmpty)
+                  SellingDetailStat(label: 'Keterangan', value: note),
+              ],
+            ),
+          );
+        }
+      } else {
+        for (final map in rawClaims) {
+          items.add(
+            SellingDetailItem(
+              title: _detailItemTitle(map),
+              subtitle: 'Klaim kg',
+              stats: [
+                SellingDetailStat(label: 'Qty (kg)', value: _detailQty(map)),
+              ],
+            ),
+          );
+        }
+        for (final map in rawItems) {
+          final qty = map['qty']?.toString() ?? '';
+          final uom = map['uom']?.toString() ?? '';
+          if ((map['item_code']?.toString().trim() ?? '').isEmpty &&
+              qty.isEmpty) {
+            continue;
+          }
+          items.add(
+            SellingDetailItem(
+              title: map['item_name']?.toString().trim().isNotEmpty == true
+                  ? map['item_name'].toString()
+                  : (map['item_code']?.toString() ?? '-'),
               subtitle: map['item_code']?.toString() ?? '',
-              qty: uom.isEmpty ? qty : '$qty $uom',
-              note: map['source_warehouse']?.toString() ??
-                  map['s_warehouse']?.toString() ??
-                  map['warehouse']?.toString() ??
-                  '',
+              stats: [
+                SellingDetailStat(
+                  label: 'Qty',
+                  value: uom.isEmpty ? qty : '$qty $uom',
+                ),
+                SellingDetailStat(
+                  label: 'Gudang',
+                  value: map['source_warehouse']?.toString().trim().isNotEmpty ==
+                          true
+                      ? map['source_warehouse'].toString()
+                      : (map['s_warehouse']?.toString() ??
+                          map['warehouse']?.toString() ??
+                          '-'),
+                ),
+              ],
             ),
           );
         }
@@ -250,7 +296,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         icon: Icons.swap_horiz_rounded,
         metrics: [
           SellingDetailMetric(
-            label: 'Item',
+            label: isFinal ? 'Box' : 'Klaim',
             value: '${items.length}',
             icon: Icons.inventory_2_outlined,
           ),
@@ -262,14 +308,17 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         ],
         infos: [
           SellingDetailInfo(label: 'Customer', value: customer),
+          if (jenis.isNotEmpty)
+            SellingDetailInfo(label: 'Jenis', value: jenis),
           SellingDetailInfo(label: 'Company', value: company),
           SellingDetailInfo(label: 'Posting Date', value: postingDate),
           SellingDetailInfo(label: 'Workflow', value: workflowState),
-          if (stockEntry.isNotEmpty)
+          if (jenis.toLowerCase() != 'final' && stockEntry.isNotEmpty)
             SellingDetailInfo(label: 'Stock Entry', value: stockEntry),
-          if (keterangan.isNotEmpty)
+          if (!isFinal && keterangan.isNotEmpty)
             SellingDetailInfo(label: 'Keterangan', value: keterangan),
         ],
+        itemsTitle: isFinal ? 'Final' : 'Klaim Harian',
         items: items,
         footer: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -681,4 +730,50 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
       ),
     );
   }
+}
+
+String _detailItemCode(Map map) {
+  for (final key in ['item_code', 'item']) {
+    final text = map[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && text != 'null') return text;
+  }
+  return '';
+}
+
+String _detailItemTitle(Map map) {
+  final name = map['item_name']?.toString().trim() ?? '';
+  if (name.isNotEmpty && name != 'null') return name;
+  final code = _detailItemCode(map);
+  return code.isEmpty ? '-' : code;
+}
+
+String _detailNote(Map map) {
+  final note = map['keterangan']?.toString().trim() ?? '';
+  return note == 'null' ? '' : note;
+}
+
+String _detailDate(Map map) {
+  for (final key in ['tanggal_klaim', 'claim_date', 'posting_date']) {
+    final text = map[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && text != 'null') {
+      return text.length >= 10 ? text.substring(0, 10) : text;
+    }
+  }
+  return '';
+}
+
+String _detailQty(Map map) {
+  Object? fallback;
+  for (final entry in map.entries) {
+    final key = entry.key.toString().toLowerCase();
+    if (!key.contains('qty')) continue;
+    if (key.contains('kg')) {
+      fallback = entry.value;
+      break;
+    }
+    fallback ??= entry.value;
+  }
+  final qty = double.tryParse(fallback?.toString().replaceAll(',', '.') ?? '');
+  if (qty == null) return fallback?.toString() ?? '0';
+  return qty == qty.roundToDouble() ? qty.toInt().toString() : qty.toString();
 }
