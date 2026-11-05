@@ -220,6 +220,7 @@ class TukarGulingState extends AppStateProxyNotifier {
     var childDoctype = 'Tukar Guling Item';
     var warehouseField = 'source_warehouse';
     var jenisField = 'custom_jenis_input';
+    var metodeField = 'custom_metode_final';
     var customerNameField = 'customer_name';
     var claimTableField = 'custom_claim_details';
     var claimDoctype = 'Tukar Guling Harian';
@@ -255,8 +256,12 @@ class TukarGulingState extends AppStateProxyNotifier {
           }
         } else if (fieldtype == 'Select' &&
             options.toLowerCase().contains('harian') &&
-            options.toLowerCase().contains('final')) {
+            options.toLowerCase().contains('final') &&
+            !options.toLowerCase().contains('langsung')) {
           jenisField = fieldname;
+        } else if (fieldtype == 'Select' &&
+            options.toLowerCase().contains('input langsung')) {
+          metodeField = fieldname;
         } else if (label.contains('customer name')) {
           customerNameField = fieldname;
         }
@@ -314,6 +319,7 @@ class TukarGulingState extends AppStateProxyNotifier {
       childDoctype: childDoctype,
       warehouseField: warehouseField,
       jenisField: jenisField,
+      metodeField: metodeField,
       customerNameField: customerNameField,
       claimTableField: claimTableField,
       claimDoctype: claimDoctype,

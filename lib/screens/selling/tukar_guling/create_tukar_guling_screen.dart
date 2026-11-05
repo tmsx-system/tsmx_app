@@ -42,6 +42,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   String? _customer;
   String _customerName = '';
   String _jenis = '';
+  String _metode = '';
   bool _jenisLocked = false;
   String _pullSummary = '';
   DateTime _postingDate = DateTime.now();
@@ -58,6 +59,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
 
   bool get _isFinal => _jenis.toLowerCase() == 'final';
   bool get _isHarian => _jenis.toLowerCase() == 'harian';
+  bool get _isGetFrom => _isFinal && _metode == 'Get From Harian';
+  bool get _isManual => _isFinal && _metode == 'Input Langsung';
 
   String? get _documentName {
     final existing = widget.existingName?.trim() ?? '';
@@ -138,6 +141,9 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         '';
     _jenis = jenis;
     _jenisLocked = true;
+    _metode = doc[meta.metodeField]?.toString().trim() ??
+        doc['custom_metode_final']?.toString().trim() ??
+        '';
     _stockEntry = doc['stock_entry']?.toString().trim();
     _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
     try {
@@ -200,8 +206,17 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
             ),
       ]);
     final hasItems = _rows.any((row) => (row.itemCode ?? '').isNotEmpty);
-    if (jenis.isEmpty && hasItems) _jenis = 'Final';
+    final hasClaims = _claims.any((row) => (row.itemCode ?? '').isNotEmpty);
+    if (jenis.isEmpty && (hasItems || hasClaims)) _jenis = 'Final';
+    if (_isFinal && _metode.isEmpty) {
+      if (hasClaims) {
+        _metode = 'Get From Harian';
+      } else if (hasItems) {
+        _metode = 'Input Langsung';
+      }
+    }
     if (_isHarian && _claims.isEmpty) _claims.add(_ClaimRow());
+    if (_isManual && _rows.isEmpty) _rows.add(_manualRow());
   }
 
   Future<void> _pickDate() async {
@@ -340,14 +355,26 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         }
       }
     } else if (_isFinal) {
-      if (filledClaims.isEmpty) {
+      if (!_isGetFrom && !_isManual) {
+        setState(() => _error = 'Pilih metode Final.');
+        return;
+      }
+      if (_isGetFrom && filledClaims.isEmpty) {
+        setState(() => _error = 'Tarik klaim Harian dulu.');
+        return;
+      }
+      if (_isManual && filledClaims.isNotEmpty) {
         setState(
-          () => _error = 'Tarik klaim Harian dulu. Final tetap dihitung dari kg.',
+          () => _error = 'Input Langsung tidak boleh memiliki Klaim Harian.',
         );
         return;
       }
       if (filled.isEmpty) {
-        setState(() => _error = 'Kg yang ditarik belum cukup untuk 1 box.');
+        setState(
+          () => _error = _isManual
+              ? 'Tambahkan minimal satu item box.'
+              : 'Kg yang ditarik belum cukup untuk 1 box.',
+        );
         return;
       }
       for (var i = 0; i < filled.length; i++) {
@@ -378,8 +405,10 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         customer: _customer!.trim(),
         customerName: _customerName,
         jenisInput: _isFinal ? 'Final' : 'Harian',
+        metodeFinal: _isFinal ? _metode : '',
         keterangan: _isFinal ? '' : _keteranganCtrl.text,
         claims: [
+          if (!_isManual)
           for (final claim in filledClaims)
             TukarGulingClaimDraft(
               claimDate: claim.claimDate,
@@ -637,6 +666,10 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                             ),
                           ],
                         ),
+                      if (_isFinal) ...[
+                        const SizedBox(height: 14),
+                        _methodPicker(),
+                      ],
                       if (!_isFinal && (_stockEntry ?? '').isNotEmpty) ...[
                         const SizedBox(height: 14),
                         InputDecorator(
@@ -651,7 +684,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                   ),
                   if (_jenisLocked) ...[
                   const SizedBox(height: 12),
-                  if (_isFinal) ...[
+                  if (_isGetFrom) ...[
                     _section(
                       title: 'Klaim Harian',
                       children: [
@@ -708,7 +741,31 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                         ],
                       ),
                     ],
-                  ] else
+                  ] else if (_isManual)
+                    _section(
+                      title: 'Tukar Guling Item',
+                      children: [
+                        const Text(
+                          'Isi item dan qty box.',
+                          style: TextStyle(
+                            color: AppColors.slate,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        for (var i = 0; i < _rows.length; i++) ...[
+                          const SizedBox(height: 12),
+                          _itemCard(i),
+                        ],
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => setState(() => _rows.add(_manualRow())),
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Add Row'),
+                        ),
+                      ],
+                    )
+                  else if (_isHarian)
                     _section(
                       title: 'Klaim Harian',
                       children: [
@@ -803,6 +860,147 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  _ItemRow _manualRow() {
+    return _ItemRow(
+      uom: 'Box',
+      sourceWarehouse: context.read<TukarGulingState>().preferredWarehouseName(
+        _company,
+      ),
+    );
+  }
+
+  void _chooseMetode(String metode) {
+    final hasData = _claims.any((row) => (row.itemCode ?? '').isNotEmpty) ||
+        _rows.any((row) => (row.itemCode ?? '').isNotEmpty);
+    if (_metode.isNotEmpty && _metode != metode && hasData) {
+      setState(() {
+        _error =
+            'Tabel sudah memiliki data. Kosongkan baris atau buat dokumen baru.';
+      });
+      return;
+    }
+    setState(() {
+      _metode = metode;
+      _error = null;
+      _pullSummary = '';
+      if (metode == 'Input Langsung') {
+        for (final claim in _claims) {
+          claim.dispose();
+        }
+        _claims.clear();
+        if (_rows.isEmpty) _rows.add(_manualRow());
+      }
+    });
+  }
+
+  Widget _methodPicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Metode Final',
+          style: TextStyle(
+            color: AppColors.navy,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _methodCard(
+                title: 'Get From Harian',
+                subtitle: 'Gabungkan klaim dalam kg dan konversi menjadi box.',
+                selected: _isGetFrom,
+                onTap: () => _chooseMetode('Get From Harian'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _methodCard(
+                title: 'Input Langsung',
+                subtitle: 'Isi item dan qty box.',
+                selected: _isManual,
+                onTap: () => _chooseMetode('Input Langsung'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Pilih salah satu metode untuk melanjutkan.',
+          style: TextStyle(
+            color: AppColors.slate,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _methodCard({
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? const Color(0xFFE8F6EE) : AppColors.white,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: _saving ? null : onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? const Color(0xFF08743D) : AppColors.border,
+              width: selected ? 1.4 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    size: 18,
+                    color: selected ? const Color(0xFF08743D) : AppColors.slate,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.navy,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: AppColors.slate,
+                  fontSize: 11,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1239,7 +1437,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                 setState(() {
                   row.itemCode = null;
                   row.itemName = '';
-                  row.uom = '';
+                  row.uom = _isManual ? 'Box' : '';
                 });
                 return;
               }
@@ -1250,7 +1448,12 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
               setState(() {
                 row.itemCode = value;
                 row.itemName = meta?.name ?? '';
-                row.uom = meta?.uom ?? row.uom;
+                row.uom = _isManual ? 'Box' : (meta?.uom ?? row.uom);
+                if (_isManual && (row.sourceWarehouse ?? '').isEmpty) {
+                  row.sourceWarehouse = context
+                      .read<TukarGulingState>()
+                      .preferredWarehouseName(_company);
+                }
               });
             },
           ),
@@ -1290,7 +1493,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: _decoration('Qty *'),
+                decoration: _decoration(_isManual ? 'Qty (Box) *' : 'Qty *'),
                 validator: (value) {
                   if ((row.itemCode ?? '').isEmpty) return null;
                   final qty = double.tryParse(value?.trim() ?? '');

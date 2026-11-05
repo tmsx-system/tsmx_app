@@ -216,7 +216,12 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
           detail['posting_date']?.toString() ?? row.postingDate;
       final keterangan = detail['keterangan']?.toString() ?? row.keterangan;
       final stockEntry = detail['stock_entry']?.toString() ?? row.stockEntry;
-      final jenis = detail['jenis_input']?.toString().trim() ?? '';
+      final jenis = () {
+        final custom = detail['custom_jenis_input']?.toString().trim() ?? '';
+        if (custom.isNotEmpty) return custom;
+        return detail['jenis_input']?.toString().trim() ?? '';
+      }();
+      final metode = detail['custom_metode_final']?.toString().trim() ?? '';
       final isFinal = jenis.toLowerCase() == 'final';
       final workflowState =
           detail['workflow_state']?.toString() ?? row.statusLabel;
@@ -310,6 +315,8 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
           SellingDetailInfo(label: 'Customer', value: customer),
           if (jenis.isNotEmpty)
             SellingDetailInfo(label: 'Jenis', value: jenis),
+          if (metode.isNotEmpty)
+            SellingDetailInfo(label: 'Metode', value: metode),
           SellingDetailInfo(label: 'Company', value: company),
           SellingDetailInfo(label: 'Posting Date', value: postingDate),
           SellingDetailInfo(label: 'Workflow', value: workflowState),

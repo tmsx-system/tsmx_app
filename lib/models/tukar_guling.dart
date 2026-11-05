@@ -133,6 +133,7 @@ class TukarGulingDraft {
   final String customer;
   final String customerName;
   final String jenisInput;
+  final String metodeFinal;
   final String keterangan;
   final List<TukarGulingClaimDraft> claims;
   final List<TukarGulingItemDraft> items;
@@ -144,6 +145,7 @@ class TukarGulingDraft {
     required this.customer,
     this.customerName = '',
     this.jenisInput = 'Harian',
+    this.metodeFinal = '',
     this.keterangan = '',
     this.claims = const [],
     this.items = const [],
@@ -163,6 +165,8 @@ class TukarGulingDraft {
       if ((namingSeries ?? '').trim().isNotEmpty)
         'naming_series': namingSeries!.trim(),
       meta.jenisField: isFinal ? 'Final' : 'Harian',
+      if (isFinal && metodeFinal.trim().isNotEmpty)
+        meta.metodeField: metodeFinal.trim(),
       'posting_date': date,
       'company': company.trim(),
       'customer': customer.trim(),
@@ -170,7 +174,7 @@ class TukarGulingDraft {
         meta.customerNameField: customerName.trim(),
       if (!isFinal && keterangan.trim().isNotEmpty)
         'keterangan': keterangan.trim(),
-      if (claims.isNotEmpty)
+      if (claims.isNotEmpty && metodeFinal.trim() != 'Input Langsung')
         meta.claimTableField: [
           for (final claim in claims) claim.toFrappeJson(meta),
         ],
@@ -191,6 +195,7 @@ class TukarGulingMeta {
   final String childDoctype;
   final String warehouseField;
   final String jenisField;
+  final String metodeField;
   final String customerNameField;
   final String claimTableField;
   final String claimDoctype;
@@ -206,6 +211,7 @@ class TukarGulingMeta {
     this.childDoctype = 'Tukar Guling Item',
     this.warehouseField = 'source_warehouse',
     this.jenisField = 'custom_jenis_input',
+    this.metodeField = 'custom_metode_final',
     this.customerNameField = 'customer_name',
     this.claimTableField = 'custom_claim_details',
     this.claimDoctype = 'Tukar Guling Harian',
@@ -227,6 +233,7 @@ class TukarGulingMeta {
       childDoctype: childDoctype ?? this.childDoctype,
       warehouseField: warehouseField ?? this.warehouseField,
       jenisField: jenisField,
+      metodeField: metodeField,
       customerNameField: customerNameField,
       claimTableField: claimTableField,
       claimDoctype: claimDoctype,
