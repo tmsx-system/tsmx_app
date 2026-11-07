@@ -95,39 +95,18 @@ Future<void> showSellingDocumentDetailSheet({
                   top: 10,
                   bottom: 28,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppColors.border,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _SellingDetailHeader(
-                      title: title,
-                      subtitle: subtitle,
-                      statusText: statusText,
-                      icon: icon,
-                      onClose: () => Navigator.pop(sheetContext),
-                    ),
-                    if (metrics.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _SellingMetricGrid(metrics: metrics),
-                    ],
-                    if (infos.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _SellingInfoCard(infos: infos),
-                    ],
-                    const SizedBox(height: 14),
-                    _SellingItemsSection(items: items, title: itemsTitle),
-                    if (footer != null) ...[const SizedBox(height: 16), footer],
-                  ],
+                child: _SellingDetailBody(
+                  title: title,
+                  subtitle: subtitle,
+                  statusText: statusText,
+                  icon: icon,
+                  metrics: metrics,
+                  infos: infos,
+                  items: items,
+                  itemsTitle: itemsTitle,
+                  footer: footer,
+                  showHandle: true,
+                  onClose: () => Navigator.pop(sheetContext),
                 ),
               ),
             ),
@@ -141,19 +120,135 @@ Future<void> showSellingDocumentDetailSheet({
   }
 }
 
+Future<void> showSellingDocumentDetailPage({
+  required BuildContext context,
+  required String title,
+  required String subtitle,
+  required String statusText,
+  required IconData icon,
+  required List<SellingDetailMetric> metrics,
+  List<SellingDetailInfo> infos = const [],
+  List<SellingDetailItem> items = const [],
+  String itemsTitle = 'Detail Item',
+  Widget? footer,
+}) {
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (pageContext) => Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.background,
+          foregroundColor: AppColors.navy,
+          elevation: 0,
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+          ),
+        ),
+        body: TmsxResponsiveBody(
+          child: ListView(
+            padding: TmsxResponsive.pagePadding(pageContext, bottom: 28),
+            children: [
+              _SellingDetailBody(
+                title: title,
+                subtitle: subtitle,
+                statusText: statusText,
+                icon: icon,
+                metrics: metrics,
+                infos: infos,
+                items: items,
+                itemsTitle: itemsTitle,
+                footer: footer,
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _SellingDetailBody extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String statusText;
+  final IconData icon;
+  final List<SellingDetailMetric> metrics;
+  final List<SellingDetailInfo> infos;
+  final List<SellingDetailItem> items;
+  final String itemsTitle;
+  final Widget? footer;
+  final bool showHandle;
+  final VoidCallback? onClose;
+
+  const _SellingDetailBody({
+    required this.title,
+    required this.subtitle,
+    required this.statusText,
+    required this.icon,
+    required this.metrics,
+    required this.infos,
+    required this.items,
+    required this.itemsTitle,
+    required this.footer,
+    this.showHandle = false,
+    this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showHandle) ...[
+          Center(
+            child: Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+        _SellingDetailHeader(
+          title: title,
+          subtitle: subtitle,
+          statusText: statusText,
+          icon: icon,
+          onClose: onClose,
+        ),
+        if (metrics.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _SellingMetricGrid(metrics: metrics),
+        ],
+        if (infos.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _SellingInfoCard(infos: infos),
+        ],
+        const SizedBox(height: 14),
+        _SellingItemsSection(items: items, title: itemsTitle),
+        if (footer != null) ...[const SizedBox(height: 16), footer!],
+      ],
+    );
+  }
+}
+
 class _SellingDetailHeader extends StatelessWidget {
   final String title;
   final String subtitle;
   final String statusText;
   final IconData icon;
-  final VoidCallback onClose;
+  final VoidCallback? onClose;
 
   const _SellingDetailHeader({
     required this.title,
     required this.subtitle,
     required this.statusText,
     required this.icon,
-    required this.onClose,
+    this.onClose,
   });
 
   @override
@@ -215,23 +310,24 @@ class _SellingDetailHeader extends StatelessWidget {
               ],
             ),
           ),
-          Material(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              onTap: onClose,
+          if (onClose != null)
+            Material(
+              color: AppColors.background,
               borderRadius: BorderRadius.circular(14),
-              child: const SizedBox(
-                width: 38,
-                height: 38,
-                child: Icon(
-                  Icons.close_rounded,
-                  color: AppColors.slate,
-                  size: 20,
+              child: InkWell(
+                onTap: onClose,
+                borderRadius: BorderRadius.circular(14),
+                child: const SizedBox(
+                  width: 38,
+                  height: 38,
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: AppColors.slate,
+                    size: 20,
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );

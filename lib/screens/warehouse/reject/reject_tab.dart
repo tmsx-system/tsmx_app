@@ -229,17 +229,29 @@ class _RejectTabState extends State<RejectTab> {
           final map = Map<String, dynamic>.from(raw);
           final qty = map['qty']?.toString() ?? '';
           final uom = map['uom']?.toString() ?? '';
+          final code = map['item_code']?.toString().trim() ?? '';
+          final name = map['item_name']?.toString().trim() ?? '';
+          final warehouse = map['source_warehouse']?.toString().trim().isNotEmpty ==
+                  true
+              ? map['source_warehouse'].toString()
+              : (map['s_warehouse']?.toString().trim().isNotEmpty == true
+                  ? map['s_warehouse'].toString()
+                  : (map['warehouse']?.toString() ?? '-'));
           items.add(
             SellingDetailItem(
-              title: map['item_name']?.toString() ??
-                  map['item_code']?.toString() ??
-                  '-',
-              subtitle: map['item_code']?.toString() ?? '',
-              qty: uom.isEmpty ? qty : '$qty $uom',
-              note: map['source_warehouse']?.toString() ??
-                  map['s_warehouse']?.toString() ??
-                  map['warehouse']?.toString() ??
-                  '',
+              title: name.isNotEmpty ? name : (code.isEmpty ? '-' : code),
+              subtitle: code,
+              stats: [
+                SellingDetailStat(
+                  label: 'Qty',
+                  value: qty.isEmpty ? '-' : qty,
+                ),
+                SellingDetailStat(
+                  label: 'UOM',
+                  value: uom.isEmpty ? '-' : uom,
+                ),
+                SellingDetailStat(label: 'Source Warehouse', value: warehouse),
+              ],
             ),
           );
         }
@@ -247,7 +259,7 @@ class _RejectTabState extends State<RejectTab> {
 
       final canEdit = _canWrite && _isDraftLike(row);
 
-      await showSellingDocumentDetailSheet(
+      await showSellingDocumentDetailPage(
         context: context,
         title: row.id,
         subtitle: customer.isEmpty ? company : customer,
@@ -275,6 +287,7 @@ class _RejectTabState extends State<RejectTab> {
           if (keterangan.isNotEmpty)
             SellingDetailInfo(label: 'Keterangan', value: keterangan),
         ],
+        itemsTitle: 'Reject Item',
         items: items,
         footer: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

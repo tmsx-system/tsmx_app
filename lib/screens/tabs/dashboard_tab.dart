@@ -149,6 +149,7 @@ class _DashboardGreetingCardState extends State<_DashboardGreetingCard> {
                           height: 1.2,
                         ),
                       ),
+                    if (appState.canUseAttendance) ...[
                     const SizedBox(height: 10),
                     if (appState.attendanceLoading)
                       const Padding(
@@ -187,6 +188,7 @@ class _DashboardGreetingCardState extends State<_DashboardGreetingCard> {
                           height: 1.15,
                         ),
                       ),
+                    ],
                     ],
                   ],
                 ),
@@ -235,7 +237,9 @@ class _DashboardGreetingCardState extends State<_DashboardGreetingCard> {
               ),
             ],
           ),
-          if (attendance.hasEmployee && appState.attendanceError == null) ...[
+          if (appState.canUseAttendance &&
+              attendance.hasEmployee &&
+              appState.attendanceError == null) ...[
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,

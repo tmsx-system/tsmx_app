@@ -16,6 +16,8 @@ class DashboardState extends AppStateProxyNotifier {
   String? _attendanceError;
   String _userFullName = '';
   String? _userImageUrl;
+  bool? _canReadEmployee;
+  bool? _canUseAttendance;
 
   EmployeeAttendanceSnapshot get attendance => _attendance;
   List<EmployeeCheckinLog> get checkinLogs => _checkinLogs;
@@ -24,6 +26,8 @@ class DashboardState extends AppStateProxyNotifier {
   String? get attendanceError => _attendanceError;
   String get userFullName => _userFullName;
   String? get userImageUrl => _userImageUrl;
+  bool get canReadEmployee => _canReadEmployee ?? false;
+  bool get canUseAttendance => _canUseAttendance ?? false;
 
   @override
   List<Object?> get watchFields => [
@@ -52,13 +56,50 @@ class DashboardState extends AppStateProxyNotifier {
   bool get canUseLogistics => appState.canUseLogistics;
   bool get canUseApprovals => appState.canUseApprovals;
 
+  Future<void> ensureHrAccess() async {
+    if (_canUseAttendance != null) return;
+    var employeeOk = false;
+    var checkinOk = false;
+    try {
+      employeeOk = await appState.canReadDoctype('Employee');
+      if (employeeOk) {
+        await appState.refreshCurrentEmployeeProfile();
+        employeeOk = (appState.currentEmployee ?? '').trim().isNotEmpty;
+      }
+    } catch (_) {
+      employeeOk = false;
+    }
+    if (employeeOk) {
+      try {
+        checkinOk = await appState.canReadDoctype('Employee Checkin');
+        if (checkinOk) {
+          await frappeService.fetchResource(
+            'Employee Checkin',
+            fields: const ['name'],
+            limit: 1,
+          );
+        }
+      } catch (_) {
+        checkinOk = false;
+      }
+    }
+    _canReadEmployee = employeeOk;
+    _canUseAttendance = employeeOk && checkinOk;
+    notifyListeners();
+  }
+
   Future<void> refreshAttendance() async {
     _attendanceLoading = true;
     _attendanceError = null;
     notifyListeners();
     try {
+      await Future.wait([_loadUserIdentity(), ensureHrAccess()]);
+      if (!canUseAttendance) {
+        _attendance = const EmployeeAttendanceSnapshot();
+        _checkinLogs = const [];
+        return;
+      }
       await Future.wait([
-        _loadUserIdentity(),
         appState.fetchTodayEmployeeAttendance().then((value) {
           _attendance = value;
         }),
@@ -67,12 +108,20 @@ class DashboardState extends AppStateProxyNotifier {
         }),
       ]);
     } catch (error) {
-      _attendanceError = error
+      final message = error
           .toString()
           .replaceFirst(RegExp(r'^Exception:\s*'), '')
           .replaceAll(RegExp(r'<[^>]*>'), ' ')
           .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
+      if (message.toLowerCase().contains('permission')) {
+        _canUseAttendance = false;
+        _attendanceError = null;
+        _attendance = const EmployeeAttendanceSnapshot();
+        _checkinLogs = const [];
+      } else {
+        _attendanceError = message;
+      }
     } finally {
       _attendanceLoading = false;
       notifyListeners();

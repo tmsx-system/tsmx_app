@@ -158,6 +158,109 @@ class AppState with ChangeNotifier {
   Future<bool> canReadDoctype(String doctype) =>
       _hasDoctypePermission(doctype, 'read');
 
+  Future<bool> canReadReport(String reportName) async {
+    final name = reportName.trim();
+    if (name.isEmpty || !_isAuthenticated) return false;
+    if (_isSampleMode || MobileRoleRegistry.isFullAccessRole(_userRole)) {
+      return true;
+    }
+
+    final site = _frappeService.baseUrl.trim();
+    final user = _currentUser?.trim() ?? _frappeService.username?.trim() ?? '';
+    final cacheKey = '$site::$user::report-roles::$name';
+    final cached = _doctypeSubmitPermissionCache[cacheKey];
+    if (cached != null) return cached;
+
+    var allowed = false;
+    try {
+      final report = await _frappeService.fetchDocument('Report', name);
+      final disabled = report['disabled'];
+      if (disabled == 1 || disabled == true || disabled == '1') {
+        allowed = false;
+      } else {
+        final reportRoles = <String>{
+          if (report['roles'] is List)
+            for (final row in (report['roles'] as List).whereType<Map>())
+              if ((row['role']?.toString().trim() ?? '').isNotEmpty)
+                row['role'].toString().trim().toLowerCase(),
+        };
+        if (reportRoles.isEmpty) {
+          try {
+            final rows = await _frappeService.fetchResource(
+              'Has Role',
+              fields: const ['role'],
+              filters: [
+                ['parent', '=', name],
+                ['parenttype', '=', 'Report'],
+              ],
+              limit: 80,
+            );
+            for (final row in rows) {
+              final role = row['role']?.toString().trim() ?? '';
+              if (role.isNotEmpty) reportRoles.add(role.toLowerCase());
+            }
+          } catch (_) {}
+        }
+        if (reportRoles.isEmpty) {
+          allowed = await _reportScriptPermits(name);
+        } else {
+          final userRoles = await _currentFrappeRoleNames();
+          allowed = userRoles.any(reportRoles.contains);
+          if (!allowed) allowed = await _reportScriptPermits(name);
+        }
+      }
+    } catch (_) {
+      allowed = await _reportScriptPermits(name);
+    }
+    _doctypeSubmitPermissionCache[cacheKey] = allowed;
+    return allowed;
+  }
+
+  Future<Set<String>> _currentFrappeRoleNames() async {
+    final names = <String>{
+      for (final role in _mobileBoot?.roles ?? const <String>[])
+        if (role.trim().isNotEmpty) role.trim().toLowerCase(),
+    };
+    final user = _currentUser?.trim() ?? _frappeService.username?.trim() ?? '';
+    if (user.isEmpty) return names;
+    try {
+      final doc = await _frappeService.fetchDocument('User', user);
+      final rows = doc['roles'];
+      if (rows is List) {
+        for (final row in rows.whereType<Map>()) {
+          final role = row['role']?.toString().trim() ?? '';
+          if (role.isNotEmpty) names.add(role.toLowerCase());
+        }
+      }
+    } catch (_) {}
+    return names;
+  }
+
+  /// Uses the same server check as opening a query report.
+  /// "You don't have access to Report" means the role is not on the report.
+  /// A missing Report checkbox on the ref DocType still means the report role matched.
+  Future<bool> _reportScriptPermits(String reportName) async {
+    try {
+      await _frappeService.callMethod(
+        'frappe.desk.query_report.get_script',
+        args: {'report_name': reportName},
+      );
+      return true;
+    } catch (error) {
+      final message = error.toString().toLowerCase();
+      if (message.contains("don't have access to report") ||
+          message.contains('do not have access to report') ||
+          message.contains('tidak memiliki akses ke report')) {
+        return false;
+      }
+      if (message.contains('permission to get a report') ||
+          message.contains('report permission')) {
+        return true;
+      }
+      return false;
+    }
+  }
+
   Future<bool> canCreateDoctype(String doctype) =>
       _hasDoctypePermission(doctype, 'create');
 
@@ -182,9 +285,14 @@ class AppState with ChangeNotifier {
   Future<bool> canReportDoctype(String doctype) =>
       _hasDoctypePermission(doctype, 'report');
 
-  Future<bool> _hasDoctypePermission(String doctype, String permType) async {
+  Future<bool> _hasDoctypePermission(
+    String doctype,
+    String permType, {
+    String docname = '',
+  }) async {
     final normalizedDoctype = doctype.trim();
     final normalizedPermType = permType.trim().toLowerCase();
+    final normalizedDocname = docname.trim();
     if (normalizedDoctype.isEmpty || !_isAuthenticated) return false;
     if (normalizedPermType.isEmpty) return false;
     if (_isSampleMode) return true;
@@ -192,7 +300,8 @@ class AppState with ChangeNotifier {
 
     final site = _frappeService.baseUrl.trim();
     final user = _currentUser?.trim() ?? _frappeService.username?.trim() ?? '';
-    final cacheKey = '$site::$user::$normalizedDoctype::$normalizedPermType';
+    final cacheKey =
+        '$site::$user::$normalizedDoctype::$normalizedDocname::$normalizedPermType';
     final cached = _doctypeSubmitPermissionCache[cacheKey];
     if (cached != null) return cached;
 
@@ -201,7 +310,7 @@ class AppState with ChangeNotifier {
         'frappe.client.has_permission',
         args: {
           'doctype': normalizedDoctype,
-          'docname': '',
+          'docname': normalizedDocname,
           'perm_type': normalizedPermType,
         },
       );
@@ -321,9 +430,33 @@ class AppState with ChangeNotifier {
 
     if (!_isSameRuntime(generation, user: user, baseUrl: baseUrl)) return;
 
-    _permissionEnabledModules = MobileRoleRegistry.modulesForReadableDoctypes(
+    final enabledModules = MobileRoleRegistry.modulesForReadableDoctypes(
       readable,
     );
+    const salesDocuments = {
+      'Sales Order',
+      'Delivery Note',
+      'Sales Invoice',
+      'Tukar Guling',
+      'Delivery Return',
+    };
+    final hasSalesDocument = readable.any(salesDocuments.contains);
+    if (!hasSalesDocument) {
+      enabledModules.remove(MobileModule.sales);
+      if (readable.contains('Customer')) {
+        final customerSections = await Future.wait([
+          canReadReport('Inactive Customers'),
+          canReadDoctype('Item Price'),
+          canReadDoctype('NOO Request'),
+          canReadDoctype('Promo Request'),
+        ]);
+        if (!_isSameRuntime(generation, user: user, baseUrl: baseUrl)) return;
+        if (customerSections.any((allowed) => allowed)) {
+          enabledModules.add(MobileModule.sales);
+        }
+      }
+    }
+    _permissionEnabledModules = enabledModules;
     if (!kReleaseMode) {
       developer.log(
         'enabledModules=$_permissionEnabledModules readable=$readable',
@@ -7332,6 +7465,13 @@ class AppState with ChangeNotifier {
         .toList();
     if (selectedDoctypes.isEmpty) {
       selectedDoctypes.add('Sales Order');
+    }
+    if (!await canReadReport('Inactive Customers')) {
+      _inactiveCustomers = const [];
+      _inactiveCustomersError = null;
+      _isInactiveCustomersLoading = false;
+      notifyListeners();
+      return;
     }
     _inactiveCustomersDays = daysSinceLastOrder;
     _inactiveCustomerDoctypes = List.unmodifiable(selectedDoctypes);

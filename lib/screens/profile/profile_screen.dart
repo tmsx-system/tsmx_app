@@ -311,8 +311,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             const SizedBox(height: 12),
             _ErrorCard(message: _profileError!, onRetry: _loadProfile),
           ],
-          const SizedBox(height: 16),
-          _buildEmployeeCard(appState),
+          if (appState.canReadEmployee) ...[
+            const SizedBox(height: 16),
+            _buildEmployeeCard(appState),
+          ],
           const SizedBox(height: 14),
           _SectionCard(
             title: 'Printer Bluetooth',

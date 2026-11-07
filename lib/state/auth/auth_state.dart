@@ -79,6 +79,10 @@ class AuthState extends AppStateProxyNotifier {
     return appState.canReadDoctype(doctype);
   }
 
+  Future<bool> canReadReport(String reportName) {
+    return appState.canReadReport(reportName);
+  }
+
   Future<bool> canCreateDoctype(String doctype) {
     return appState.canCreateDoctype(doctype);
   }

@@ -36,8 +36,10 @@ class ProfileState extends AppStateProxyNotifier {
   String? get currentSalesPerson => appState.currentSalesPerson;
   String? get salesIdentityError => appState.salesIdentityError;
   bool _canEditEmployee = false;
+  bool _canReadEmployee = false;
   String? _employeeError;
   bool get canEditEmployee => _canEditEmployee;
+  bool get canReadEmployee => _canReadEmployee;
   String? get employeeError => _employeeError;
 
   Future<Map<String, dynamic>> fetchCurrentUserProfile() {
@@ -48,10 +50,16 @@ class ProfileState extends AppStateProxyNotifier {
     _employeeError = null;
     notifyListeners();
     try {
-      await appState.refreshCurrentEmployeeProfile();
-      _canEditEmployee = await appState.canWriteDoctype('Employee');
+      _canReadEmployee = await appState.canReadDoctype('Employee');
+      if (_canReadEmployee) {
+        await appState.refreshCurrentEmployeeProfile();
+        _canEditEmployee = await appState.canWriteDoctype('Employee');
+      } else {
+        _canEditEmployee = false;
+      }
     } catch (error) {
       _employeeError = error.toString();
+      _canReadEmployee = false;
       _canEditEmployee = false;
     }
     notifyListeners();

@@ -205,13 +205,19 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       state.canReadDoctype('Customer'),
       state.canReadDoctype('Tukar Guling'),
       state.canReadDoctype('Delivery Return'),
+      state.canReadReport('Inactive Customers'),
+      state.canReadDoctype('Item Price'),
+      state.canReadDoctype('NOO Request'),
+      state.canReadDoctype('Promo Request'),
     ]);
+    final canOpenCustomer =
+        results[4] && (results[7] || results[8] || results[9] || results[10]);
     return _SalesDoctypePermissions(
       canReadSalesOrder: results[0],
       canCreateSalesOrder: results[1],
       canReadDeliveryNote: results[2],
       canReadSalesInvoice: results[3],
-      canReadCustomer: results[4],
+      canReadCustomer: canOpenCustomer,
       canReadTukarGuling: results[5],
       canReadDeliveryReturn: results[6],
     );
