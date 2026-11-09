@@ -6,7 +6,10 @@ import '../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../utils/erp_doc_utils.dart';
 import '../../../../utils/erp_error_message.dart';
+import '../../../../utils/erp_share_file.dart';
 import '../../../../widgets/erp/erp_status_badge.dart';
+import '../../../../widgets/erp/erp_workflow_helper.dart';
+import '../../../../widgets/print/erp_bluetooth_print.dart';
 import '../../../../widgets/responsive/responsive_layout.dart';
 import 'create_material_transfer_request_screen.dart';
 import 'material_request_purpose.dart';
@@ -30,7 +33,11 @@ class _MaterialRequestDetailScreenState
     extends State<MaterialRequestDetailScreen> {
   late MaterialRequest _request = widget.request;
   bool _loading = true;
+  bool _busy = false;
   bool _edited = false;
+  bool _canWrite = false;
+  bool _canSubmit = false;
+  bool _canPrint = false;
   String? _error;
 
   @override
@@ -50,12 +57,22 @@ class _MaterialRequestDetailScreenState
       _error = null;
     });
     try {
-      final doc = await context
-          .read<WarehouseStockState>()
-          .frappeService
-          .fetchDocument('Material Request', widget.request.id);
+      final state = context.read<WarehouseStockState>();
+      final results = await Future.wait([
+        state.frappeService.fetchDocument('Material Request', widget.request.id),
+        state.canWriteDoctype('Material Request'),
+        state.canSubmitDoctype('Material Request'),
+        state.canPrintDoctype('Material Request'),
+      ]);
       if (!mounted) return;
-      setState(() => _request = MaterialRequest.fromJson(doc));
+      setState(() {
+        _request = MaterialRequest.fromJson(
+          results[0] as Map<String, dynamic>,
+        );
+        _canWrite = results[1] as bool;
+        _canSubmit = results[2] as bool;
+        _canPrint = results[3] as bool;
+      });
     } catch (error) {
       if (!mounted) return;
       setState(
@@ -78,7 +95,9 @@ class _MaterialRequestDetailScreenState
     final target = _request.targetWarehouse.isNotEmpty
         ? _request.targetWarehouse
         : _firstItemValue((item) => item.warehouse);
-    final canEdit = widget.canEdit && isDocDraft(_request.docStatus);
+    final draft = isDocDraft(_request.docStatus);
+    final canEdit = _canWrite && draft;
+    final canSubmit = _canSubmit && draft;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -202,6 +221,34 @@ class _MaterialRequestDetailScreenState
                         ),
                     ],
                   ),
+                if (canEdit || canSubmit || _canPrint) ...[
+                  const SizedBox(height: 16),
+                  if (_canPrint)
+                    erpActionButton(
+                      label: 'Download PDF',
+                      icon: Icons.picture_as_pdf_outlined,
+                      onPressed: _loading || _busy ? null : _downloadPdf,
+                    ),
+                  if (_canPrint)
+                    erpActionButton(
+                      label: 'Print',
+                      icon: Icons.print_outlined,
+                      onPressed: _loading || _busy ? null : _printPdf,
+                    ),
+                  if (canEdit)
+                    erpActionButton(
+                      label: 'Edit',
+                      icon: Icons.edit_outlined,
+                      onPressed: _loading || _busy ? null : _edit,
+                    ),
+                  if (canSubmit)
+                    erpActionButton(
+                      label: 'Submit',
+                      icon: Icons.check_circle_outline_rounded,
+                      filled: true,
+                      onPressed: _loading || _busy ? null : _submit,
+                    ),
+                ],
               ],
             ),
           ),
@@ -209,6 +256,82 @@ class _MaterialRequestDetailScreenState
       ),
       ),
     );
+  }
+
+  Future<void> _runBusy(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<List<int>> _pdfBytes() {
+    return context.read<WarehouseStockState>().downloadMaterialRequestPdf(
+      _request.id,
+    );
+  }
+
+  Future<void> _downloadPdf() async {
+    await _runBusy(() async {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Mengunduh PDF ${_request.id}...')),
+      );
+      try {
+        final saved = await saveBytesForUser(
+          bytes: await _pdfBytes(),
+          fileName: '${_request.id}.pdf',
+          mimeType: 'application/pdf',
+          appSubfolder: 'material_request_pdf',
+        );
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('PDF siap: ${saved.locationLabel}')),
+        );
+        await shareSavedFile(saved, subject: 'Material Request ${_request.id}');
+      } catch (error) {
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('Gagal download PDF: $error')),
+        );
+      }
+    });
+  }
+
+  Future<void> _printPdf() async {
+    await _runBusy(() async {
+      await printErpPdfViaBluetooth(
+        context,
+        downloadPdf: _pdfBytes,
+        title: 'Material Request ${_request.id}',
+      );
+    });
+  }
+
+  Future<void> _submit() async {
+    final confirmed = await confirmErpAction(
+      context,
+      title: 'Submit Material Request?',
+      message: 'Submit ${_request.id} ke ERPNext?',
+    );
+    if (!confirmed || !mounted) return;
+    await _runBusy(() async {
+      final ok = await runErpWorkflowAction(
+        context,
+        action: () => context.read<WarehouseStockState>().submitDocument(
+          'Material Request',
+          _request.id,
+        ),
+        successMessage: 'Material Request ${_request.id} berhasil di-submit.',
+      );
+      if (ok && mounted) {
+        _edited = true;
+        await _load();
+      }
+    });
   }
 
   Future<void> _edit() async {

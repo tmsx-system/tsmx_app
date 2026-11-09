@@ -8,9 +8,12 @@ import '../../../../state/warehouse/warehouse_stock_state.dart';
 import '../../../../theme/app_colors.dart';
 import '../../../../utils/erp_doc_utils.dart';
 import '../../../../utils/erp_error_message.dart';
+import '../../../../utils/erp_share_file.dart';
 import '../../../../widgets/erp/erp_document_card.dart';
 import '../../../../widgets/erp/erp_empty_state.dart';
 import '../../../../widgets/erp/erp_item_autocomplete_field.dart';
+import '../../../../widgets/erp/erp_workflow_helper.dart';
+import '../../../../widgets/print/erp_bluetooth_print.dart';
 import '../../shared/warehouse_widgets.dart';
 import 'create_material_transfer_request_screen.dart';
 import 'material_request_detail_screen.dart';
@@ -35,6 +38,9 @@ class _MaterialTransferRequestPanelState
   bool _loading = true;
   bool _canCreate = false;
   bool _canWrite = false;
+  bool _canSubmit = false;
+  bool _canPrint = false;
+  bool _actionBusy = false;
   String? _error;
   String _status = '';
   String _company = '';
@@ -75,11 +81,15 @@ class _MaterialTransferRequestPanelState
         final permissions = await Future.wait([
           state.canCreateDoctype('Material Request'),
           state.canWriteDoctype('Material Request'),
+          state.canSubmitDoctype('Material Request'),
+          state.canPrintDoctype('Material Request'),
         ]);
         if (!mounted) return;
         setState(() {
           _canCreate = permissions[0];
           _canWrite = permissions[1];
+          _canSubmit = permissions[2];
+          _canPrint = permissions[3];
         });
       }
       final rows = await state.fetchMaterialRequestsByPurpose(
@@ -106,9 +116,88 @@ class _MaterialTransferRequestPanelState
     }
   }
 
-  bool _canEdit(MaterialRequest request) {
+  bool _isDraft(MaterialRequest request) {
     final status = request.statusText.trim().toLowerCase();
-    return _canWrite && (isDocDraft(request.docStatus) || status == 'draft');
+    return isDocDraft(request.docStatus) || status == 'draft';
+  }
+
+  bool _canEdit(MaterialRequest request) => _canWrite && _isDraft(request);
+
+  bool _canSubmitRow(MaterialRequest request) =>
+      _canSubmit && _isDraft(request);
+
+  Future<void> _runAction(Future<void> Function() action) async {
+    if (_actionBusy) return;
+    setState(() => _actionBusy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _submitRow(MaterialRequest request) async {
+    if (!_canSubmitRow(request) || _actionBusy) return;
+    final confirmed = await confirmErpAction(
+      context,
+      title: 'Submit Material Request?',
+      message: 'Submit ${request.id} ke ERPNext?',
+    );
+    if (!confirmed || !mounted) return;
+    await _runAction(() async {
+      final ok = await runErpWorkflowAction(
+        context,
+        action: () => context.read<WarehouseStockState>().submitDocument(
+          'Material Request',
+          request.id,
+        ),
+        successMessage: 'Material Request ${request.id} berhasil di-submit.',
+      );
+      if (ok && mounted) await _load();
+    });
+  }
+
+  Future<List<int>> _pdfBytes(String name) {
+    return context.read<WarehouseStockState>().downloadMaterialRequestPdf(name);
+  }
+
+  Future<void> _downloadPdf(MaterialRequest request) async {
+    if (!_canPrint || _actionBusy) return;
+    await _runAction(() async {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Mengunduh PDF ${request.id}...')),
+      );
+      try {
+        final saved = await saveBytesForUser(
+          bytes: await _pdfBytes(request.id),
+          fileName: '${request.id}.pdf',
+          mimeType: 'application/pdf',
+          appSubfolder: 'material_request_pdf',
+        );
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('PDF siap: ${saved.locationLabel}')),
+        );
+        await shareSavedFile(saved, subject: 'Material Request ${request.id}');
+      } catch (error) {
+        if (!mounted) return;
+        messenger.showSnackBar(
+          SnackBar(content: Text('Gagal download PDF: $error')),
+        );
+      }
+    });
+  }
+
+  Future<void> _printPdf(MaterialRequest request) async {
+    if (!_canPrint || _actionBusy) return;
+    await _runAction(() async {
+      await printErpPdfViaBluetooth(
+        context,
+        downloadPdf: () => _pdfBytes(request.id),
+        title: 'Material Request ${request.id}',
+      );
+    });
   }
 
   Future<void> _openForm({String? existingName}) async {
@@ -282,6 +371,9 @@ class _MaterialTransferRequestPanelState
                   onEdit: _canEdit(row)
                       ? () => _openForm(existingName: row.id)
                       : null,
+                  onSubmit: _canSubmitRow(row) ? () => _submitRow(row) : null,
+                  onPrint: _canPrint ? () => _printPdf(row) : null,
+                  onDownload: _canPrint ? () => _downloadPdf(row) : null,
                 ),
           ],
         ),

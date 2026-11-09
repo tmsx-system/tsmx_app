@@ -10344,12 +10344,80 @@ class AppState with ChangeNotifier {
       }),
     );
 
+    await _appendNativeMaterialRequestDrafts(todos);
     todos.sort((a, b) => b.date.compareTo(a.date));
     FrappeService.logTiming(
       'AppState fetchApprovalTodos items=${todos.length} transitions=$transitionCalls',
       totalWatch.elapsedMilliseconds,
     );
     return todos;
+  }
+
+  Future<void> _appendNativeMaterialRequestDrafts(
+    List<ErpApprovalTodo> todos,
+  ) async {
+    if (!await canSubmitDoctype('Material Request')) return;
+    final existing = todos
+        .where((todo) => todo.doctype == 'Material Request')
+        .map((todo) => todo.name)
+        .toSet();
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await _fetchAllResourcePages(
+        doctype: 'Material Request',
+        fields: const [
+          'name',
+          'title',
+          'material_request_type',
+          'status',
+          'owner',
+          'company',
+          'transaction_date',
+          'schedule_date',
+          'total_qty',
+          'docstatus',
+        ],
+        filters: [
+          ['docstatus', '=', 0],
+        ],
+        orderBy: 'modified desc',
+        maxRows: 80,
+      );
+    } catch (_) {
+      try {
+        rows = await _fetchAllResourcePages(
+          doctype: 'Material Request',
+          fields: const ['name'],
+          orderBy: 'modified desc',
+          maxRows: 40,
+        );
+      } catch (_) {
+        return;
+      }
+    }
+    for (final row in rows) {
+      final name = row['name']?.toString().trim() ?? '';
+      if (name.isEmpty || existing.contains(name)) continue;
+      var source = row;
+      if (source['docstatus'] == null || source['material_request_type'] == null) {
+        try {
+          source = await _frappeService.fetchDocument('Material Request', name);
+        } catch (_) {
+          continue;
+        }
+      }
+      if (NumParse.asInt(source['docstatus']) != 0) continue;
+      final workflowState = source['workflow_state']?.toString().trim() ?? '';
+      if (workflowState.isNotEmpty) continue;
+      todos.add(
+        ErpApprovalTodo.fromJson(
+          'Material Request',
+          source,
+          actions: const ['Submit'],
+        ),
+      );
+      existing.add(name);
+    }
   }
 
   Future<List<ErpApprovalTodo>> fetchPurchaseApprovalTodos() async {
@@ -11141,17 +11209,25 @@ class AppState with ChangeNotifier {
       'GET document $doctype $name (apply $normalizedAction)',
       getWatch.elapsedMilliseconds,
     );
+    final workflowState = doc['workflow_state']?.toString().trim() ?? '';
+    final useNativeSubmit = actionLower == 'submit' && workflowState.isEmpty;
     final postWatch = Stopwatch()..start();
-    await _frappeService.callMethod(
-      'frappe.model.workflow.apply_workflow',
-      args: {'doc': doc, 'action': normalizedAction},
-    );
+    if (useNativeSubmit) {
+      await _frappeService.submitDocument(doctype, name);
+    } else {
+      await _frappeService.callMethod(
+        'frappe.model.workflow.apply_workflow',
+        args: {'doc': doc, 'action': normalizedAction},
+      );
+    }
     postWatch.stop();
     FrappeService.logTiming(
-      'POST apply_workflow $doctype $name action=$normalizedAction',
+      'POST ${useNativeSubmit ? 'submit' : 'apply_workflow'} $doctype $name action=$normalizedAction',
       postWatch.elapsedMilliseconds,
     );
-    final decision = isReject ? 'REJECT' : 'APPROVE';
+    final decision = useNativeSubmit
+        ? 'SUBMIT'
+        : (isReject ? 'REJECT' : 'APPROVE');
     final content = [
       '$decision via $appDisplayName',
       'Action: $normalizedAction',

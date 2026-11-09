@@ -13,6 +13,7 @@ class ErpDocumentCard extends StatelessWidget {
   final String? trailing;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
+  final VoidCallback? onSubmit;
   final VoidCallback? onDuplicate;
   final VoidCallback? onDownload;
   final VoidCallback? onPrint;
@@ -29,6 +30,7 @@ class ErpDocumentCard extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.onEdit,
+    this.onSubmit,
     this.onDuplicate,
     this.onDownload,
     this.onPrint,
@@ -115,6 +117,7 @@ class ErpDocumentCard extends StatelessWidget {
                     children: [
                       ErpStatusBadge(statusText: statusText),
                       if (onEdit != null ||
+                          onSubmit != null ||
                           onDuplicate != null ||
                           onPrint != null ||
                           onDownload != null ||
@@ -145,6 +148,7 @@ class ErpDocumentCard extends StatelessWidget {
                             ),
                             onSelected: (value) {
                               if (value == 'edit') onEdit?.call();
+                              if (value == 'submit') onSubmit?.call();
                               if (value == 'duplicate') onDuplicate?.call();
                               if (value == 'print') onPrint?.call();
                               if (value == 'download') onDownload?.call();
@@ -159,6 +163,20 @@ class ErpDocumentCard extends StatelessWidget {
                                       Icon(Icons.edit_outlined, size: 18),
                                       SizedBox(width: 8),
                                       Text('Edit'),
+                                    ],
+                                  ),
+                                ),
+                              if (onSubmit != null)
+                                const PopupMenuItem(
+                                  value: 'submit',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.check_circle_outline_rounded,
+                                        size: 18,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text('Submit'),
                                     ],
                                   ),
                                 ),

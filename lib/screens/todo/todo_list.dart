@@ -2293,17 +2293,25 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Keputusan Approval',
-            style: TextStyle(
+          Text(
+            actions.length == 1 &&
+                    actions.first.toLowerCase() == 'submit' &&
+                    widget.approval.workflowState.trim().isEmpty
+                ? 'Submit Dokumen'
+                : 'Keputusan Approval',
+            style: const TextStyle(
               color: AppColors.navy,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 5),
-          const Text(
-            'Periksa detail, lalu pilih action sesuai Workflow ERPNext.',
-            style: TextStyle(color: AppColors.slate, fontSize: 11),
+          Text(
+            actions.length == 1 &&
+                    actions.first.toLowerCase() == 'submit' &&
+                    widget.approval.workflowState.trim().isEmpty
+                ? 'Dokumen masih Draft. Submit mengubahnya menjadi Submitted sesuai izin role.'
+                : 'Periksa detail, lalu pilih action sesuai Workflow ERPNext.',
+            style: const TextStyle(color: AppColors.slate, fontSize: 11),
           ),
           const SizedBox(height: 16),
           if (_processing)

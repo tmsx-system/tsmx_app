@@ -141,6 +141,13 @@ class WarehouseStockState extends AppStateProxyNotifier {
     return appState.canPrintDoctype(doctype);
   }
 
+  Future<List<int>> downloadMaterialRequestPdf(String name) {
+    return appState.frappeService.downloadPrintPdf(
+      doctype: 'Material Request',
+      name: name,
+    );
+  }
+
   Future<List<int>> downloadStockEntryPdf(String name) {
     return appState.frappeService.downloadPrintPdf(
       doctype: 'Stock Entry',
