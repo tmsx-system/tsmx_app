@@ -8,6 +8,7 @@ class MaterialRequestItem {
   final double orderedQty;
   final String uom;
   final String warehouse;
+  final String fromWarehouse;
   final String scheduleDate;
 
   const MaterialRequestItem({
@@ -17,6 +18,7 @@ class MaterialRequestItem {
     required this.orderedQty,
     this.uom = '',
     this.warehouse = '',
+    this.fromWarehouse = '',
     this.scheduleDate = '',
   });
 
@@ -31,10 +33,8 @@ class MaterialRequestItem {
       qty: NumParse.asDouble(json['qty'] ?? json['stock_qty']),
       orderedQty: NumParse.asDouble(json['ordered_qty']),
       uom: json['uom']?.toString() ?? json['stock_uom']?.toString() ?? '',
-      warehouse:
-          json['warehouse']?.toString() ??
-          json['from_warehouse']?.toString() ??
-          '',
+      warehouse: json['warehouse']?.toString() ?? '',
+      fromWarehouse: json['from_warehouse']?.toString() ?? '',
       scheduleDate: json['schedule_date']?.toString() ?? '',
     );
   }
@@ -42,23 +42,29 @@ class MaterialRequestItem {
 
 class MaterialRequest {
   final String id;
+  final String title;
   final String type;
   final String company;
   final String statusText;
   final int docStatus;
   final String transactionDate;
   final String scheduleDate;
+  final String sourceWarehouse;
+  final String targetWarehouse;
   final double totalQty;
   final List<MaterialRequestItem> items;
 
   const MaterialRequest({
     required this.id,
+    this.title = '',
     required this.type,
     required this.company,
     required this.statusText,
     required this.docStatus,
     required this.transactionDate,
     required this.scheduleDate,
+    this.sourceWarehouse = '',
+    this.targetWarehouse = '',
     required this.totalQty,
     this.items = const [],
   });
@@ -68,12 +74,15 @@ class MaterialRequest {
   MaterialRequest copyWith({List<MaterialRequestItem>? items}) {
     return MaterialRequest(
       id: id,
+      title: title,
       type: type,
       company: company,
       statusText: statusText,
       docStatus: docStatus,
       transactionDate: transactionDate,
       scheduleDate: scheduleDate,
+      sourceWarehouse: sourceWarehouse,
+      targetWarehouse: targetWarehouse,
       totalQty: totalQty,
       items: items ?? this.items,
     );
@@ -95,6 +104,7 @@ class MaterialRequest {
 
     return MaterialRequest(
       id: json['name']?.toString() ?? 'UNKNOWN',
+      title: json['title']?.toString() ?? '',
       type: json['material_request_type']?.toString() ?? 'Purchase',
       company: json['company']?.toString() ?? '',
       statusText: normalizeStatusText(
@@ -104,6 +114,8 @@ class MaterialRequest {
       docStatus: docstatus,
       transactionDate: json['transaction_date']?.toString() ?? '',
       scheduleDate: json['schedule_date']?.toString() ?? '',
+      sourceWarehouse: json['set_from_warehouse']?.toString() ?? '',
+      targetWarehouse: json['set_warehouse']?.toString() ?? '',
       totalQty: NumParse.asDouble(json['total_qty']),
       items: items,
     );

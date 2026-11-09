@@ -22,7 +22,7 @@ class SpgMainScreen extends StatelessWidget {
         NavigationDestination(
           icon: Icon(Icons.photo_camera_outlined),
           selectedIcon: Icon(Icons.photo_camera_rounded),
-          label: 'Foto',
+          label: 'Activity',
         ),
         NavigationDestination(
           icon: Icon(Icons.bar_chart_outlined),

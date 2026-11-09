@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../models/inventory_item.dart';
+import '../../models/material_request.dart';
 import '../../models/quality_inspection_record.dart';
 import '../../models/stock_area_option.dart';
 import '../../models/stock_entry.dart';
@@ -2045,6 +2046,226 @@ class WarehouseStockState extends AppStateProxyNotifier {
 
   int _compareWarehouseNames(String a, String b) {
     return a.toLowerCase().compareTo(b.toLowerCase());
+  }
+
+  Future<List<MaterialRequest>> fetchMaterialRequestsByPurpose({
+    required String purpose,
+    String? search,
+    String? status,
+    String? company,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    await appState.frappeService.ensureLoggedIn();
+    final query = search?.trim() ?? '';
+    final statusFilter = status?.trim() ?? '';
+    final companyFilter = company?.trim() ?? '';
+    final from = fromDate == null ? '' : DateRangePresets.toFrappeDate(fromDate);
+    final to = toDate == null ? '' : DateRangePresets.toFrappeDate(toDate);
+    var fields = <String>[
+      'name',
+      'title',
+      'material_request_type',
+      'status',
+      'docstatus',
+      'transaction_date',
+      'schedule_date',
+      'company',
+      'set_from_warehouse',
+      'set_warehouse',
+      'total_qty',
+    ];
+    var filters = <List<dynamic>>[
+      ['material_request_type', '=', purpose],
+      if (statusFilter.isNotEmpty) ['status', '=', statusFilter],
+      if (companyFilter.isNotEmpty) ['company', '=', companyFilter],
+      if (from.isNotEmpty) ['transaction_date', '>=', from],
+      if (to.isNotEmpty) ['transaction_date', '<=', to],
+    ];
+    var orFilters = query.isEmpty
+        ? null
+        : <List<dynamic>>[
+            ['name', 'like', '%$query%'],
+            ['title', 'like', '%$query%'],
+          ];
+    String? orderBy = 'transaction_date desc, name desc';
+    var keptTypeFilter = true;
+    var usedNameOnly = false;
+    List<Map<String, dynamic>> rows = const [];
+
+    while (fields.isNotEmpty) {
+      try {
+        rows = await appState.frappeService.fetchResource(
+          'Material Request',
+          fields: fields,
+          filters: filters,
+          orFilters: orFilters,
+          orderBy: orderBy,
+          limit: 40,
+        );
+        break;
+      } catch (error) {
+        final text = error.toString();
+        if (!text.toLowerCase().contains('field not permitted in query')) {
+          rethrow;
+        }
+        final badField = RegExp(
+          r'Field not permitted in query:\s*([a-zA-Z0-9_]+)',
+        ).firstMatch(text)?.group(1);
+        if (badField == null || badField == 'name' || usedNameOnly) {
+          if (usedNameOnly) rethrow;
+          fields = ['name'];
+          filters = const [];
+          orFilters = null;
+          orderBy = null;
+          keptTypeFilter = false;
+          usedNameOnly = true;
+          continue;
+        }
+        if (badField == 'material_request_type') keptTypeFilter = false;
+        fields.remove(badField);
+        filters.removeWhere(
+          (filter) => filter.isNotEmpty && filter.first == badField,
+        );
+        orFilters?.removeWhere(
+          (filter) => filter.isNotEmpty && filter.first == badField,
+        );
+        final searchFilters = orFilters;
+        if (searchFilters != null && searchFilters.isEmpty) orFilters = null;
+        if (orderBy != null && orderBy.contains(badField)) orderBy = null;
+        if (fields.isEmpty) {
+          fields = ['name'];
+          usedNameOnly = true;
+          keptTypeFilter = false;
+          filters = const [];
+          orFilters = null;
+          orderBy = null;
+        }
+      }
+    }
+
+    final requests = <MaterialRequest>[];
+    for (final row in rows) {
+      final listedType = row['material_request_type']?.toString().trim() ?? '';
+      MaterialRequest request;
+      request = MaterialRequest.fromJson(row);
+      final name = request.id.trim();
+      if (name.isEmpty || name == 'UNKNOWN') continue;
+      if (!keptTypeFilter || listedType.isEmpty || request.items.isEmpty) {
+        final doc = await appState.frappeService.fetchDocument(
+          'Material Request',
+          name,
+        );
+        request = MaterialRequest.fromJson(doc);
+      }
+      if (request.type.trim().toLowerCase() != purpose.trim().toLowerCase()) {
+        continue;
+      }
+      if (statusFilter.isNotEmpty &&
+          request.statusText.trim().toLowerCase() !=
+              statusFilter.toLowerCase()) {
+        continue;
+      }
+      if (companyFilter.isNotEmpty &&
+          request.company.trim().toLowerCase() !=
+              companyFilter.toLowerCase()) {
+        continue;
+      }
+      if (!_matchesMaterialRequestDate(request, fromDate, toDate)) continue;
+      if (query.isNotEmpty) {
+        final haystack =
+            '${request.id} ${request.title} ${request.company}'.toLowerCase();
+        if (!haystack.contains(query.toLowerCase())) continue;
+      }
+      requests.add(request);
+    }
+    return requests;
+  }
+
+  bool _matchesMaterialRequestDate(
+    MaterialRequest request,
+    DateTime? fromDate,
+    DateTime? toDate,
+  ) {
+    if (fromDate == null && toDate == null) return true;
+    final raw = request.transactionDate.trim().isNotEmpty
+        ? request.transactionDate
+        : request.scheduleDate;
+    final parsed = DateTime.tryParse(raw.trim());
+    if (parsed == null) return false;
+    final date = DateTime(parsed.year, parsed.month, parsed.day);
+    if (fromDate != null) {
+      final from = DateTime(fromDate.year, fromDate.month, fromDate.day);
+      if (date.isBefore(from)) return false;
+    }
+    if (toDate != null) {
+      final to = DateTime(toDate.year, toDate.month, toDate.day);
+      if (date.isAfter(to)) return false;
+    }
+    return true;
+  }
+
+  Future<MaterialRequest> createMaterialRequestByPurpose({
+    required String purpose,
+    required bool needsSource,
+    required bool needsTarget,
+    required DateTime transactionDate,
+    required DateTime requiredBy,
+    required String company,
+    required List<Map<String, dynamic>> items,
+    String? sourceWarehouse,
+    String? targetWarehouse,
+    String? namingSeries,
+    String? existingName,
+  }) async {
+    await appState.frappeService.ensureLoggedIn();
+    final date = DateRangePresets.toFrappeDate(transactionDate);
+    final schedule = DateRangePresets.toFrappeDate(requiredBy);
+    final source = sourceWarehouse?.trim() ?? '';
+    final target = targetWarehouse?.trim() ?? '';
+    final payloadItems = [
+      for (final item in items)
+        {
+          ...item,
+          'schedule_date': schedule,
+          if (needsSource && source.isNotEmpty) 'from_warehouse': source,
+          if (needsTarget && target.isNotEmpty) 'warehouse': target,
+          if (needsSource && !needsTarget && source.isNotEmpty)
+            'warehouse': source,
+        },
+    ];
+    final payload = {
+      'material_request_type': purpose,
+      'transaction_date': date,
+      'schedule_date': schedule,
+      'company': company.trim(),
+      if (needsSource && source.isNotEmpty) 'set_from_warehouse': source,
+      if (needsTarget && target.isNotEmpty) 'set_warehouse': target,
+      if (needsSource && !needsTarget && source.isNotEmpty)
+        'set_warehouse': source,
+      if ((namingSeries ?? '').trim().isNotEmpty &&
+          (existingName ?? '').trim().isEmpty)
+        'naming_series': namingSeries!.trim(),
+      'items': payloadItems,
+    };
+    final name = existingName?.trim() ?? '';
+    if (name.isNotEmpty) {
+      await appState.frappeService.updateDocument(
+        'Material Request',
+        name,
+        payload,
+      );
+      final updated = await appState.frappeService.fetchDocument(
+        'Material Request',
+        name,
+      );
+      return MaterialRequest.fromJson(updated);
+    }
+    final created = await appState.frappeService.createDocument(
+      'Material Request',
+      payload,
+    );
+    return MaterialRequest.fromJson(created);
   }
 }
 

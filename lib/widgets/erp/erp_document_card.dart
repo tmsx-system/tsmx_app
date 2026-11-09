@@ -9,6 +9,7 @@ class ErpDocumentCard extends StatelessWidget {
   final String statusText;
   final String date;
   final double value;
+  final String? valueLabel;
   final String? trailing;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
@@ -24,6 +25,7 @@ class ErpDocumentCard extends StatelessWidget {
     required this.statusText,
     required this.date,
     required this.value,
+    this.valueLabel,
     this.trailing,
     this.onTap,
     this.onEdit,
@@ -229,8 +231,10 @@ class ErpDocumentCard extends StatelessWidget {
                     label: date.isEmpty ? '-' : date,
                   ),
                   _InfoPill(
-                    icon: Icons.payments_outlined,
-                    label: formattedValue,
+                    icon: valueLabel == null
+                        ? Icons.payments_outlined
+                        : Icons.inventory_2_outlined,
+                    label: valueLabel ?? formattedValue,
                     strong: true,
                   ),
                 ],
