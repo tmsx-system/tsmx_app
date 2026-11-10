@@ -43,6 +43,9 @@ class _CreateMaterialTransferRequestScreenState
   String? _company;
   String? _sourceWarehouse;
   String? _targetWarehouse;
+  String? _customer;
+  String? _priceList;
+  List<ErpItemOption> _priceLists = const [];
   DateTime _transactionDate = DateTime.now();
   DateTime _requiredBy = DateTime.now();
   bool _loading = true;
@@ -81,6 +84,16 @@ class _CreateMaterialTransferRequestScreenState
       _company = state.preferredCompany(companies);
       final series = await state.appState.fetchNamingSeries('Material Request');
       final items = await _searchItems('');
+      var priceLists = const <ErpItemOption>[];
+      if (widget.purposeInfo.showPrice) {
+        try {
+          priceLists = await _searchPriceLists();
+        } catch (_) {
+          priceLists = const [
+            ErpItemOption(id: 'Standard Buying', label: 'Standard Buying'),
+          ];
+        }
+      }
       await _applyExisting(state, items);
       if (!mounted) return;
       setState(() {
@@ -88,6 +101,10 @@ class _CreateMaterialTransferRequestScreenState
         _seriesOptions = series;
         _series ??= series.isEmpty ? null : series.first;
         _items = items;
+        _priceLists = priceLists;
+        _priceList ??= priceLists.any((row) => row.id == 'Standard Buying')
+            ? 'Standard Buying'
+            : (priceLists.isEmpty ? null : priceLists.first.id);
       });
     } catch (error) {
       if (!mounted) return;
@@ -131,6 +148,10 @@ class _CreateMaterialTransferRequestScreenState
     if (requiredBy != null) _requiredBy = requiredBy;
     final series = doc['naming_series']?.toString().trim() ?? '';
     if (series.isNotEmpty) _series = series;
+    if (request.customer.isNotEmpty) _customer = request.customer;
+    if (request.buyingPriceList.isNotEmpty) {
+      _priceList = request.buyingPriceList;
+    }
     for (final row in _rows) {
       row.dispose();
     }
@@ -140,6 +161,7 @@ class _CreateMaterialTransferRequestScreenState
       row.itemCode = item.itemCode;
       row.uom = item.uom;
       row.qty.text = item.qty.toString();
+      if (item.rate > 0) row.rate.text = item.rate.toString();
       if (item.fromWarehouse.isNotEmpty) {
         _sourceWarehouse ??= item.fromWarehouse;
       }
@@ -159,6 +181,75 @@ class _CreateMaterialTransferRequestScreenState
       _rows.add(row);
     }
     if (_rows.isEmpty) _rows.add(_ItemRow());
+  }
+
+  Future<List<ErpItemOption>> _searchPriceLists() async {
+    final state = context.read<WarehouseStockState>();
+    final rows = await state.frappeService.fetchResource(
+      'Price List',
+      fields: const ['name'],
+      filters: const [
+        ['buying', '=', 1],
+        ['enabled', '=', 1],
+      ],
+      orderBy: 'name asc',
+      limit: 40,
+    );
+    return [
+      for (final row in rows)
+        if ((row['name']?.toString().trim() ?? '').isNotEmpty)
+          ErpItemOption(
+            id: row['name'].toString().trim(),
+            label: row['name'].toString().trim(),
+          ),
+    ];
+  }
+
+  Future<List<ErpItemOption>> _searchCustomers(String query) async {
+    final state = context.read<WarehouseStockState>();
+    final q = query.trim();
+    final rows = await state.frappeService.fetchResource(
+      'Customer',
+      fields: const ['name', 'customer_name'],
+      filters: const [
+        ['disabled', '=', 0],
+      ],
+      orFilters: q.isEmpty
+          ? null
+          : [
+              ['name', 'like', '%$q%'],
+              ['customer_name', 'like', '%$q%'],
+            ],
+      orderBy: 'customer_name asc',
+      limit: 40,
+    );
+    return [
+      for (final row in rows)
+        if ((row['name']?.toString().trim() ?? '').isNotEmpty)
+          ErpItemOption(
+            id: row['name'].toString().trim(),
+            label: (row['customer_name']?.toString().trim().isNotEmpty == true)
+                ? '${row['customer_name']} · ${row['name']}'
+                : row['name'].toString().trim(),
+          ),
+    ];
+  }
+
+  Future<double> _lookupRate(String itemCode) async {
+    final priceList = _priceList?.trim() ?? '';
+    if (priceList.isEmpty || itemCode.trim().isEmpty) return 0;
+    final state = context.read<WarehouseStockState>();
+    final rows = await state.frappeService.fetchResource(
+      'Item Price',
+      fields: const ['price_list_rate'],
+      filters: [
+        ['item_code', '=', itemCode],
+        ['price_list', '=', priceList],
+      ],
+      limit: 1,
+    );
+    if (rows.isEmpty) return 0;
+    return NumParse.asDouble(rows.first['price_list_rate']);
   }
 
   Future<List<ErpItemOption>> _searchItems(String query) async {
@@ -210,6 +301,10 @@ class _CreateMaterialTransferRequestScreenState
         limit: 1,
       );
       row.uom = rows.isEmpty ? '' : rows.first['stock_uom']?.toString() ?? '';
+      if (widget.purposeInfo.showPrice) {
+        final rate = await _lookupRate(code);
+        if (rate > 0) row.rate.text = rate.toString();
+      }
     } catch (_) {}
     if (mounted) setState(() {});
   }
@@ -239,6 +334,10 @@ class _CreateMaterialTransferRequestScreenState
     final source = _sourceWarehouse?.trim() ?? '';
     final target = _targetWarehouse?.trim() ?? '';
     final purpose = widget.purposeInfo;
+    if (purpose.needsCustomer && (_customer?.trim().isEmpty ?? true)) {
+      setState(() => _error = 'Customer wajib diisi.');
+      return;
+    }
     if (company.isEmpty ||
         (purpose.needsSource && source.isEmpty) ||
         (purpose.needsTarget && target.isEmpty)) {
@@ -259,6 +358,7 @@ class _CreateMaterialTransferRequestScreenState
         'qty': qty,
         if (row.uom.trim().isNotEmpty) 'uom': row.uom.trim(),
         if (row.uom.trim().isNotEmpty) 'stock_uom': row.uom.trim(),
+        if (purpose.showPrice) 'rate': NumParse.asDouble(row.rate.text),
       });
     }
     if (items.isEmpty) {
@@ -282,6 +382,8 @@ class _CreateMaterialTransferRequestScreenState
         targetWarehouse: target,
         namingSeries: _series,
         existingName: widget.existingName,
+        customer: purpose.needsCustomer ? _customer : null,
+        buyingPriceList: purpose.showPrice ? _priceList : null,
         items: items,
       );
       if (!mounted) return;
@@ -415,6 +517,32 @@ class _CreateMaterialTransferRequestScreenState
                           validator: (value) =>
                               (value ?? '').trim().isEmpty ? 'Company wajib' : null,
                         ),
+                        if (widget.purposeInfo.needsCustomer) ...[
+                          const SizedBox(height: 12),
+                          ErpItemAutocompleteField(
+                            label: 'Customer',
+                            selectedId: _customer,
+                            options: [
+                              if ((_customer ?? '').isNotEmpty)
+                                ErpItemOption(id: _customer!, label: _customer!),
+                            ],
+                            onSearch: _searchCustomers,
+                            decoration: _boxDecoration('Customer'),
+                            onSelected: (value) => setState(() => _customer = value),
+                            validator: (value) => (value ?? '').trim().isEmpty
+                                ? 'Customer wajib'
+                                : null,
+                          ),
+                        ],
+                        if (widget.purposeInfo.showPrice) ...[
+                          const SizedBox(height: 12),
+                          _selectField(
+                            label: 'Price List',
+                            selectedId: _priceList,
+                            options: _priceLists,
+                            onSelected: (value) => setState(() => _priceList = value),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         _DateField(
                           value: dateFormat.format(_transactionDate),
@@ -538,7 +666,26 @@ class _CreateMaterialTransferRequestScreenState
             controller: row.qty,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: _boxDecoration('Quantity'),
+            onChanged: widget.purposeInfo.showPrice ? (_) => setState(() {}) : null,
           ),
+          if (widget.purposeInfo.showPrice) ...[
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: row.rate,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: _boxDecoration('Rate'),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 8),
+            InputDecorator(
+              decoration: _boxDecoration('Amount'),
+              child: Text(
+                (NumParse.asDouble(row.qty.text) * NumParse.asDouble(row.rate.text))
+                    .toStringAsFixed(2),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           InputDecorator(
             decoration: _boxDecoration('UOM'),
@@ -598,8 +745,12 @@ class _ItemRow {
   String? itemCode;
   String uom = '';
   final qty = TextEditingController(text: '1');
+  final rate = TextEditingController(text: '0');
 
-  void dispose() => qty.dispose();
+  void dispose() {
+    qty.dispose();
+    rate.dispose();
+  }
 }
 
 class _PurposeInfoCard extends StatelessWidget {

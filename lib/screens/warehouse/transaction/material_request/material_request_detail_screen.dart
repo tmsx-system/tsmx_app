@@ -185,6 +185,10 @@ class _MaterialRequestDetailScreenState
                 _InfoCard(
                   rows: [
                     _InfoRow('Company', _request.company),
+                    if (_request.customer.isNotEmpty)
+                      _InfoRow('Customer', _request.customer),
+                    if (_request.buyingPriceList.isNotEmpty)
+                      _InfoRow('Price List', _request.buyingPriceList),
                     _InfoRow('Tanggal', _request.transactionDate),
                     _InfoRow('Required By', _request.scheduleDate),
                     _InfoRow('Status Dokumen', docStatusLabel(_request.docStatus)),
@@ -211,7 +215,9 @@ class _MaterialRequestDetailScreenState
                       for (final item in _request.items)
                         _InfoRow(
                           item.itemName.isEmpty ? item.itemCode : item.itemName,
-                          '${item.qty} ${item.uom}'.trim(),
+                          item.rate > 0
+                              ? '${item.qty} ${item.uom} · rate ${item.rate}'
+                              : '${item.qty} ${item.uom}'.trim(),
                           subtitle: [
                             item.itemCode,
                             if (item.fromWarehouse.isNotEmpty)

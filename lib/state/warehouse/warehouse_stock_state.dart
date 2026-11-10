@@ -2224,6 +2224,8 @@ class WarehouseStockState extends AppStateProxyNotifier {
     String? targetWarehouse,
     String? namingSeries,
     String? existingName,
+    String? customer,
+    String? buyingPriceList,
   }) async {
     await appState.frappeService.ensureLoggedIn();
     final date = DateRangePresets.toFrappeDate(transactionDate);
@@ -2246,6 +2248,9 @@ class WarehouseStockState extends AppStateProxyNotifier {
       'transaction_date': date,
       'schedule_date': schedule,
       'company': company.trim(),
+      if ((customer ?? '').trim().isNotEmpty) 'customer': customer!.trim(),
+      if ((buyingPriceList ?? '').trim().isNotEmpty)
+        'buying_price_list': buyingPriceList!.trim(),
       if (needsSource && source.isNotEmpty) 'set_from_warehouse': source,
       if (needsTarget && target.isNotEmpty) 'set_warehouse': target,
       if (needsSource && !needsTarget && source.isNotEmpty)

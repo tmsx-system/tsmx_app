@@ -191,11 +191,7 @@ class _CreateStockEntryScreenState extends State<CreateStockEntryScreen> {
         second,
       );
     }
-    _setPostingTime = detail.setPostingTime ||
-        (parsedDate != null &&
-            (parsedDate.year != DateTime.now().year ||
-                parsedDate.month != DateTime.now().month ||
-                parsedDate.day != DateTime.now().day));
+    _setPostingTime = detail.setPostingTime;
     _remarksController.text = detail.remarks;
     for (final row in _rows) {
       row.dispose();

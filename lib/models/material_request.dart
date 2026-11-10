@@ -5,6 +5,7 @@ class MaterialRequestItem {
   final String itemCode;
   final String itemName;
   final double qty;
+  final double rate;
   final double orderedQty;
   final String uom;
   final String warehouse;
@@ -15,6 +16,7 @@ class MaterialRequestItem {
     required this.itemCode,
     required this.itemName,
     required this.qty,
+    this.rate = 0,
     required this.orderedQty,
     this.uom = '',
     this.warehouse = '',
@@ -31,6 +33,7 @@ class MaterialRequestItem {
           (itemCode.isNotEmpty ? itemCode : null) ??
           'Unknown Item',
       qty: NumParse.asDouble(json['qty'] ?? json['stock_qty']),
+      rate: NumParse.asDouble(json['rate']),
       orderedQty: NumParse.asDouble(json['ordered_qty']),
       uom: json['uom']?.toString() ?? json['stock_uom']?.toString() ?? '',
       warehouse: json['warehouse']?.toString() ?? '',
@@ -51,6 +54,8 @@ class MaterialRequest {
   final String scheduleDate;
   final String sourceWarehouse;
   final String targetWarehouse;
+  final String customer;
+  final String buyingPriceList;
   final double totalQty;
   final List<MaterialRequestItem> items;
 
@@ -65,6 +70,8 @@ class MaterialRequest {
     required this.scheduleDate,
     this.sourceWarehouse = '',
     this.targetWarehouse = '',
+    this.customer = '',
+    this.buyingPriceList = '',
     required this.totalQty,
     this.items = const [],
   });
@@ -83,6 +90,8 @@ class MaterialRequest {
       scheduleDate: scheduleDate,
       sourceWarehouse: sourceWarehouse,
       targetWarehouse: targetWarehouse,
+      customer: customer,
+      buyingPriceList: buyingPriceList,
       totalQty: totalQty,
       items: items ?? this.items,
     );
@@ -116,6 +125,8 @@ class MaterialRequest {
       scheduleDate: json['schedule_date']?.toString() ?? '',
       sourceWarehouse: json['set_from_warehouse']?.toString() ?? '',
       targetWarehouse: json['set_warehouse']?.toString() ?? '',
+      customer: json['customer']?.toString() ?? '',
+      buyingPriceList: json['buying_price_list']?.toString() ?? '',
       totalQty: NumParse.asDouble(json['total_qty']),
       items: items,
     );
