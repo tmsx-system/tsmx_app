@@ -230,6 +230,10 @@ class TukarGulingState extends AppStateProxyNotifier {
     var claimNoteField = 'keterangan';
     var claimSourceField = 'notg';
     var claimAllocatedField = 'allocated_kg';
+    var sourceTableField = 'custom_sisa_sources';
+    var sourceDoctype = '';
+    var balanceTableField = 'saldo_sisa_per_sku';
+    var balanceDoctype = '';
 
     try {
       final forms = await _formFields(doctype);
@@ -250,6 +254,15 @@ class TukarGulingState extends AppStateProxyNotifier {
           if (isClaim) {
             claimTableField = fieldname;
             if (options.isNotEmpty) claimDoctype = options;
+          } else if (label.contains('sisa') &&
+              (label.contains('sumber') || fieldname.contains('source'))) {
+            sourceTableField = fieldname;
+            sourceDoctype = options;
+          } else if (label.contains('sisa') ||
+              label.contains('saldo') ||
+              fieldname.contains('saldo')) {
+            balanceTableField = fieldname;
+            balanceDoctype = options;
           } else if (isItem) {
             childTableField = fieldname;
             if (options.isNotEmpty) childDoctype = options;
@@ -329,6 +342,10 @@ class TukarGulingState extends AppStateProxyNotifier {
       claimNoteField: claimNoteField,
       claimSourceField: claimSourceField,
       claimAllocatedField: claimAllocatedField,
+      sourceTableField: sourceTableField,
+      sourceDoctype: sourceDoctype,
+      balanceTableField: balanceTableField,
+      balanceDoctype: balanceDoctype,
     );
     return _metaCache!;
   }
@@ -463,6 +480,161 @@ class TukarGulingState extends AppStateProxyNotifier {
       }
     }
     return claims;
+  }
+
+  String _frappeDate(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  Future<List<Map<String, dynamic>>> searchDeliveryNotes({
+    required String customer,
+    required String company,
+    required DateTime deliveryDate,
+    String query = '',
+  }) async {
+    await frappeService.ensureLoggedIn();
+    final q = query.trim();
+    return frappeService.fetchResource(
+      'Delivery Note',
+      fields: const ['name', 'customer', 'customer_name', 'posting_date'],
+      filters: [
+        ['customer', '=', customer.trim()],
+        ['company', '=', company.trim()],
+        ['posting_date', '=', _frappeDate(deliveryDate)],
+        ['docstatus', '=', 1],
+        ['is_return', '=', 0],
+        if (q.isNotEmpty) ['name', 'like', '%$q%'],
+      ],
+      orderBy: 'name desc',
+      limit: 40,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchDeliveryNoteItems(String name) async {
+    await frappeService.ensureLoggedIn();
+    final doc = await frappeService.fetchDocument('Delivery Note', name.trim());
+    final raw = doc['items'];
+    if (raw is! List) return const [];
+    return [
+      for (final row in raw.whereType<Map>())
+        if ((row['item_code']?.toString().trim() ?? '').isNotEmpty)
+          Map<String, dynamic>.from(row),
+    ];
+  }
+
+  /// Leftover kg from earlier Final documents. Uses the ERP API when it
+  /// exists, otherwise reads saldo rows that have not been taken again.
+  Future<List<TukarGulingRemainder>> fetchAvailableRemainders({
+    required String customer,
+    String? company,
+    String? excludeName,
+  }) async {
+    await frappeService.ensureLoggedIn();
+    try {
+      final raw = await frappeService.callMethod(
+        'tg_sisa_tersedia_v1',
+        args: {
+          'customer': customer.trim(),
+          'exclude_final': excludeName?.trim() ?? '',
+        },
+      );
+      final parsed = _remaindersFromApi(raw);
+      if (parsed.isNotEmpty) return parsed;
+    } catch (_) {}
+    return _remaindersFromDocuments(
+      customer: customer,
+      company: company,
+      excludeName: excludeName,
+    );
+  }
+
+  List<TukarGulingRemainder> _remaindersFromApi(dynamic raw) {
+    final message = raw is Map && raw['message'] != null ? raw['message'] : raw;
+    final rows = message is List
+        ? message
+        : (message is Map && message['rows'] is List ? message['rows'] as List : const []);
+    return [
+      for (final row in rows.whereType<Map>())
+        if ((row['source_final']?.toString().trim() ?? '').isNotEmpty &&
+            (row['item_code']?.toString().trim() ?? '').isNotEmpty)
+          TukarGulingRemainder(
+            sourceFinal: row['source_final'].toString().trim(),
+            itemCode: row['item_code'].toString().trim(),
+            itemName: row['item_name']?.toString() ?? '',
+            qtyKg: double.tryParse(row['qty_kg']?.toString() ?? '') ?? 0,
+            postingDate: row['posting_date']?.toString() ?? '',
+          ),
+    ].where((row) => row.qtyKg > 0).toList();
+  }
+
+  Future<List<TukarGulingRemainder>> _remaindersFromDocuments({
+    required String customer,
+    String? company,
+    String? excludeName,
+  }) async {
+    final filters = <List<dynamic>>[
+      ['customer', '=', customer.trim()],
+      ['docstatus', '=', 1],
+      if ((company ?? '').trim().isNotEmpty) ['company', '=', company!.trim()],
+    ];
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await frappeService.fetchResource(
+        doctype,
+        fields: const ['name', 'posting_date', 'workflow_state'],
+        filters: filters,
+        orderBy: 'posting_date desc',
+        limit: 40,
+      );
+    } catch (_) {
+      return const [];
+    }
+    final docs = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final name = row['name']?.toString().trim() ?? '';
+      if (name.isEmpty || name == excludeName?.trim()) continue;
+      try {
+        docs.add(await frappeService.fetchDocument(doctype, name));
+      } catch (_) {}
+    }
+    final used = <String, double>{};
+    for (final doc in docs) {
+      final sources = doc['custom_sisa_sources'];
+      if (sources is! List) continue;
+      for (final source in sources.whereType<Map>()) {
+        final key = '${source['source_final']}|${source['item_code']}';
+        final qty = double.tryParse(source['qty_kg']?.toString() ?? '') ?? 0;
+        used[key] = (used[key] ?? 0) + qty;
+      }
+    }
+    final available = <TukarGulingRemainder>[];
+    for (final doc in docs) {
+      final name = doc['name']?.toString().trim() ?? '';
+      final jenis = doc['custom_jenis_input']?.toString().trim().toLowerCase() ??
+          doc['jenis_input']?.toString().trim().toLowerCase() ??
+          '';
+      if (jenis != 'final') continue;
+      final balances = doc['saldo_sisa_per_sku'];
+      if (balances is! List) continue;
+      for (final balance in balances.whereType<Map>()) {
+        final code = balance['item_code']?.toString().trim() ?? '';
+        final qty = double.tryParse(balance['sisa_kg']?.toString() ?? '') ?? 0;
+        if (code.isEmpty || qty <= 0) continue;
+        final left = qty - (used['$name|$code'] ?? 0);
+        if (left <= 0.001) continue;
+        available.add(
+          TukarGulingRemainder(
+            sourceFinal: name,
+            itemCode: code,
+            itemName: balance['item_name']?.toString() ?? '',
+            qtyKg: left,
+            postingDate: doc['posting_date']?.toString() ?? '',
+          ),
+        );
+      }
+    }
+    return available;
   }
 
   TukarGulingDailyClaim? _claimFromLine(

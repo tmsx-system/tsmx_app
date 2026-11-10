@@ -78,6 +78,34 @@ class TukarGulingClaimDraft {
   }
 }
 
+class TukarGulingRemainder {
+  final String sourceFinal;
+  final String itemCode;
+  final String itemName;
+  final double qtyKg;
+  final String postingDate;
+
+  const TukarGulingRemainder({
+    required this.sourceFinal,
+    required this.itemCode,
+    this.itemName = '',
+    required this.qtyKg,
+    this.postingDate = '',
+  });
+}
+
+class TukarGulingBalance {
+  final String itemCode;
+  final String itemName;
+  final double qtyKg;
+
+  const TukarGulingBalance({
+    required this.itemCode,
+    this.itemName = '',
+    required this.qtyKg,
+  });
+}
+
 class TukarGulingDailyClaim {
   final String sourceName;
   final DateTime claimDate;
@@ -135,8 +163,15 @@ class TukarGulingDraft {
   final String jenisInput;
   final String metodeFinal;
   final String keterangan;
+  final DateTime? deliveryDate;
+  final String deliveryNote;
+  final double totalKg;
+  final int totalBox;
+  final double sisaKg;
   final List<TukarGulingClaimDraft> claims;
   final List<TukarGulingItemDraft> items;
+  final List<TukarGulingRemainder> usedRemainders;
+  final List<TukarGulingBalance> balances;
 
   const TukarGulingDraft({
     this.namingSeries,
@@ -147,8 +182,15 @@ class TukarGulingDraft {
     this.jenisInput = 'Harian',
     this.metodeFinal = '',
     this.keterangan = '',
+    this.deliveryDate,
+    this.deliveryNote = '',
+    this.totalKg = 0,
+    this.totalBox = 0,
+    this.sisaKg = 0,
     this.claims = const [],
     this.items = const [],
+    this.usedRemainders = const [],
+    this.balances = const [],
   });
 
   bool get isFinal => jenisInput.trim().toLowerCase() == 'final';
@@ -174,6 +216,39 @@ class TukarGulingDraft {
         meta.customerNameField: customerName.trim(),
       if (!isFinal && keterangan.trim().isNotEmpty)
         'keterangan': keterangan.trim(),
+      if (deliveryDate != null)
+        'tanggal_pengiriman':
+            '${deliveryDate!.year.toString().padLeft(4, '0')}-'
+            '${deliveryDate!.month.toString().padLeft(2, '0')}-'
+            '${deliveryDate!.day.toString().padLeft(2, '0')}',
+      if (deliveryNote.trim().isNotEmpty)
+        'no_delivery_note': deliveryNote.trim(),
+      if (totalKg > 0) 'custom_total_kg': totalKg,
+      if (isFinal && totalBox > 0) 'custom_total_box': totalBox,
+      if (isFinal) 'custom_sisa_kg': sisaKg,
+      if (isFinal &&
+          usedRemainders.isNotEmpty &&
+          meta.sourceDoctype.isNotEmpty)
+        meta.sourceTableField: [
+          for (final row in usedRemainders)
+            {
+              'doctype': meta.sourceDoctype,
+              'source_final': row.sourceFinal,
+              'item_code': row.itemCode,
+              if (row.itemName.trim().isNotEmpty) 'item_name': row.itemName,
+              'qty_kg': row.qtyKg,
+            },
+        ],
+      if (isFinal && balances.isNotEmpty && meta.balanceDoctype.isNotEmpty)
+        meta.balanceTableField: [
+          for (final row in balances)
+            {
+              'doctype': meta.balanceDoctype,
+              'item_code': row.itemCode,
+              if (row.itemName.trim().isNotEmpty) 'item_name': row.itemName,
+              'sisa_kg': row.qtyKg,
+            },
+        ],
       if (claims.isNotEmpty && metodeFinal.trim() != 'Input Langsung')
         meta.claimTableField: [
           for (final claim in claims) claim.toFrappeJson(meta),
@@ -205,6 +280,10 @@ class TukarGulingMeta {
   final String claimNoteField;
   final String claimSourceField;
   final String claimAllocatedField;
+  final String sourceTableField;
+  final String sourceDoctype;
+  final String balanceTableField;
+  final String balanceDoctype;
 
   const TukarGulingMeta({
     this.childTableField = 'tukar_guling_item',
@@ -221,6 +300,10 @@ class TukarGulingMeta {
     this.claimNoteField = 'keterangan',
     this.claimSourceField = 'notg',
     this.claimAllocatedField = 'allocated_kg',
+    this.sourceTableField = 'custom_sisa_sources',
+    this.sourceDoctype = '',
+    this.balanceTableField = 'saldo_sisa_per_sku',
+    this.balanceDoctype = '',
   });
 
   TukarGulingMeta copyWith({
@@ -243,6 +326,10 @@ class TukarGulingMeta {
       claimNoteField: claimNoteField,
       claimSourceField: claimSourceField,
       claimAllocatedField: claimAllocatedField,
+      sourceTableField: sourceTableField,
+      sourceDoctype: sourceDoctype,
+      balanceTableField: balanceTableField,
+      balanceDoctype: balanceDoctype,
     );
   }
 }
