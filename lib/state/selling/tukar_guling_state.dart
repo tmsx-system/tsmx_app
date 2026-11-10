@@ -232,6 +232,7 @@ class TukarGulingState extends AppStateProxyNotifier {
     var claimAllocatedField = 'allocated_kg';
     var sourceTableField = 'custom_sisa_sources';
     var sourceDoctype = '';
+    var sourceRefField = 'tg_final_sumber';
     var balanceTableField = 'saldo_sisa_per_sku';
     var balanceDoctype = '';
 
@@ -246,12 +247,21 @@ class TukarGulingState extends AppStateProxyNotifier {
         if (fieldname.isEmpty) continue;
         if (fieldtype == 'Table') {
           final optionName = options.toLowerCase();
-          final isClaim = label.contains('klaim') ||
+          final isClaim = fieldname == 'custom_claim_details' ||
+              label.contains('klaim') ||
               label.contains('claim') ||
               optionName.contains('harian');
           final isItem = !isClaim &&
+              fieldname != 'custom_sisa_sources' &&
+              fieldname != 'saldo_sisa_per_sku' &&
               (optionName.contains('item') || label.contains('item'));
-          if (isClaim) {
+          if (fieldname == 'custom_sisa_sources') {
+            sourceTableField = fieldname;
+            sourceDoctype = options.isNotEmpty ? options : 'TG Sisa Source';
+          } else if (fieldname == 'saldo_sisa_per_sku') {
+            balanceTableField = fieldname;
+            balanceDoctype = options.isNotEmpty ? options : 'TG Sisa Detail';
+          } else if (isClaim) {
             claimTableField = fieldname;
             if (options.isNotEmpty) claimDoctype = options;
           } else if (label.contains('sisa') &&
@@ -263,7 +273,7 @@ class TukarGulingState extends AppStateProxyNotifier {
               fieldname.contains('saldo')) {
             balanceTableField = fieldname;
             balanceDoctype = options;
-          } else if (isItem) {
+          } else if (isItem && fieldname != 'items') {
             childTableField = fieldname;
             if (options.isNotEmpty) childDoctype = options;
           }
@@ -323,6 +333,19 @@ class TukarGulingState extends AppStateProxyNotifier {
       }
       if (qtyKg != null) claimQtyField = qtyKg;
       if (itemLink != null) claimItemField = itemLink;
+      if (sourceDoctype.isNotEmpty) {
+        final sourceFields =
+            forms[sourceDoctype] ?? await _schemaFields(sourceDoctype);
+        final names = {
+          for (final row in sourceFields)
+            row['fieldname']?.toString().trim() ?? '',
+        };
+        if (names.contains('tg_final_sumber')) {
+          sourceRefField = 'tg_final_sumber';
+        } else if (names.contains('source_final')) {
+          sourceRefField = 'source_final';
+        }
+      }
     } catch (_) {
       // The form can still save with the field names already used by ERP.
     }
@@ -343,87 +366,58 @@ class TukarGulingState extends AppStateProxyNotifier {
       claimSourceField: claimSourceField,
       claimAllocatedField: claimAllocatedField,
       sourceTableField: sourceTableField,
-      sourceDoctype: sourceDoctype,
+      sourceDoctype: sourceDoctype.trim().isEmpty
+          ? 'TG Sisa Source'
+          : sourceDoctype,
+      sourceRefField: sourceRefField,
       balanceTableField: balanceTableField,
-      balanceDoctype: balanceDoctype,
+      balanceDoctype: balanceDoctype.trim().isEmpty
+          ? 'TG Sisa Detail'
+          : balanceDoctype,
     );
     return _metaCache!;
   }
 
   Future<Map<String, dynamic>> create(TukarGulingDraft draft) async {
     await frappeService.ensureLoggedIn();
-    final meta = await resolveMeta();
-    final attempts = <TukarGulingMeta>[
-      meta,
-      meta.copyWith(
-        childTableField: 'tukar_guling_item',
-        childDoctype: 'Tukar Guling Item',
-        warehouseField: 'source_warehouse',
-      ),
-      meta.copyWith(
-        childTableField: 'items',
-        childDoctype: 'Tukar Guling Item',
-        warehouseField: 'source_warehouse',
-      ),
-      meta.copyWith(
-        childTableField: 'tukar_guling_item',
-        childDoctype: 'Tukar Guling Item',
-        warehouseField: 's_warehouse',
-      ),
-      meta.copyWith(
-        childTableField: 'items',
-        childDoctype: 'Tukar Guling Item',
-        warehouseField: 's_warehouse',
-      ),
-    ];
-
-    Object? lastError;
-    final tried = <String>{};
-    for (final attempt in attempts) {
-      final key =
-          '${attempt.childTableField}|${attempt.warehouseField}|${attempt.childDoctype}';
-      if (!tried.add(key)) continue;
-      try {
-        final created = await frappeService.createDocument(
-          doctype,
-          draft.toFrappeJson(meta: attempt),
-        );
-        final name = created['name']?.toString().trim() ?? '';
-        if (name.isEmpty) {
-          throw Exception('ERP tidak mengembalikan nomor dokumen Tukar Guling.');
-        }
-        _metaCache = attempt;
-        return created;
-      } catch (error) {
-        lastError = error;
-      }
+    final meta = _metaForSave(await resolveMeta());
+    final created = await frappeService.createDocument(
+      doctype,
+      draft.toFrappeJson(meta: meta),
+    );
+    final name = created['name']?.toString().trim() ?? '';
+    if (name.isEmpty) {
+      throw Exception('ERP tidak mengembalikan nomor dokumen Tukar Guling.');
     }
-    throw lastError ?? Exception('Gagal membuat Tukar Guling.');
+    _metaCache = meta;
+    return created;
   }
 
   Future<void> update(String name, TukarGulingDraft draft) async {
     await frappeService.ensureLoggedIn();
     final id = name.trim();
     if (id.isEmpty) throw Exception('Dokumen Tukar Guling tidak valid.');
-    final meta = await resolveMeta();
-    try {
-      await frappeService.updateDocument(
-        doctype,
-        id,
-        draft.toFrappeJson(meta: meta),
-      );
-    } catch (_) {
-      await frappeService.updateDocument(
-        doctype,
-        id,
-        draft.toFrappeJson(
-          meta: meta.copyWith(
-            childTableField: 'items',
-            warehouseField: meta.warehouseField,
-          ),
-        ),
-      );
-    }
+    final meta = _metaForSave(await resolveMeta());
+    await frappeService.updateDocument(
+      doctype,
+      id,
+      draft.toFrappeJson(meta: meta, parentName: id),
+    );
+    _metaCache = meta;
+  }
+
+  TukarGulingMeta _metaForSave(TukarGulingMeta meta) {
+    final itemField = meta.childTableField.trim();
+    if (itemField.isNotEmpty && itemField != 'items') return meta;
+    return meta.copyWith(
+      childTableField: 'tukar_guling_item',
+      childDoctype: meta.childDoctype.trim().isEmpty
+          ? 'Tukar Guling Item'
+          : meta.childDoctype,
+      warehouseField: meta.warehouseField.trim().isEmpty
+          ? 'source_warehouse'
+          : meta.warehouseField,
+    );
   }
 
   /// Draft Harian claims for one customer, still counted in kg.
@@ -523,6 +517,112 @@ class TukarGulingState extends AppStateProxyNotifier {
     ];
   }
 
+  Future<
+      ({
+        List<TukarGulingDailyClaim> claims,
+        List<TukarGulingRemainder> remainders,
+      })> fetchGetFromSources({
+    required String customer,
+    String? company,
+    String? excludeName,
+    DateTime? postingDate,
+  }) async {
+    await frappeService.ensureLoggedIn();
+    try {
+      final raw = await frappeService.callMethod(
+        'tg_get_from_harian_sisa_v1',
+        args: {
+          'customer': customer.trim(),
+          'exclude_final': excludeName?.trim() ?? '',
+        },
+      );
+      final message = raw is Map && raw['message'] is Map
+          ? Map<String, dynamic>.from(raw['message'] as Map)
+          : (raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{});
+      _rememberChildDoctypes(
+        sourceDoctype: message['source_child_doctype']?.toString() ?? '',
+        balanceDoctype: message['saldo_child_doctype']?.toString() ?? '',
+        claimLinkField: message['claim_link_field']?.toString() ?? '',
+      );
+      final harian = message['harian'];
+      final saldo = message['saldo'];
+      return (
+        claims: [
+          for (final row in (harian is List ? harian : const []).whereType<Map>())
+            if ((row['item_code']?.toString().trim() ?? '').isNotEmpty)
+              TukarGulingDailyClaim(
+                sourceName: row['no_tg']?.toString() ?? '',
+                claimDate: DateTime.tryParse(row['posting_date']?.toString() ?? '') ??
+                    DateTime.now(),
+                itemCode: row['item_code'].toString().trim(),
+                itemName: row['item_name']?.toString() ?? '',
+                qtyKg: double.tryParse(row['qty_kg']?.toString() ?? '') ?? 0,
+              ),
+        ].where((row) => row.qtyKg > 0 && row.sourceName.isNotEmpty).toList(),
+        remainders: [
+          for (final row in (saldo is List ? saldo : const []).whereType<Map>())
+            if ((row['item_code']?.toString().trim() ?? '').isNotEmpty)
+              TukarGulingRemainder(
+                sourceFinal: _sourceFinalRef(row),
+                itemCode: row['item_code'].toString().trim(),
+                itemName: row['item_name']?.toString() ?? '',
+                qtyKg: double.tryParse(row['qty_kg']?.toString() ?? '') ?? 0,
+                postingDate: row['posting_date']?.toString() ?? '',
+              ),
+        ].where((row) => row.qtyKg > 0 && row.sourceFinal.isNotEmpty).toList(),
+      );
+    } catch (_) {
+      final claims = await fetchDailyClaims(
+        customer: customer,
+        company: company,
+        excludeName: excludeName,
+        postingDate: postingDate,
+      );
+      final remainders = await fetchAvailableRemainders(
+        customer: customer,
+        company: company,
+        excludeName: excludeName,
+      );
+      return (claims: claims, remainders: remainders);
+    }
+  }
+
+  void _rememberChildDoctypes({
+    required String sourceDoctype,
+    required String balanceDoctype,
+    required String claimLinkField,
+  }) {
+    final current = _metaCache;
+    if (current == null) return;
+    _metaCache = TukarGulingMeta(
+      childTableField: current.childTableField,
+      childDoctype: current.childDoctype,
+      warehouseField: current.warehouseField,
+      jenisField: current.jenisField,
+      metodeField: current.metodeField,
+      customerNameField: current.customerNameField,
+      claimTableField: current.claimTableField,
+      claimDoctype: current.claimDoctype,
+      claimDateField: current.claimDateField,
+      claimItemField: current.claimItemField,
+      claimQtyField: current.claimQtyField,
+      claimNoteField: current.claimNoteField,
+      claimSourceField: claimLinkField.trim().isEmpty
+          ? current.claimSourceField
+          : claimLinkField.trim(),
+      claimAllocatedField: current.claimAllocatedField,
+      sourceTableField: current.sourceTableField,
+      sourceDoctype: sourceDoctype.trim().isEmpty
+          ? current.sourceDoctype
+          : sourceDoctype.trim(),
+      sourceRefField: current.sourceRefField,
+      balanceTableField: current.balanceTableField,
+      balanceDoctype: balanceDoctype.trim().isEmpty
+          ? current.balanceDoctype
+          : balanceDoctype.trim(),
+    );
+  }
+
   /// Leftover kg from earlier Final documents. Uses the ERP API when it
   /// exists, otherwise reads saldo rows that have not been taken again.
   Future<List<TukarGulingRemainder>> fetchAvailableRemainders({
@@ -549,6 +649,12 @@ class TukarGulingState extends AppStateProxyNotifier {
     );
   }
 
+  String _sourceFinalRef(Map row) {
+    final primary = row['tg_final_sumber']?.toString().trim() ?? '';
+    if (primary.isNotEmpty) return primary;
+    return row['source_final']?.toString().trim() ?? '';
+  }
+
   List<TukarGulingRemainder> _remaindersFromApi(dynamic raw) {
     final message = raw is Map && raw['message'] != null ? raw['message'] : raw;
     final rows = message is List
@@ -556,10 +662,10 @@ class TukarGulingState extends AppStateProxyNotifier {
         : (message is Map && message['rows'] is List ? message['rows'] as List : const []);
     return [
       for (final row in rows.whereType<Map>())
-        if ((row['source_final']?.toString().trim() ?? '').isNotEmpty &&
+        if (_sourceFinalRef(row).isNotEmpty &&
             (row['item_code']?.toString().trim() ?? '').isNotEmpty)
           TukarGulingRemainder(
-            sourceFinal: row['source_final'].toString().trim(),
+            sourceFinal: _sourceFinalRef(row),
             itemCode: row['item_code'].toString().trim(),
             itemName: row['item_name']?.toString() ?? '',
             qtyKg: double.tryParse(row['qty_kg']?.toString() ?? '') ?? 0,
@@ -603,7 +709,8 @@ class TukarGulingState extends AppStateProxyNotifier {
       final sources = doc['custom_sisa_sources'];
       if (sources is! List) continue;
       for (final source in sources.whereType<Map>()) {
-        final key = '${source['source_final']}|${source['item_code']}';
+        final ref = source['tg_final_sumber'] ?? source['source_final'];
+        final key = '$ref|${source['item_code']}';
         final qty = double.tryParse(source['qty_kg']?.toString() ?? '') ?? 0;
         used[key] = (used[key] ?? 0) + qty;
       }
@@ -683,14 +790,41 @@ class TukarGulingState extends AppStateProxyNotifier {
     'Kepok': 11,
   };
 
-    /// How many kg make one box. Known item groups follow the ERP script.
-    /// Any other group uses the Item's own Box or Kg conversion.
-  Future<double?> kgPerBox(String itemCode) async {
+  static double? kgPerBoxFromLabel({
+    required String itemCode,
+    String itemName = '',
+    String itemGroup = '',
+  }) {
+    if (itemCode.trim() == 'SPF-JKT-029') return 13;
+    final text = '${itemName.toLowerCase()} ${itemGroup.toLowerCase()}';
+    if (text.contains('cavendish') ||
+        text.contains('ambon lumut') ||
+        text.contains('lakatan')) {
+      return 13;
+    }
+    if (text.contains('barangan') || text.contains('kepok')) return 11;
+    for (final entry in boxKgByItemGroup.entries) {
+      if (itemGroup.trim().toLowerCase() == entry.key.toLowerCase()) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  /// How many kg make one box. Known fruit names follow the ERP script.
+  /// Any other item uses the Item's own Box or Kg conversion.
+  Future<double?> kgPerBox(String itemCode, {String itemName = ''}) async {
+    final known = kgPerBoxFromLabel(itemCode: itemCode, itemName: itemName);
+    if (known != null) return known;
     await frappeService.ensureLoggedIn();
     final doc = await frappeService.fetchDocument('Item', itemCode.trim());
     final group = doc['item_group']?.toString().trim() ?? '';
-    final mapped = boxKgByItemGroup[group];
-    if (mapped != null) return mapped;
+    final named = kgPerBoxFromLabel(
+      itemCode: itemCode,
+      itemName: doc['item_name']?.toString() ?? itemName,
+      itemGroup: group,
+    );
+    if (named != null) return named;
     final stock = (doc['stock_uom'] ?? '').toString().toLowerCase();
     final weightUom = (doc['weight_uom'] ?? '').toString().toLowerCase();
     final weight = double.tryParse(

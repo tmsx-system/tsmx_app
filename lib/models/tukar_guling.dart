@@ -58,23 +58,32 @@ class TukarGulingClaimDraft {
     this.sourceName = '',
   });
 
-  Map<String, dynamic> toFrappeJson(TukarGulingMeta meta) {
+  Map<String, dynamic> toFrappeJson(
+    TukarGulingMeta meta, {
+    String? parentName,
+  }) {
     final date =
         '${claimDate.year.toString().padLeft(4, '0')}-'
         '${claimDate.month.toString().padLeft(2, '0')}-'
         '${claimDate.day.toString().padLeft(2, '0')}';
-    return {
-      'doctype': meta.claimDoctype,
-      meta.claimDateField: date,
-      meta.claimItemField: itemCode.trim(),
-      if (itemName.trim().isNotEmpty) 'item_name': itemName.trim(),
-      meta.claimQtyField: qtyKg,
-      if (keterangan.trim().isNotEmpty) meta.claimNoteField: keterangan.trim(),
-      if (sourceName.trim().isNotEmpty && meta.claimSourceField.isNotEmpty)
-        meta.claimSourceField: sourceName.trim(),
-      if (sourceName.trim().isNotEmpty && meta.claimAllocatedField.isNotEmpty)
-        meta.claimAllocatedField: qtyKg,
-    };
+    final source = sourceName.trim();
+    return tukarGulingChildRow(
+      tableField: meta.claimTableField,
+      childDoctype: meta.claimDoctype,
+      parentName: parentName,
+      values: {
+        meta.claimDateField: date,
+        meta.claimItemField: itemCode.trim(),
+        if (itemName.trim().isNotEmpty) 'item_name': itemName.trim(),
+        meta.claimQtyField: qtyKg,
+        if (keterangan.trim().isNotEmpty)
+          meta.claimNoteField: keterangan.trim(),
+        if (source.isNotEmpty && meta.claimSourceField.isNotEmpty)
+          meta.claimSourceField: source,
+        if (source.isNotEmpty && meta.claimAllocatedField.isNotEmpty)
+          meta.claimAllocatedField: qtyKg,
+      },
+    );
   }
 }
 
@@ -141,16 +150,22 @@ class TukarGulingItemDraft {
 
   Map<String, dynamic> toFrappeJson({
     String childDoctype = 'Tukar Guling Item',
+    String tableField = 'tukar_guling_item',
     String warehouseField = 'source_warehouse',
+    String? parentName,
   }) {
-    return {
-      'doctype': childDoctype,
-      'item_code': itemCode.trim(),
-      if (itemName.trim().isNotEmpty) 'item_name': itemName.trim(),
-      warehouseField: sourceWarehouse.trim(),
-      'qty': qty,
-      if (uom.trim().isNotEmpty) 'uom': uom.trim(),
-    };
+    return tukarGulingChildRow(
+      tableField: tableField,
+      childDoctype: childDoctype,
+      parentName: parentName,
+      values: {
+        'item_code': itemCode.trim(),
+        if (itemName.trim().isNotEmpty) 'item_name': itemName.trim(),
+        warehouseField: sourceWarehouse.trim(),
+        'qty': qty,
+        if (uom.trim().isNotEmpty) 'uom': uom.trim(),
+      },
+    );
   }
 }
 
@@ -197,14 +212,20 @@ class TukarGulingDraft {
 
   Map<String, dynamic> toFrappeJson({
     TukarGulingMeta meta = const TukarGulingMeta(),
+    String? parentName,
   }) {
     final date =
         '${postingDate.year.toString().padLeft(4, '0')}-'
         '${postingDate.month.toString().padLeft(2, '0')}-'
         '${postingDate.day.toString().padLeft(2, '0')}';
+    final parent = (parentName ?? '').trim();
+    final itemTable = meta.childTableField.trim() == 'items'
+        ? 'tukar_guling_item'
+        : meta.childTableField;
     return {
       'doctype': 'Tukar Guling',
-      if ((namingSeries ?? '').trim().isNotEmpty)
+      if (parent.isNotEmpty) 'name': parent,
+      if (parent.isEmpty && (namingSeries ?? '').trim().isNotEmpty)
         'naming_series': namingSeries!.trim(),
       meta.jenisField: isFinal ? 'Final' : 'Harian',
       if (isFinal && metodeFinal.trim().isNotEmpty)
@@ -231,38 +252,66 @@ class TukarGulingDraft {
           meta.sourceDoctype.isNotEmpty)
         meta.sourceTableField: [
           for (final row in usedRemainders)
-            {
-              'doctype': meta.sourceDoctype,
-              'source_final': row.sourceFinal,
-              'item_code': row.itemCode,
-              if (row.itemName.trim().isNotEmpty) 'item_name': row.itemName,
-              'qty_kg': row.qtyKg,
-            },
+            tukarGulingChildRow(
+              tableField: meta.sourceTableField,
+              childDoctype: meta.sourceDoctype,
+              parentName: parent,
+              values: {
+                meta.sourceRefField: row.sourceFinal,
+                'item_code': row.itemCode,
+                if (row.itemName.trim().isNotEmpty) 'item_name': row.itemName,
+                'qty_kg': row.qtyKg,
+              },
+            ),
         ],
       if (isFinal && balances.isNotEmpty && meta.balanceDoctype.isNotEmpty)
         meta.balanceTableField: [
           for (final row in balances)
-            {
-              'doctype': meta.balanceDoctype,
-              'item_code': row.itemCode,
-              if (row.itemName.trim().isNotEmpty) 'item_name': row.itemName,
-              'sisa_kg': row.qtyKg,
-            },
+            tukarGulingChildRow(
+              tableField: meta.balanceTableField,
+              childDoctype: meta.balanceDoctype,
+              parentName: parent,
+              values: {
+                'item_code': row.itemCode,
+                if (row.itemName.trim().isNotEmpty) 'item_name': row.itemName,
+                'sisa_kg': row.qtyKg,
+              },
+            ),
         ],
       if (claims.isNotEmpty && metodeFinal.trim() != 'Input Langsung')
         meta.claimTableField: [
-          for (final claim in claims) claim.toFrappeJson(meta),
+          for (final claim in claims)
+            claim.toFrappeJson(meta, parentName: parent),
         ],
       if (isFinal)
-        meta.childTableField: [
+        itemTable: [
           for (final item in items)
             item.toFrappeJson(
               childDoctype: meta.childDoctype,
+              tableField: itemTable,
               warehouseField: meta.warehouseField,
+              parentName: parent,
             ),
         ],
     };
   }
+}
+
+Map<String, dynamic> tukarGulingChildRow({
+  required String tableField,
+  required String childDoctype,
+  String? parentName,
+  required Map<String, dynamic> values,
+}) {
+  final parent = (parentName ?? '').trim();
+  final doctype = childDoctype.trim();
+  return {
+    ...values,
+    if (doctype.isNotEmpty) 'doctype': doctype,
+    'parenttype': 'Tukar Guling',
+    'parentfield': tableField,
+    if (parent.isNotEmpty) 'parent': parent,
+  };
 }
 
 class TukarGulingMeta {
@@ -282,6 +331,7 @@ class TukarGulingMeta {
   final String claimAllocatedField;
   final String sourceTableField;
   final String sourceDoctype;
+  final String sourceRefField;
   final String balanceTableField;
   final String balanceDoctype;
 
@@ -301,9 +351,10 @@ class TukarGulingMeta {
     this.claimSourceField = 'notg',
     this.claimAllocatedField = 'allocated_kg',
     this.sourceTableField = 'custom_sisa_sources',
-    this.sourceDoctype = '',
+    this.sourceDoctype = 'TG Sisa Source',
+    this.sourceRefField = 'tg_final_sumber',
     this.balanceTableField = 'saldo_sisa_per_sku',
-    this.balanceDoctype = '',
+    this.balanceDoctype = 'TG Sisa Detail',
   });
 
   TukarGulingMeta copyWith({
@@ -328,6 +379,7 @@ class TukarGulingMeta {
       claimAllocatedField: claimAllocatedField,
       sourceTableField: sourceTableField,
       sourceDoctype: sourceDoctype,
+      sourceRefField: sourceRefField,
       balanceTableField: balanceTableField,
       balanceDoctype: balanceDoctype,
     );

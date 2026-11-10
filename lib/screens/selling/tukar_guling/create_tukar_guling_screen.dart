@@ -175,6 +175,15 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         ? null
         : DateTime(delivered.year, delivered.month, delivered.day);
     _deliveryNote = doc['no_delivery_note']?.toString().trim();
+    _totalKg = double.tryParse(doc['custom_total_kg']?.toString() ?? '') ?? 0;
+    _totalBox = (double.tryParse(doc['custom_total_box']?.toString() ?? '') ?? 0).round();
+    _sisaKg = double.tryParse(doc['custom_sisa_kg']?.toString() ?? '') ?? 0;
+    _usedRemainders
+      ..clear()
+      ..addAll(_remaindersOf(doc['custom_sisa_sources']));
+    _balances
+      ..clear()
+      ..addAll(_balancesOf(doc['saldo_sisa_per_sku']));
     final rawClaims = state.claimRowsOf(doc);
     for (final claim in _claims) {
       claim.dispose();
@@ -765,6 +774,46 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                           const SizedBox(height: 8),
                           _pulledClaimTile(i),
                         ],
+                        if (_usedRemainders.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Sisa Final yang dipakai',
+                            style: TextStyle(
+                              color: AppColors.navy,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          for (final row in _usedRemainders) ...[
+                            const SizedBox(height: 8),
+                            _kgLine(
+                              title: row.sourceFinal,
+                              subtitle: row.itemName.isEmpty
+                                  ? row.itemCode
+                                  : row.itemName,
+                              qty: '${_qtyText(row.qtyKg)} kg',
+                            ),
+                          ],
+                        ],
+                        if (_balances.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Sisa kg untuk Final berikutnya',
+                            style: TextStyle(
+                              color: AppColors.navy,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          for (final row in _balances) ...[
+                            const SizedBox(height: 8),
+                            _kgLine(
+                              title: row.itemName.isEmpty
+                                  ? row.itemCode
+                                  : row.itemName,
+                              subtitle: row.itemCode,
+                              qty: 'Sisa ${_qtyText(row.qtyKg)} kg',
+                            ),
+                          ],
+                        ],
                       ],
                     ),
                     if (_rows.isNotEmpty) ...[
@@ -1202,17 +1251,14 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     List<TukarGulingDailyClaim> claims;
     List<TukarGulingRemainder> remainders = const [];
     try {
-      claims = await state.fetchDailyClaims(
+      final sources = await state.fetchGetFromSources(
         customer: customer,
         company: _company,
         excludeName: _documentName,
         postingDate: _postingDate,
       );
-      remainders = await state.fetchAvailableRemainders(
-        customer: customer,
-        company: _company,
-        excludeName: _documentName,
-      );
+      claims = sources.claims;
+      remainders = sources.remainders;
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = captureErpError(context, error));
@@ -1274,25 +1320,26 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     }
     final summaries = <String>[];
     final nextRows = <_ItemRow>[];
-    final allocated = <TukarGulingDailyClaim>[];
     final balances = <TukarGulingBalance>[];
     final warehouse = state.preferredWarehouseName(_company) ?? '';
     var totalKg = 0.0;
     var totalBox = 0;
     var totalSisa = 0.0;
     for (final entry in grouped.entries) {
-      final perBox = await state.kgPerBox(entry.key);
+      final perBox = await state.kgPerBox(
+        entry.key,
+        itemName: entry.value.name,
+      );
       if (perBox == null || perBox <= 0) {
         if (!mounted) return;
         setState(() {
           _error =
-              '${entry.value.name}: konversi Kg/Box belum ada untuk item group ini.';
+              '${entry.value.name}: KG/Box belum ditentukan untuk SKU ini.';
         });
         return;
       }
       final boxes = ((entry.value.kg + 0.000001) / perBox).floor();
-      var needed = _round3(boxes * perBox);
-      final remainder = _round3(entry.value.kg - needed);
+      final remainder = _round3(entry.value.kg - _round3(boxes * perBox));
       totalKg += entry.value.kg;
       totalBox += boxes;
       totalSisa += remainder;
@@ -1306,26 +1353,10 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         );
       }
       summaries.add(
-        '${entry.value.name}: ${_qtyText(entry.value.kg)} kg = $boxes box'
-        '${remainder > 0.001 ? ', sisa ${_qtyText(remainder)} kg' : ''}',
+        '${entry.value.name}: ${_qtyText(entry.value.kg)} kg / ${_qtyText(perBox)}'
+        ' = $boxes box, sisa ${_qtyText(remainder)} kg',
       );
       if (boxes <= 0) continue;
-      for (final claim in entry.value.rows) {
-        if (needed <= 0) break;
-        final used = _round3(claim.qtyKg < needed ? claim.qtyKg : needed);
-        if (used <= 0) continue;
-        allocated.add(
-          TukarGulingDailyClaim(
-            sourceName: claim.sourceName,
-            claimDate: claim.claimDate,
-            itemCode: claim.itemCode,
-            itemName: entry.value.name,
-            qtyKg: used,
-            keterangan: claim.keterangan,
-          ),
-        );
-        needed = _round3(needed - used);
-      }
       nextRows.add(
         _ItemRow(
           itemCode: entry.key,
@@ -1362,7 +1393,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       _claims
         ..clear()
         ..addAll([
-          for (final claim in allocated)
+          for (final claim in ordered)
             _ClaimRow(
               claimDate: claim.claimDate,
               itemCode: claim.itemCode,
@@ -1380,6 +1411,56 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         ..clear()
         ..addAll(nextRows);
     });
+  }
+
+  Widget _kgLine({
+    required String title,
+    required String subtitle,
+    required String qty,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8EB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF3E0B5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (subtitle.isNotEmpty && subtitle != title)
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: AppColors.slate,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            qty,
+            style: const TextStyle(
+              color: AppColors.navy,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _pulledClaimTile(int index) {
@@ -1892,6 +1973,37 @@ class _ClaimRow {
   }
 }
 
+List<TukarGulingRemainder> _remaindersOf(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final row in raw.whereType<Map>())
+      if ((row['item_code']?.toString().trim() ?? '').isNotEmpty)
+        TukarGulingRemainder(
+          sourceFinal: (row['tg_final_sumber'] ?? row['source_final'])
+                  ?.toString()
+                  .trim() ??
+              '',
+          itemCode: row['item_code'].toString().trim(),
+          itemName: row['item_name']?.toString() ?? '',
+          qtyKg: double.tryParse(row['qty_kg']?.toString() ?? '') ?? 0,
+          postingDate: row['posting_date']?.toString() ?? '',
+        ),
+  ].where((row) => row.qtyKg > 0 && row.sourceFinal.isNotEmpty).toList();
+}
+
+List<TukarGulingBalance> _balancesOf(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final row in raw.whereType<Map>())
+      if ((row['item_code']?.toString().trim() ?? '').isNotEmpty)
+        TukarGulingBalance(
+          itemCode: row['item_code'].toString().trim(),
+          itemName: row['item_name']?.toString() ?? '',
+          qtyKg: double.tryParse(row['sisa_kg']?.toString() ?? '') ?? 0,
+        ),
+  ].where((row) => row.qtyKg > 0).toList();
+}
+
 String _claimItemCode(Map map) {
   for (final key in ['item_code', 'item']) {
     final text = map[key]?.toString().trim() ?? '';
@@ -1989,15 +2101,27 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
   }
 
   Future<void> _loadFactors() async {
+    final names = <String, String>{
+      for (final claim in widget.claims)
+        if (claim.itemName.trim().isNotEmpty) claim.itemCode: claim.itemName,
+      for (final row in widget.remainders)
+        if (row.itemName.trim().isNotEmpty) row.itemCode: row.itemName,
+    };
     final codes = {
       ...widget.claims.map((claim) => claim.itemCode),
       ...widget.remainders.map((row) => row.itemCode),
     };
     for (final code in codes) {
       try {
-        _perBox[code] = await widget.state.kgPerBox(code);
+        _perBox[code] = await widget.state.kgPerBox(
+          code,
+          itemName: names[code] ?? '',
+        );
       } catch (_) {
-        _perBox[code] = null;
+        _perBox[code] = TukarGulingState.kgPerBoxFromLabel(
+          itemCode: code,
+          itemName: names[code] ?? '',
+        );
       }
     }
     if (mounted) setState(() => _loading = false);
