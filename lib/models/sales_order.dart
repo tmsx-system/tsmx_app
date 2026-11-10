@@ -9,6 +9,7 @@ class SalesOrderItem {
   final String itemName;
   final int qty;
   final double rate;
+  final double priceListRate;
   final double discountAmount;
   final String warehouse;
   final String costCenter;
@@ -19,6 +20,7 @@ class SalesOrderItem {
     required this.itemName,
     required this.qty,
     required this.rate,
+    this.priceListRate = 0,
     this.discountAmount = 0,
     this.warehouse = '',
     this.costCenter = '',
@@ -35,6 +37,7 @@ class SalesOrderItem {
           'Unknown Item',
       qty: NumParse.asInt(json['qty'] ?? json['stock_qty']),
       rate: NumParse.asDouble(json['rate'] ?? json['net_rate']),
+      priceListRate: NumParse.asDouble(json['price_list_rate']),
       discountAmount: NumParse.asDouble(json['discount_amount']),
       warehouse: json['warehouse']?.toString() ?? '',
       costCenter: json['cost_center']?.toString() ?? '',

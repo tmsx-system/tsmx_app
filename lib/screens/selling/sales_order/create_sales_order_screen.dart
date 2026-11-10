@@ -895,7 +895,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     ];
   }
 
-  Future<void> _loadCustomerInsight() async {
+  Future<void> _loadCustomerInsight({bool repriceItems = true}) async {
     final customer = _customerCtrl.text.trim();
     if (customer.isEmpty) return;
     setState(() {
@@ -919,7 +919,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
             ? insight.priceListCurrency
             : (_selectedCurrency ?? _priceListCurrency);
       });
-      await _repriceAllItems();
+      if (repriceItems) await _repriceAllItems();
     } catch (error) {
       if (!mounted) return;
       setState(() => _customerInsightError = error.toString());
@@ -973,7 +973,9 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       if (row != null && row.itemCode != itemCode) return insight;
       final resolvedPrice = insight.priceListRate > 0
           ? insight.priceListRate
-          : insight.price;
+          : (insight.price > 0 && insight.discountAmount > 0
+                ? insight.price + insight.discountAmount
+                : insight.price);
       _safeSetState(() {
         _itemInsights[itemCode] = insight;
       });
@@ -2769,7 +2771,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
             ? '${item.itemName} - ${item.itemCode}'
             : item.itemName,
         qty: item.qty.toString(),
-        rate: item.rate > 0 ? _formatRupiah(item.rate) : '',
+        rate: _savedListRateText(item),
         discount: item.discountAmount > 0
             ? _formatRupiah(item.discountAmount)
             : '0',
@@ -2816,9 +2818,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
             ? firstItem.itemCode
             : firstItem.itemName;
         _qtyCtrl.text = firstItem.qty.toString();
-        _rateCtrl.text = firstItem.rate > 0
-            ? _formatRupiah(firstItem.rate)
-            : '';
+        _rateCtrl.text = _savedListRateText(firstItem);
         if (firstItem.warehouse.isNotEmpty) {
           _selectedWarehouse = firstItem.warehouse;
           final warehouse = _selectedWarehouseInfo(
@@ -2839,8 +2839,17 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     } finally {
       _syncingControllers = false;
     }
-    _loadCustomerInsight();
+    _loadCustomerInsight(repriceItems: false);
     _scheduleCalculateTotal();
+  }
+
+  String _savedListRateText(SalesOrderItem item) {
+    final listRate = item.priceListRate > 0
+        ? item.priceListRate
+        : (item.rate > 0 && item.discountAmount > 0
+              ? item.rate + item.discountAmount
+              : item.rate);
+    return listRate > 0 ? _formatRupiah(listRate) : '';
   }
 
   Widget _buildAdditionalItemCard(int index, _AdditionalItemRow row) {
