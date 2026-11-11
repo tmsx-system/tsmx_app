@@ -106,7 +106,7 @@ class CustomerService {
   Future<List<SalesCustomerOption>> fetchSalesCustomers({
     String? salesPerson,
   }) async {
-    final customers = await _fetchPermittedCustomers();
+    final customers = await _fetchPermittedCustomers(salesPerson: salesPerson);
     return _withSalesPerson(customers, salesPerson);
   }
 
@@ -116,9 +116,13 @@ class CustomerService {
   }) async {
     final q = query.trim();
     if (q.isEmpty) return fetchSalesCustomers(salesPerson: salesPerson);
+    final person = salesPerson?.trim() ?? '';
     final rows = await _frappe.fetchResource(
       'Customer',
       fields: const ['name', 'customer_name', 'primary_address'],
+      filters: [
+        if (person.isNotEmpty) ['Sales Team', 'sales_person', '=', person],
+      ],
       orFilters: [
         ['name', 'like', '%$q%'],
         ['customer_name', 'like', '%$q%'],
@@ -148,12 +152,18 @@ class CustomerService {
         .toList();
   }
 
-  Future<List<SalesCustomerOption>> _fetchPermittedCustomers() async {
+  Future<List<SalesCustomerOption>> _fetchPermittedCustomers({
+    String? salesPerson,
+  }) async {
+    final person = salesPerson?.trim() ?? '';
     final rows = await _frappe.fetchResource(
       'Customer',
       fields: const ['name', 'customer_name', 'primary_address'],
+      filters: [
+        if (person.isNotEmpty) ['Sales Team', 'sales_person', '=', person],
+      ],
       orderBy: 'customer_name asc',
-      limit: 500,
+      limit: 2000,
     );
     return rows
         .map(SalesCustomerOption.fromJson)

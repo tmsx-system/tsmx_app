@@ -2234,9 +2234,15 @@ class AppState with ChangeNotifier {
         await resolveCurrentSalesIdentity();
       } catch (_) {}
     }
+    if (_shouldScopeSalesData &&
+        (_currentSalesPerson == null || _currentSalesPerson!.trim().isEmpty)) {
+      return const [];
+    }
 
     final cacheKey = _salesCustomersCacheKey(
-      salesPerson: _currentUser?.trim() ?? '',
+      salesPerson: _shouldScopeSalesData
+          ? 'team:${_currentSalesPerson?.trim() ?? ''}'
+          : 'all',
     );
     if (!forceRefresh) {
       final cachedCustomers = await _readSalesCustomersFromDb(cacheKey);
@@ -2287,6 +2293,10 @@ class AppState with ChangeNotifier {
       try {
         await resolveCurrentSalesIdentity();
       } catch (_) {}
+    }
+    if (_shouldScopeSalesData &&
+        (_currentSalesPerson == null || _currentSalesPerson!.trim().isEmpty)) {
+      return const [];
     }
     try {
       return await _customerService.searchSalesCustomers(
@@ -2347,7 +2357,7 @@ class AppState with ChangeNotifier {
     final user = _currentUser?.trim() ?? _frappeService.username?.trim() ?? '';
     return [
       _masterDataCachePrefix,
-      'sales_customers',
+      'sales_customers_by_team',
       site,
       user,
       salesPerson?.trim() ?? '',

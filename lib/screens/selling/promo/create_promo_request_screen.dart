@@ -714,6 +714,8 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
   }
 
   Future<void> _pickCustomer() async {
+    final promoState = context.read<PromoState>();
+    final salesPerson = promoState.currentSalesPerson?.trim() ?? '';
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
@@ -722,14 +724,16 @@ class _CreatePromoRequestScreenState extends State<CreatePromoRequestScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => _LinkSearchSheet(
-        state: context.read<PromoState>(),
+        state: promoState,
         title: 'Pilih Customer',
         searchHint: 'Cari nama atau kode customer',
         emptyText: 'Customer tidak ditemukan',
         doctype: 'Customer',
         fields: const ['name', 'customer_name', 'customer_group', 'disabled'],
-        baseFilters: const [
-          ['disabled', '=', 0],
+        baseFilters: [
+          const ['disabled', '=', 0],
+          if (promoState.isSalesUserRole && salesPerson.isNotEmpty)
+            ['Sales Team', 'sales_person', '=', salesPerson],
         ],
         orderBy: 'customer_name asc',
         icon: Icons.storefront_rounded,
