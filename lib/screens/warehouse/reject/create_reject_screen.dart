@@ -34,7 +34,6 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
   String? _series;
   List<String> _seriesOptions = const [];
   String? _company;
-  String? _customer;
   DateTime _postingDate = DateTime.now();
   String? _stockEntry;
   String? _savedName;
@@ -108,7 +107,6 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
     final doc = await state.fetchDetail(name);
     _series = doc['naming_series']?.toString().trim() ?? _series;
     _company = doc['company']?.toString().trim() ?? _company;
-    _customer = doc['customer']?.toString().trim() ?? _customer;
     _stockEntry = doc['stock_entry']?.toString().trim();
     _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
     try {
@@ -165,22 +163,6 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
     );
     if (picked == null || !mounted) return;
     setState(() => _postingDate = picked);
-  }
-
-  Future<List<ErpItemOption>> _searchCustomers(String query) async {
-    final rows = await context.read<RejectState>().searchCustomers(
-      query: query,
-    );
-    return [
-      for (final row in rows)
-        if ((row['name']?.toString() ?? '').isNotEmpty)
-          ErpItemOption(
-            id: row['name'].toString(),
-            label: (row['customer_name']?.toString().trim().isNotEmpty == true)
-                ? '${row['customer_name']} (${row['name']})'
-                : row['name'].toString(),
-          ),
-    ];
   }
 
   Future<List<ErpItemOption>> _searchItems(String query) async {
@@ -264,10 +246,6 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
       setState(() => _error = 'Company wajib dipilih.');
       return;
     }
-    if ((_customer ?? '').trim().isEmpty) {
-      setState(() => _error = 'Customer wajib dipilih.');
-      return;
-    }
     if (filled.isEmpty) {
       setState(() => _error = 'Tambahkan minimal satu item.');
       return;
@@ -293,7 +271,6 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
         namingSeries: _series,
         postingDate: _postingDate,
         company: _company!.trim(),
-        customer: _customer!.trim(),
         keterangan: _keteranganCtrl.text,
         items: [
           for (final row in filled)
@@ -467,27 +444,6 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
                         validator: (value) =>
                             value == null || value.trim().isEmpty
                                 ? 'Company wajib'
-                                : null,
-                      ),
-                      const SizedBox(height: 14),
-                      ErpItemAutocompleteField(
-                        key: ValueKey('customer-${_customer ?? ''}'),
-                        label: 'Customer *',
-                        selectedId: _customer,
-                        decoration: _decoration('Customer *'),
-                        options: [
-                          if ((_customer ?? '').isNotEmpty)
-                            ErpItemOption(
-                              id: _customer!,
-                              label: _customer!,
-                            ),
-                        ],
-                        onSearch: _searchCustomers,
-                        onSelected: (value) =>
-                            setState(() => _customer = value),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                                ? 'Customer wajib'
                                 : null,
                       ),
                       if ((_stockEntry ?? '').isNotEmpty) ...[

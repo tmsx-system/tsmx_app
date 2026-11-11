@@ -75,7 +75,6 @@ class RejectDraft {
   final String? namingSeries;
   final DateTime postingDate;
   final String company;
-  final String customer;
   final String keterangan;
   final List<RejectItemDraft> items;
 
@@ -83,7 +82,6 @@ class RejectDraft {
     this.namingSeries,
     required this.postingDate,
     required this.company,
-    required this.customer,
     this.keterangan = '',
     required this.items,
   });
@@ -103,7 +101,6 @@ class RejectDraft {
         'naming_series': namingSeries!.trim(),
       'posting_date': date,
       'company': company.trim(),
-      'customer': customer.trim(),
       if (keterangan.trim().isNotEmpty) 'keterangan': keterangan.trim(),
       childTableField: [
         for (final item in items)

@@ -212,7 +212,6 @@ class _RejectTabState extends State<RejectTab> {
       }
       if (!mounted) return;
 
-      final customer = detail['customer']?.toString() ?? row.customer;
       final company = detail['company']?.toString() ?? row.company;
       final postingDate =
           detail['posting_date']?.toString() ?? row.postingDate;
@@ -262,7 +261,7 @@ class _RejectTabState extends State<RejectTab> {
       await showSellingDocumentDetailPage(
         context: context,
         title: row.id,
-        subtitle: customer.isEmpty ? company : customer,
+        subtitle: company,
         statusText: workflowState.isEmpty ? 'Draft' : workflowState,
         icon: Icons.highlight_off_rounded,
         metrics: [
@@ -278,7 +277,6 @@ class _RejectTabState extends State<RejectTab> {
           ),
         ],
         infos: [
-          SellingDetailInfo(label: 'Customer', value: customer),
           SellingDetailInfo(label: 'Company', value: company),
           SellingDetailInfo(label: 'Posting Date', value: postingDate),
           SellingDetailInfo(label: 'Workflow', value: workflowState),
@@ -607,7 +605,6 @@ class _RejectTabState extends State<RejectTab> {
                       const SizedBox(height: 4),
                       Text(
                         [
-                          if (row.customer.isNotEmpty) row.customer,
                           if (row.company.isNotEmpty) row.company,
                           if (row.postingDate.isNotEmpty) row.postingDate,
                           if (row.stockEntry.isNotEmpty)

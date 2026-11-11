@@ -39,7 +39,6 @@ class RejectState extends AppStateProxyNotifier {
 
   Future<List<RejectSummary>> fetchList({
     String? company,
-    String? customer,
     String? workflowState,
     DateTime? postingDateFrom,
     DateTime? postingDateTo,
@@ -50,10 +49,6 @@ class RejectState extends AppStateProxyNotifier {
     final selectedCompany = company?.trim() ?? '';
     if (selectedCompany.isNotEmpty) {
       filters.add(['company', '=', selectedCompany]);
-    }
-    final selectedCustomer = customer?.trim() ?? '';
-    if (selectedCustomer.isNotEmpty) {
-      filters.add(['customer', '=', selectedCustomer]);
     }
     final state = workflowState?.trim() ?? '';
     if (state.isNotEmpty) {
@@ -96,13 +91,11 @@ class RejectState extends AppStateProxyNotifier {
     }
 
     Future<List<RejectSummary>> load(List<List<dynamic>>? useFilters) async {
-      final rows = await frappeService.fetchResource(
-        doctype,
+      final rows = await _fetchRejectRows(
         fields: const [
           'name',
           'posting_date',
           'company',
-          'customer',
           'stock_entry',
           'workflow_state',
           'keterangan',
@@ -110,7 +103,6 @@ class RejectState extends AppStateProxyNotifier {
           'docstatus',
         ],
         filters: useFilters == null || useFilters.isEmpty ? null : useFilters,
-        orderBy: 'modified desc',
         limit: limit,
       );
       return rows
@@ -194,6 +186,35 @@ class RejectState extends AppStateProxyNotifier {
       }
     }
     return actionsByName;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchRejectRows({
+    required List<String> fields,
+    List<List<dynamic>>? filters,
+    required int limit,
+  }) async {
+    var remaining = List<String>.from(fields);
+    while (remaining.isNotEmpty) {
+      try {
+        return await frappeService.fetchResource(
+          doctype,
+          fields: remaining,
+          filters: filters,
+          orderBy: 'modified desc',
+          limit: limit,
+        );
+      } catch (error) {
+        final badField = RegExp(
+          r'Field not permitted in query:\s*([A-Za-z0-9_]+)',
+        ).firstMatch(error.toString())?.group(1);
+        if (badField != null && remaining.contains(badField)) {
+          remaining.remove(badField);
+          continue;
+        }
+        rethrow;
+      }
+    }
+    return const [];
   }
 
   Future<List<String>> fetchWorkflowActionsForDocument(
