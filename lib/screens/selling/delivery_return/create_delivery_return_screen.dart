@@ -132,8 +132,12 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
     if (parsed != null) {
       _postingDate = DateTime(parsed.year, parsed.month, parsed.day);
     }
+    final meta = await state.resolveMeta();
     final rawItems =
-        doc['return_detail'] ?? doc['items'] ?? doc['delivery_return_detail'];
+        doc[meta.childTableField] ??
+        doc['return_detail'] ??
+        doc['items'] ??
+        doc['delivery_return_detail'];
     for (final row in _rows) {
       row.dispose();
     }
@@ -146,8 +150,12 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
               itemCode: raw['item_code']?.toString(),
               itemName: raw['item_name']?.toString() ?? '',
               uom: raw['uom']?.toString() ?? '',
-              qtyDnText: _qtyText(raw['qty_dn']),
-              qtyTolakText: _qtyText(raw['qty_tolak']),
+              qtyDnText: _qtyText(
+                _firstChildValue(raw, [meta.qtyDnField, 'qty_dn']),
+              ),
+              qtyTolakText: _qtyText(
+                _firstChildValue(raw, ['qty_tolak', meta.qtyTolakField, 'qty']),
+              ),
             ),
       ]);
     if (_rows.isEmpty) _rows.add(_ItemRow());
@@ -161,7 +169,9 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked == null || !mounted) return;
-    setState(() => _postingDate = picked);
+    setState(
+      () => _postingDate = DateTime(picked.year, picked.month, picked.day),
+    );
   }
 
   Future<List<ErpItemOption>> _searchCustomers(String query) async {
@@ -189,13 +199,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
     setState(() {
       _customer = value;
       _customerName = value == null ? '' : (_customerNames[value] ?? '');
-      _deliveryNote = null;
-      for (final row in _rows) {
-        row.dispose();
-      }
-      _rows
-        ..clear()
-        ..add(_ItemRow());
     });
     if (value == null || _customerName.isNotEmpty) return;
     final rows = await context.read<DeliveryReturnState>().searchCustomers(
@@ -214,10 +217,12 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
 
   Future<List<ErpItemOption>> _searchDeliveryNotes(String query) async {
     final customer = _customer?.trim() ?? '';
-    if (customer.isEmpty) return const [];
+    final company = _company?.trim() ?? '';
+    if (customer.isEmpty || company.isEmpty) return const [];
     final rows = await context.read<DeliveryReturnState>().searchDeliveryNotes(
       customer: customer,
-      company: _company,
+      company: company,
+      postingDate: _postingDate,
       query: query,
     );
     return [
@@ -235,14 +240,29 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
   }
 
   Future<void> _selectDeliveryNote(String? value) async {
-    setState(() => _deliveryNote = value);
-    if (value == null || value.trim().isEmpty) return;
+    if (value == null || value.trim().isEmpty) {
+      setState(() => _deliveryNote = null);
+      return;
+    }
+    final state = context.read<DeliveryReturnState>();
     try {
-      final items = await context
-          .read<DeliveryReturnState>()
-          .itemsFromDeliveryNote(value);
-      if (!mounted || _deliveryNote != value) return;
+      final note = await state.fetchDeliveryNoteHeader(value);
+      if (!mounted) return;
+      final mismatch = state.deliveryNoteSelectionError(
+        note: note,
+        postingDate: _postingDate,
+        customer: _customer?.trim() ?? '',
+        company: _company?.trim() ?? '',
+      );
+      if (mismatch != null) {
+        setState(() => _error = mismatch);
+        return;
+      }
+      final items = await state.itemsFromDeliveryNote(value);
+      if (!mounted) return;
       setState(() {
+        _error = null;
+        _deliveryNote = value;
         for (final row in _rows) {
           row.dispose();
         }
@@ -334,6 +354,12 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
       setState(() => _error = 'Customer wajib dipilih.');
       return;
     }
+    if ((_deliveryNote ?? '').trim().isEmpty) {
+      setState(() {
+        _error = 'Delivery Asal wajib dipilih.';
+      });
+      return;
+    }
     if (filled.isEmpty) {
       setState(() => _error = 'Tambahkan minimal satu item.');
       return;
@@ -353,6 +379,19 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
       _error = null;
     });
     try {
+      final state = context.read<DeliveryReturnState>();
+      final note = await state.fetchDeliveryNoteHeader(_deliveryNote!.trim());
+      if (!mounted) return;
+      final mismatch = state.deliveryNoteSelectionError(
+        note: note,
+        postingDate: _postingDate,
+        customer: _customer!.trim(),
+        company: _company!.trim(),
+      );
+      if (mismatch != null) {
+        setState(() => _error = mismatch);
+        return;
+      }
       final draft = DeliveryReturnDraft(
         namingSeries: _series,
         postingDate: _postingDate,
@@ -372,7 +411,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
             ),
         ],
       );
-      final state = context.read<DeliveryReturnState>();
       final existing = _documentName;
       final String savedName;
       final bool createdNew;
@@ -563,15 +601,18 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
                       const SizedBox(height: 14),
                       ErpItemAutocompleteField(
                         key: ValueKey(
-                          'dn-${_customer ?? ''}-${_deliveryNote ?? ''}',
+                          'dn-${_company ?? ''}-${_customer ?? ''}-'
+                          '${DateFormat('yyyy-MM-dd').format(_postingDate)}-'
+                          '${_deliveryNote ?? ''}',
                         ),
-                        label: 'Delivery Note',
+                        label: 'Delivery Asal *',
                         selectedId: _deliveryNote,
                         decoration: _decoration(
-                          'Delivery Note',
-                          hint: (_customer ?? '').isEmpty
-                              ? 'Pilih customer dulu'
-                              : 'Delivery Note milik customer',
+                          'Delivery Asal *',
+                          hint: (_customer ?? '').trim().isEmpty ||
+                                  (_company ?? '').trim().isEmpty
+                              ? 'Isi Posting Date dan Customer sebelum memilih Delivery Asal.'
+                              : 'DN submitted, tanggal sama, customer sama, bukan return',
                         ),
                         options: [
                           if ((_deliveryNote ?? '').isNotEmpty)
@@ -580,10 +621,15 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
                               label: _deliveryNote!,
                             ),
                         ],
-                        onSearch: (_customer ?? '').isEmpty
+                        onSearch: (_customer ?? '').trim().isEmpty ||
+                                (_company ?? '').trim().isEmpty
                             ? null
                             : _searchDeliveryNotes,
                         onSelected: (value) => _selectDeliveryNote(value),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                                ? 'Delivery Asal wajib'
+                                : null,
                       ),
                     ],
                   ),
@@ -869,6 +915,17 @@ class _ItemRow {
     qtyDnCtrl.dispose();
     qtyTolakCtrl.dispose();
   }
+}
+
+Object? _firstChildValue(Map raw, List<String> keys) {
+  for (final key in keys) {
+    if (!raw.containsKey(key)) continue;
+    final value = raw[key];
+    if (value == null) continue;
+    if (value.toString().trim().isEmpty) continue;
+    return value;
+  }
+  return null;
 }
 
 String _qtyText(Object? raw) {

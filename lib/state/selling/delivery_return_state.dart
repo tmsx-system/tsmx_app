@@ -78,8 +78,13 @@ class DeliveryReturnState extends AppStateProxyNotifier {
       final end = from.isBefore(to) ? to : from;
       filters.add([
         'posting_date',
-        'between',
-        [DateRangePresets.toFrappeDate(start), DateRangePresets.toFrappeDate(end)],
+        '>=',
+        DateRangePresets.toFrappeDate(start),
+      ]);
+      filters.add([
+        'posting_date',
+        '<=',
+        DateRangePresets.toFrappeDate(end),
       ]);
     } else if (from != null) {
       filters.add([
@@ -121,31 +126,49 @@ class DeliveryReturnState extends AppStateProxyNotifier {
     try {
       return await load(filters);
     } catch (_) {
-      // Retry without workflow_state / date between via simpler filters.
       try {
         return await load(
           filters
-              .where(
-                (f) =>
-                    f.isNotEmpty &&
-                    f.first != 'workflow_state' &&
-                    !(f.first == 'posting_date' && f.length > 1 && f[1] == 'between'),
-              )
+              .where((f) => f.isNotEmpty && f.first != 'workflow_state')
               .toList(),
         );
       } catch (_) {
-        return await load(
+        return await _loadDeliveryReturnsWithCoreFields(
           filters
               .where(
                 (f) =>
                     f.isNotEmpty &&
                     f.first != 'workflow_state' &&
-                    f.first != 'posting_date',
+                    f.first != 'keterangan',
               )
               .toList(),
+          limit: limit,
         );
       }
     }
+  }
+
+  Future<List<DeliveryReturnSummary>> _loadDeliveryReturnsWithCoreFields(
+    List<List<dynamic>> filters, {
+    required int limit,
+  }) async {
+    final rows = await frappeService.fetchResource(
+      doctype,
+      fields: const [
+        'name',
+        'posting_date',
+        'company',
+        'customer',
+        'docstatus',
+      ],
+      filters: filters.isEmpty ? null : filters,
+      orderBy: 'modified desc',
+      limit: limit,
+    );
+    return rows
+        .map(DeliveryReturnSummary.fromJson)
+        .where((row) => row.id.isNotEmpty)
+        .toList(growable: false);
   }
 
   /// Batch get_transitions from list rows (no full GET per row).
@@ -286,62 +309,140 @@ class DeliveryReturnState extends AppStateProxyNotifier {
     var deliveryNoteField = 'delivery_asal';
 
     try {
-      final rows = await frappeService.fetchResource(
-        'DocField',
-        fields: const [
-          'fieldname',
-          'fieldtype',
-          'options',
-          'label',
-          'parent',
-        ],
-        filters: [
-          ['parent', '=', doctype],
-        ],
-        limit: 200,
-      );
+      final rows = <Map<String, dynamic>>[
+        ...await frappeService.fetchResource(
+          'DocField',
+          fields: const [
+            'fieldname',
+            'fieldtype',
+            'options',
+            'label',
+            'parent',
+          ],
+          filters: [
+            ['parent', '=', doctype],
+          ],
+          limit: 200,
+        ),
+      ];
+      try {
+        rows.addAll(
+          await frappeService.fetchResource(
+            'Custom Field',
+            fields: const ['fieldname', 'fieldtype', 'options', 'label', 'dt'],
+            filters: [
+              ['dt', '=', doctype],
+            ],
+            limit: 200,
+          ),
+        );
+      } catch (_) {}
+      Map<String, dynamic>? childTable;
       for (final row in rows) {
         if (row['fieldtype']?.toString() != 'Table') continue;
         final fieldname = row['fieldname']?.toString().trim() ?? '';
         final options = row['options']?.toString().trim() ?? '';
+        final label = '${row['label'] ?? ''}'.toLowerCase();
         if (fieldname.isEmpty) continue;
-        childTableField = fieldname;
+        childTable ??= row;
+        if (options == 'Return Detail' || label.contains('return detail')) {
+          childTable = row;
+          break;
+        }
+      }
+      if (childTable != null) {
+        final fieldname = childTable['fieldname']?.toString().trim() ?? '';
+        final options = childTable['options']?.toString().trim() ?? '';
+        if (fieldname.isNotEmpty) childTableField = fieldname;
         if (options.isNotEmpty) childDoctype = options;
-        break;
+      }
+      const deliveryNoteCandidates = [
+        'delivery_note',
+        'custom_delivery_note',
+        'delivery_asal',
+        'custom_delivery_asal',
+        'delivery_note_asal',
+        'custom_delivery_note_asal',
+      ];
+      final deliveryNoteLinks = [
+        for (final row in rows)
+          if (row['fieldtype']?.toString() == 'Link' &&
+              row['options']?.toString().trim() == 'Delivery Note' &&
+              (row['fieldname']?.toString().trim().isNotEmpty ?? false))
+            row,
+      ];
+      String? pickedDeliveryNote;
+      for (final name in deliveryNoteCandidates) {
+        for (final row in deliveryNoteLinks) {
+          if (row['fieldname']?.toString().trim() == name) {
+            pickedDeliveryNote = name;
+            break;
+          }
+        }
+        if (pickedDeliveryNote != null) break;
+      }
+      pickedDeliveryNote ??= () {
+        for (final row in deliveryNoteLinks) {
+          final label = '${row['label'] ?? ''}'.toLowerCase();
+          if (label.contains('delivery asal') ||
+              label.contains('delivery note') ||
+              label.contains('dn asal')) {
+            return row['fieldname']?.toString().trim();
+          }
+        }
+        if (deliveryNoteLinks.length == 1) {
+          return deliveryNoteLinks.first['fieldname']?.toString().trim();
+        }
+        return null;
+      }();
+      if ((pickedDeliveryNote ?? '').isNotEmpty) {
+        deliveryNoteField = pickedDeliveryNote!;
       }
       for (final row in rows) {
         final fieldname = row['fieldname']?.toString().trim() ?? '';
         final label = '${row['label'] ?? ''} $fieldname'.toLowerCase();
-        final options = row['options']?.toString().trim() ?? '';
         if (fieldname.isEmpty) continue;
         if (label.contains('customer name')) {
           customerNameField = fieldname;
-        } else if (options == 'Delivery Note' ||
-            label.contains('delivery asal') ||
-            label.contains('delivery note')) {
-          deliveryNoteField = fieldname;
         }
       }
-      final childRows = await frappeService.fetchResource(
-        'DocField',
-        fields: const ['fieldname', 'label', 'parent'],
-        filters: [
-          ['parent', '=', childDoctype],
-        ],
-        limit: 200,
-      );
+      final childRows = <Map<String, dynamic>>[
+        ...await frappeService.fetchResource(
+          'DocField',
+          fields: const ['fieldname', 'label', 'parent'],
+          filters: [
+            ['parent', '=', childDoctype],
+          ],
+          limit: 200,
+        ),
+      ];
+      try {
+        childRows.addAll(
+          await frappeService.fetchResource(
+            'Custom Field',
+            fields: const ['fieldname', 'label', 'dt'],
+            filters: [
+              ['dt', '=', childDoctype],
+            ],
+            limit: 200,
+          ),
+        );
+      } catch (_) {}
+      String? labeledTolak;
+      var hasQtyTolak = false;
       for (final row in childRows) {
         final fieldname = row['fieldname']?.toString().trim() ?? '';
-        final label = '${row['label'] ?? ''} $fieldname'.toLowerCase();
+        final label = '${row['label'] ?? ''}'.toLowerCase();
         if (fieldname.isEmpty) continue;
         if (label.contains('qty dn') || fieldname == 'qty_dn') {
           qtyDnField = fieldname;
-        } else if (label.contains('qty tolak') ||
-            label.contains('qty_tolak') ||
-            fieldname.contains('tolak')) {
-          qtyTolakField = fieldname;
+        } else if (fieldname == 'qty_tolak') {
+          hasQtyTolak = true;
+        } else if (label.contains('tolak') || fieldname.contains('tolak')) {
+          labeledTolak ??= fieldname;
         }
       }
+      qtyTolakField = hasQtyTolak ? 'qty_tolak' : (labeledTolak ?? 'qty_tolak');
     } catch (_) {
       // Keep defaults; create() still tries known fieldname fallbacks.
     }
@@ -362,17 +463,21 @@ class DeliveryReturnState extends AppStateProxyNotifier {
     final meta = await resolveMeta();
     final attempts = <DeliveryReturnMeta>[
       meta,
-      const DeliveryReturnMeta(
-        childTableField: 'return_detail',
-        childDoctype: 'Delivery Return Detail',
-      ),
-      const DeliveryReturnMeta(
-        childTableField: 'items',
-        childDoctype: 'Delivery Return Item',
-      ),
-      const DeliveryReturnMeta(
+      DeliveryReturnMeta(
         childTableField: 'return_detail',
         childDoctype: 'Return Detail',
+        qtyDnField: meta.qtyDnField,
+        qtyTolakField: meta.qtyTolakField,
+        customerNameField: meta.customerNameField,
+        deliveryNoteField: meta.deliveryNoteField,
+      ),
+      DeliveryReturnMeta(
+        childTableField: meta.childTableField,
+        childDoctype: 'Return Detail',
+        qtyDnField: meta.qtyDnField,
+        qtyTolakField: meta.qtyTolakField,
+        customerNameField: meta.customerNameField,
+        deliveryNoteField: meta.deliveryNoteField,
       ),
     ];
 
@@ -484,27 +589,146 @@ class DeliveryReturnState extends AppStateProxyNotifier {
 
   Future<List<Map<String, dynamic>>> searchDeliveryNotes({
     required String customer,
-    String? company,
+    required String company,
+    required DateTime postingDate,
     String query = '',
     int limit = 40,
   }) async {
     await frappeService.ensureLoggedIn();
     final selectedCustomer = customer.trim();
-    if (selectedCustomer.isEmpty) return const [];
+    final selectedCompany = company.trim();
+    if (selectedCustomer.isEmpty || selectedCompany.isEmpty) return const [];
     final q = query.trim();
-    final selectedCompany = company?.trim() ?? '';
-    return frappeService.fetchResource(
-      'Delivery Note',
-      fields: const ['name', 'posting_date', 'customer', 'customer_name'],
-      filters: [
-        ['customer', '=', selectedCustomer],
-        ['docstatus', '!=', 2],
-        if (selectedCompany.isNotEmpty) ['company', '=', selectedCompany],
-        if (q.isNotEmpty) ['name', 'like', '%$q%'],
-      ],
-      orderBy: 'posting_date desc',
-      limit: limit,
+    final date = _frappeDate(postingDate);
+    final fields = const [
+      'name',
+      'posting_date',
+      'customer',
+      'customer_name',
+      'company',
+      'docstatus',
+      'is_return',
+    ];
+    final baseFilters = <List<dynamic>>[
+      ['customer', '=', selectedCustomer],
+      ['company', '=', selectedCompany],
+      ['posting_date', '=', date],
+      ['docstatus', '=', 1],
+      if (q.isNotEmpty) ['name', 'like', '%$q%'],
+    ];
+    try {
+      final rows = await frappeService.fetchResource(
+        'Delivery Note',
+        fields: fields,
+        filters: baseFilters,
+        orFilters: const [
+          ['is_return', '=', 0],
+          ['is_return', 'is', 'not set'],
+        ],
+        orderBy: 'name desc',
+        limit: limit,
+      );
+      return _withoutReturnNotes(rows);
+    } catch (_) {
+      final rows = await frappeService.fetchResource(
+        'Delivery Note',
+        fields: fields,
+        filters: baseFilters,
+        orderBy: 'name desc',
+        limit: limit,
+      );
+      return _withoutReturnNotes(rows);
+    }
+  }
+
+  List<Map<String, dynamic>> _withoutReturnNotes(
+    List<Map<String, dynamic>> rows,
+  ) {
+    return [
+      for (final row in rows)
+        if (!_isReturnNote(row['is_return'])) row,
+    ];
+  }
+
+  bool _isReturnNote(Object? value) {
+    return value == true || value == 1 || value?.toString() == '1';
+  }
+
+  Future<Map<String, dynamic>> fetchDeliveryNoteHeader(String name) async {
+    await frappeService.ensureLoggedIn();
+    final id = name.trim();
+    if (id.isEmpty) {
+      throw Exception(
+        'Delivery Note tidak ditemukan atau tidak dapat dibaca.',
+      );
+    }
+    final raw = await frappeService.callMethod(
+      'frappe.client.get_value',
+      args: {
+        'doctype': 'Delivery Note',
+        'filters': {'name': id},
+        'fieldname': const [
+          'name',
+          'posting_date',
+          'customer',
+          'company',
+          'docstatus',
+          'is_return',
+        ],
+      },
     );
+    final message = raw is Map ? Map<String, dynamic>.from(raw) : null;
+    final noteName = message?['name']?.toString().trim() ?? '';
+    if (message == null || noteName.isEmpty) {
+      throw Exception(
+        'Delivery Note $id tidak ditemukan atau tidak dapat dibaca.',
+      );
+    }
+    return message;
+  }
+
+  /// Empty when the note can be the Delivery Asal for this return.
+  String? deliveryNoteSelectionError({
+    required Map<String, dynamic> note,
+    required DateTime postingDate,
+    required String customer,
+    required String company,
+  }) {
+    final noteDate = (note['posting_date']?.toString() ?? '').length >= 10
+        ? note['posting_date'].toString().substring(0, 10)
+        : note['posting_date']?.toString() ?? '';
+    final returnDate = _frappeDate(postingDate);
+    if (noteDate != returnDate) {
+      return 'Tanggal Delivery Note tidak sesuai. '
+          'Tanggal Delivery Return: ${formatDisplayDate(postingDate)}. '
+          'Tanggal Delivery Note: ${_displayErpDate(noteDate)}. '
+          'Pilih Delivery Note dengan tanggal yang sama.';
+    }
+    if ((note['customer']?.toString() ?? '') != customer.trim()) {
+      return 'Customer Delivery Note tidak sama dengan Customer Delivery Return.';
+    }
+    if ((note['company']?.toString() ?? '') != company.trim()) {
+      return 'Company Delivery Note tidak sesuai.';
+    }
+    final docstatus = int.tryParse(note['docstatus']?.toString() ?? '') ?? 0;
+    if (docstatus != 1) {
+      return 'Delivery Note harus berstatus Submitted.';
+    }
+    if (_isReturnNote(note['is_return'])) {
+      return 'Delivery Note Return tidak boleh dipilih sebagai Delivery Asal.';
+    }
+    return null;
+  }
+
+  String _frappeDate(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  String _displayErpDate(String value) {
+    final date = DateTime.tryParse(value);
+    if (date == null) return value.isEmpty ? '-' : value;
+    return formatDisplayDate(date);
   }
 
   Future<List<DeliveryReturnItemDraft>> itemsFromDeliveryNote(String name) async {

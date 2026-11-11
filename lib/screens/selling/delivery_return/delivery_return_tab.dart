@@ -225,6 +225,40 @@ class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
         'delivery_note',
       ]);
       final company = detail['company']?.toString() ?? row.company;
+      String deliveryNoteDate = '';
+      String deliveryNoteStatus = '';
+      String? deliveryNoteWarning;
+      if (deliveryNote.isNotEmpty) {
+        try {
+          final note = await state.fetchDeliveryNoteHeader(deliveryNote);
+          if (!mounted) return;
+          deliveryNoteDate = note['posting_date']?.toString() ?? '';
+          final docstatus =
+              int.tryParse(note['docstatus']?.toString() ?? '') ?? 0;
+          deliveryNoteStatus = switch (docstatus) {
+            1 => 'Submitted',
+            2 => 'Cancelled',
+            _ => 'Draft',
+          };
+          final isReturn = note['is_return'];
+          if (isReturn == true || isReturn == 1 || isReturn?.toString() == '1') {
+            deliveryNoteStatus = '$deliveryNoteStatus · Return';
+          }
+          final parsed = DateTime.tryParse(
+            detail['posting_date']?.toString() ?? row.postingDate,
+          );
+          if (parsed != null) {
+            deliveryNoteWarning = state.deliveryNoteSelectionError(
+              note: note,
+              postingDate: DateTime(parsed.year, parsed.month, parsed.day),
+              customer: customer,
+              company: company,
+            );
+          }
+        } catch (_) {
+          deliveryNoteStatus = 'Tidak dapat dibaca';
+        }
+      }
       final postingDate =
           detail['posting_date']?.toString() ?? row.postingDate;
       final keterangan = detail['keterangan']?.toString() ?? row.keterangan;
@@ -240,8 +274,9 @@ class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
           final map = Map<String, dynamic>.from(raw);
           final qtyDn = _detailText(map, [meta.qtyDnField, 'qty_dn']);
           final qtyTolak = _detailText(map, [
-            meta.qtyTolakField,
             'qty_tolak',
+            meta.qtyTolakField,
+            'qty',
             ...map.keys.where(
               (key) => key.toLowerCase().contains('tolak'),
             ),
@@ -294,7 +329,24 @@ class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
           if (customerName.isNotEmpty)
             SellingDetailInfo(label: 'Customer Name', value: customerName),
           if (deliveryNote.isNotEmpty)
-            SellingDetailInfo(label: 'Delivery Note', value: deliveryNote),
+            SellingDetailInfo(label: 'Delivery Asal', value: deliveryNote),
+          if (deliveryNoteDate.isNotEmpty)
+            SellingDetailInfo(
+              label: 'Tanggal Delivery Note',
+              value: deliveryNoteDate.length >= 10
+                  ? deliveryNoteDate.substring(0, 10)
+                  : deliveryNoteDate,
+            ),
+          if (deliveryNoteStatus.isNotEmpty)
+            SellingDetailInfo(
+              label: 'Status Delivery Note',
+              value: deliveryNoteStatus,
+            ),
+          if ((deliveryNoteWarning ?? '').isNotEmpty)
+            SellingDetailInfo(
+              label: 'Delivery Asal',
+              value: deliveryNoteWarning!,
+            ),
           SellingDetailInfo(label: 'Company', value: company),
           SellingDetailInfo(label: 'Posting Date', value: postingDate),
           SellingDetailInfo(label: 'Workflow', value: workflowState),
