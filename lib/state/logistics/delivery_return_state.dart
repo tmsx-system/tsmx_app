@@ -748,6 +748,7 @@ class DeliveryReturnState extends AppStateProxyNotifier {
                 0,
             qtyTolak: 0,
             uom: raw['uom']?.toString() ?? raw['stock_uom']?.toString() ?? '',
+            dnDetail: raw['name']?.toString() ?? '',
           ),
     ];
   }

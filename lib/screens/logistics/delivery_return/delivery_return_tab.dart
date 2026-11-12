@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/delivery_return.dart';
-import '../../../state/selling/delivery_return_state.dart';
+import '../../../state/logistics/delivery_return_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/date_range_presets.dart';
 import '../../../utils/erp_error_message.dart';
@@ -12,8 +12,8 @@ import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../widgets/erp/erp_status_badge.dart';
 import '../../../widgets/erp/erp_workflow_helper.dart';
-import '../shared/sales_ui.dart';
-import '../shared/selling_document_detail_sheet.dart';
+import '../../selling/shared/sales_ui.dart';
+import '../../selling/shared/selling_document_detail_sheet.dart';
 import 'create_delivery_return_screen.dart';
 
 class DeliveryReturnTab extends StatefulWidget {

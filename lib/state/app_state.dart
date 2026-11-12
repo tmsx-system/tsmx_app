@@ -438,7 +438,6 @@ class AppState with ChangeNotifier {
       'Delivery Note',
       'Sales Invoice',
       'Tukar Guling',
-      'Delivery Return',
     };
     final hasSalesDocument = readable.any(salesDocuments.contains);
     if (!hasSalesDocument) {

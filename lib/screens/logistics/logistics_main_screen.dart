@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../state/logistics/delivery_return_state.dart';
 import '../../state/logistics/logistics_delivery_state.dart';
 import '../../state/logistics/logistics_overview_state.dart';
 import '../../theme/app_colors.dart';
@@ -8,6 +9,7 @@ import '../../widgets/responsive/responsive_layout.dart';
 import '../shared/role_main_screen.dart';
 import 'logistics_operations_tab.dart';
 import 'logistics_overview_tab.dart';
+import 'delivery_return/delivery_return_tab.dart';
 
 class LogisticsMainScreen extends StatefulWidget {
   const LogisticsMainScreen({super.key});
@@ -75,6 +77,12 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
       if (!context.mounted) return;
       await context.read<LogisticsDeliveryState>().refreshDeliveryNotes();
     }
+    if (key == 'return' && permissions.canReadDeliveryReturn) {
+      if (!context.mounted) return;
+      try {
+        await context.read<DeliveryReturnState>().ensureWorkflowRolePermissions();
+      } catch (_) {}
+    }
   }
 
   List<_LogisticsMenuEntry> _buildMenuEntries(
@@ -107,22 +115,40 @@ class _LogisticsMainScreenState extends State<LogisticsMainScreen> {
         ),
       );
     }
+    if (permissions.canReadDeliveryReturn) {
+      entries.add(
+        _LogisticsMenuEntry(
+          key: 'return',
+          destination: const NavigationDestination(
+            icon: Icon(Icons.assignment_return_outlined),
+            selectedIcon: Icon(Icons.assignment_return_rounded),
+            label: 'Delivery Return',
+          ),
+          builder: (_) => const DeliveryReturnTab(),
+        ),
+      );
+    }
     return entries;
   }
 
   Future<_LogisticsDoctypePermissions> _loadPermissions() async {
     final state = context.read<LogisticsOverviewState>();
+    try {
+      await context.read<DeliveryReturnState>().ensureWorkflowRolePermissions();
+    } catch (_) {}
     final results = await Future.wait([
       state.canReadDoctype('Delivery Note'),
       state.canReadDoctype('Delivery Trip'),
       state.canReadDoctype('Driver'),
       state.canReadDoctype('Vehicle'),
+      state.canReadDoctype('Delivery Return'),
     ]);
     return _LogisticsDoctypePermissions(
       canReadDeliveryNote: results[0],
       canReadDeliveryTrip: results[1],
       canReadDriver: results[2],
       canReadVehicle: results[3],
+      canReadDeliveryReturn: results[4],
     );
   }
 }
@@ -134,12 +160,14 @@ class _LogisticsDoctypePermissions {
   final bool canReadDeliveryTrip;
   final bool canReadDriver;
   final bool canReadVehicle;
+  final bool canReadDeliveryReturn;
 
   const _LogisticsDoctypePermissions({
     required this.canReadDeliveryNote,
     required this.canReadDeliveryTrip,
     required this.canReadDriver,
     required this.canReadVehicle,
+    required this.canReadDeliveryReturn,
   });
 
   bool get canUseOps =>

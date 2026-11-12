@@ -4,12 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../models/delivery_return.dart';
-import '../../../state/selling/delivery_return_state.dart';
+import '../../../state/logistics/delivery_return_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
-import '../shared/sales_attachment_card.dart';
-import '../shared/sales_ui.dart';
+import '../../selling/shared/sales_attachment_card.dart';
+import '../../selling/shared/sales_ui.dart';
 
 class CreateDeliveryReturnScreen extends StatefulWidget {
   final String? existingName;
@@ -37,6 +37,8 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
   String? _customer;
   String _customerName = '';
   String? _deliveryNote;
+  String _workflowState = 'Draft';
+  int _docstatus = 0;
   DateTime _postingDate = DateTime.now();
   String? _savedName;
   final _itemMeta = <String, ({String name, String uom})>{};
@@ -52,6 +54,14 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
     final saved = _savedName?.trim() ?? '';
     return saved.isEmpty ? null : saved;
   }
+
+  bool get _isDraft =>
+      _docstatus == 0 && _workflowState.trim() == 'Draft';
+
+  bool get _canCorrect =>
+      _docstatus == 0 &&
+      (_workflowState.trim() == 'Draft' ||
+          _workflowState.trim() == 'Pending Admin Warehouse');
 
   @override
   void initState() {
@@ -115,6 +125,10 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
         doc['delivery_note']?.toString().trim() ??
         _deliveryNote;
     _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
+    _workflowState = (doc['workflow_state']?.toString().trim().isNotEmpty == true)
+        ? doc['workflow_state'].toString().trim()
+        : 'Draft';
+    _docstatus = int.tryParse(doc['docstatus']?.toString() ?? '') ?? 0;
     try {
       final files = await state.fetchAttachments(name);
       _existingAttachmentNames = [
@@ -156,6 +170,7 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
               qtyTolakText: _qtyText(
                 _firstChildValue(raw, ['qty_tolak', meta.qtyTolakField, 'qty']),
               ),
+              dnDetail: raw['dn_detail']?.toString() ?? '',
             ),
       ]);
     if (_rows.isEmpty) _rows.add(_ItemRow());
@@ -241,7 +256,10 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
 
   Future<void> _selectDeliveryNote(String? value) async {
     if (value == null || value.trim().isEmpty) {
-      setState(() => _deliveryNote = null);
+      setState(() {
+        _deliveryNote = null;
+        if (_isDraft) _replaceRows(const []);
+      });
       return;
     }
     final state = context.read<DeliveryReturnState>();
@@ -258,32 +276,57 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
         setState(() => _error = mismatch);
         return;
       }
+      if (!_isDraft) {
+        setState(() {
+          _error = null;
+          _deliveryNote = value;
+        });
+        return;
+      }
       final items = await state.itemsFromDeliveryNote(value);
       if (!mounted) return;
       setState(() {
         _error = null;
         _deliveryNote = value;
-        for (final row in _rows) {
-          row.dispose();
-        }
-        _rows
-          ..clear()
-          ..addAll([
-            for (final item in items)
-              _ItemRow(
-                itemCode: item.itemCode,
-                itemName: item.itemName,
-                uom: item.uom,
-                qtyDnText: _qtyText(item.qtyDn),
-                qtyTolakText: '0',
-              ),
-          ]);
-        if (_rows.isEmpty) _rows.add(_ItemRow());
+        _replaceRows(items);
       });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${items.length} SKU berhasil diambil dari DN.'),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _error = captureErpError(context, error));
     }
+  }
+
+  void _replaceRows(List<DeliveryReturnItemDraft> items) {
+    for (final row in _rows) {
+      row.dispose();
+    }
+    _rows
+      ..clear()
+      ..addAll([
+        for (final item in items) _rowFromDraft(item, qtyTolak: item.qtyTolak),
+      ]);
+    if (_rows.isEmpty) _rows.add(_ItemRow());
+  }
+
+  _ItemRow _rowFromDraft(
+    DeliveryReturnItemDraft item, {
+    double? qtyTolak,
+  }) {
+    final tolak = qtyTolak ?? item.qtyTolak;
+    return _ItemRow(
+      itemCode: item.itemCode,
+      itemName: item.itemName,
+      uom: item.uom,
+      qtyDnText: _qtyText(item.qtyDn),
+      qtyTolakText: _qtyText(tolak),
+      dnDetail: item.dnDetail,
+    );
   }
 
   Future<List<ErpItemOption>> _searchItems(String query) async {
@@ -356,22 +399,48 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
     }
     if ((_deliveryNote ?? '').trim().isEmpty) {
       setState(() {
-        _error = 'Delivery Asal wajib dipilih.';
+        _error = 'Pilih Delivery Asal terlebih dahulu.';
       });
       return;
     }
-    if (filled.isEmpty) {
-      setState(() => _error = 'Tambahkan minimal satu item.');
-      return;
-    }
-    for (var i = 0; i < filled.length; i++) {
-      final row = filled[i];
-      if (row.qtyDn < 0 || row.qtyTolak <= 0) {
+    var removedZero = 0;
+    final kept = <_ItemRow>[];
+    if (_canCorrect) {
+      if (filled.isEmpty) {
+        setState(() => _error = 'Return Detail tidak boleh kosong.');
+        return;
+      }
+      for (final row in filled) {
+        final name = row.itemName.trim().isNotEmpty
+            ? row.itemName.trim()
+            : (row.itemCode ?? 'Item');
+        if (row.qtyTolak < 0) {
+          setState(() => _error = 'Qty Tolak tidak boleh negatif: $name');
+          return;
+        }
+        if (row.qtyTolak > row.qtyDn) {
+          setState(
+            () => _error =
+                'Qty Tolak melebihi Qty DN pada $name. '
+                'Qty DN: ${_qtyText(row.qtyDn)}, Qty Tolak: ${_qtyText(row.qtyTolak)}',
+          );
+          return;
+        }
+        if (row.qtyTolak > 0) {
+          kept.add(row);
+        } else {
+          removedZero++;
+        }
+      }
+      if (kept.isEmpty) {
         setState(
-          () => _error = 'Item ${i + 1}: Qty DN dan Qty Tolak harus valid.',
+          () => _error = 'Minimal satu SKU harus memiliki Qty Tolak lebih dari 0.',
         );
         return;
       }
+    } else if (filled.isEmpty) {
+      setState(() => _error = 'Tambahkan minimal satu item.');
+      return;
     }
 
     setState(() {
@@ -401,13 +470,14 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
         deliveryNote: _deliveryNote?.trim() ?? '',
         keterangan: _keteranganCtrl.text,
         items: [
-          for (final row in filled)
+          for (final row in (_canCorrect ? kept : filled))
             DeliveryReturnItemDraft(
               itemCode: row.itemCode!,
               itemName: row.itemName,
               qtyDn: row.qtyDn,
               qtyTolak: row.qtyTolak,
               uom: row.uom,
+              dnDetail: row.dnDetail,
             ),
         ],
       );
@@ -437,6 +507,8 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
           content: Text(
             failedUploads > 0
                 ? 'Delivery Return $savedName berhasil $savedLabel, tetapi $failedUploads foto gagal diunggah.'
+                : removedZero > 0
+                ? 'Delivery Return $savedName berhasil $savedLabel. $removedZero SKU tanpa Qty Tolak dihapus.'
                 : 'Delivery Return $savedName berhasil $savedLabel.',
           ),
           backgroundColor: failedUploads > 0
@@ -849,7 +921,9 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
                 validator: (value) {
                   if ((row.itemCode ?? '').isEmpty) return null;
                   final qty = double.tryParse(value?.trim() ?? '');
-                  return qty == null || qty <= 0 ? 'Qty Tolak > 0' : null;
+                  if (qty == null) return 'Qty Tolak tidak valid';
+                  if (qty < 0) return 'Qty Tolak tidak boleh negatif';
+                  return null;
                 },
               );
               final uomField = InputDecorator(
@@ -896,6 +970,7 @@ class _ItemRow {
   String? itemCode;
   String itemName;
   String uom;
+  String dnDetail;
   final TextEditingController qtyDnCtrl;
   final TextEditingController qtyTolakCtrl;
 
@@ -903,8 +978,9 @@ class _ItemRow {
     this.itemCode,
     this.itemName = '',
     this.uom = '',
+    this.dnDetail = '',
     String qtyDnText = '0',
-    String qtyTolakText = '1',
+    String qtyTolakText = '0',
   }) : qtyDnCtrl = TextEditingController(text: qtyDnText),
        qtyTolakCtrl = TextEditingController(text: qtyTolakText);
 

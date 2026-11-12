@@ -277,7 +277,6 @@ class MobileRoleRegistry {
         'Customer',
         'Sales Visit',
         'Tukar Guling',
-        'Delivery Return',
       ],
     ),
     MobileModuleAccessRule(
@@ -335,7 +334,13 @@ class MobileRoleRegistry {
     ),
     MobileModuleAccessRule(
       module: MobileModule.logistics,
-      readDoctypes: ['Delivery Note', 'Delivery Trip', 'Driver', 'Vehicle'],
+      readDoctypes: [
+        'Delivery Note',
+        'Delivery Trip',
+        'Driver',
+        'Vehicle',
+        'Delivery Return',
+      ],
     ),
     MobileModuleAccessRule(
       module: MobileModule.approvals,

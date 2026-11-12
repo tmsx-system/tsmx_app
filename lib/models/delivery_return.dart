@@ -44,6 +44,7 @@ class DeliveryReturnItemDraft {
   final double qtyDn;
   final double qtyTolak;
   final String uom;
+  final String dnDetail;
 
   const DeliveryReturnItemDraft({
     required this.itemCode,
@@ -51,6 +52,7 @@ class DeliveryReturnItemDraft {
     required this.qtyDn,
     required this.qtyTolak,
     this.uom = '',
+    this.dnDetail = '',
   });
 
   Map<String, dynamic> toFrappeJson({
@@ -65,6 +67,7 @@ class DeliveryReturnItemDraft {
       qtyDnField: qtyDn,
       qtyTolakField: qtyTolak,
       if (uom.trim().isNotEmpty) 'uom': uom.trim(),
+      if (dnDetail.trim().isNotEmpty) 'dn_detail': dnDetail.trim(),
     };
   }
 }

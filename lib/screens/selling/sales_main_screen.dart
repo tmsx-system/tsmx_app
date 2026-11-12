@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/auth/auth_state.dart';
-import '../../state/selling/delivery_return_state.dart';
 import '../../state/selling/sales_order_state.dart';
 import '../../state/selling/selling_summary_state.dart';
 import '../../state/todo/todo_state.dart';
@@ -13,7 +12,6 @@ import 'sales_order/create_sales_order_screen.dart';
 import 'customer/customer_request_tab.dart';
 import 'overview/sales_overview_tab.dart';
 import 'tukar_guling/tukar_guling_tab.dart';
-import 'delivery_return/delivery_return_tab.dart';
 import '../spg/spg_main_screen.dart';
 
 class SalesMainScreen extends StatefulWidget {
@@ -163,19 +161,6 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
         ),
       );
     }
-    if (permissions.canReadDeliveryReturn) {
-      entries.add(
-        _SalesMenuEntry(
-          key: 'delivery_return',
-          destination: const NavigationDestination(
-            icon: Icon(Icons.assignment_return_outlined),
-            selectedIcon: Icon(Icons.assignment_return_rounded),
-            label: 'Delivery Return',
-          ),
-          builder: (_) => const DeliveryReturnTab(),
-        ),
-      );
-    }
     if (permissions.canReadCustomer) {
       entries.add(
         _SalesMenuEntry(
@@ -194,9 +179,6 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
 
   Future<_SalesDoctypePermissions> _loadPermissions() async {
     final state = context.read<AuthState>();
-    try {
-      await context.read<DeliveryReturnState>().ensureWorkflowRolePermissions();
-    } catch (_) {}
     final results = await Future.wait([
       state.canReadDoctype('Sales Order'),
       state.canCreateDoctype('Sales Order'),
@@ -204,14 +186,13 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       state.canReadDoctype('Sales Invoice'),
       state.canReadDoctype('Customer'),
       state.canReadDoctype('Tukar Guling'),
-      state.canReadDoctype('Delivery Return'),
       state.canReadReport('Inactive Customers'),
       state.canReadDoctype('Item Price'),
       state.canReadDoctype('NOO Request'),
       state.canReadDoctype('Promo Request'),
     ]);
     final canOpenCustomer =
-        results[4] && (results[7] || results[8] || results[9] || results[10]);
+        results[4] && (results[6] || results[7] || results[8] || results[9]);
     return _SalesDoctypePermissions(
       canReadSalesOrder: results[0],
       canCreateSalesOrder: results[1],
@@ -219,7 +200,6 @@ class _SalesMainScreenState extends State<SalesMainScreen> {
       canReadSalesInvoice: results[3],
       canReadCustomer: canOpenCustomer,
       canReadTukarGuling: results[5],
-      canReadDeliveryReturn: results[6],
     );
   }
 
@@ -275,7 +255,6 @@ class _SalesDoctypePermissions {
   final bool canReadSalesInvoice;
   final bool canReadCustomer;
   final bool canReadTukarGuling;
-  final bool canReadDeliveryReturn;
 
   const _SalesDoctypePermissions({
     required this.canReadSalesOrder,
@@ -284,7 +263,6 @@ class _SalesDoctypePermissions {
     required this.canReadSalesInvoice,
     required this.canReadCustomer,
     required this.canReadTukarGuling,
-    required this.canReadDeliveryReturn,
   });
 
   List<String> get sellingSegments => [
@@ -298,8 +276,7 @@ class _SalesDoctypePermissions {
       canReadDeliveryNote ||
       canReadSalesInvoice ||
       canReadCustomer ||
-      canReadTukarGuling ||
-      canReadDeliveryReturn;
+      canReadTukarGuling;
 }
 
 class _SalesMenuEntry {
