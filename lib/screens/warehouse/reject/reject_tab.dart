@@ -290,6 +290,12 @@ class _RejectTabState extends State<RejectTab> {
         footer: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            RejectWarehouseActions(
+              rejectName: row.id,
+              workflowState: workflowState,
+              docstatus: int.tryParse(detail['docstatus']?.toString() ?? '') ??
+                  row.docstatus,
+            ),
             if (canEdit)
               erpActionButton(
                 label: 'Edit Reject',

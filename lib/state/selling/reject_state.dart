@@ -492,4 +492,77 @@ class RejectState extends AppStateProxyNotifier {
 
   String formatDisplayDate(DateTime date) =>
       DateRangePresets.formatDisplay(date);
+
+  Future<bool> canCreateStockEntry() =>
+      appState.canCreateDoctype('Stock Entry');
+
+  Future<bool> canWriteStockEntry() =>
+      appState.canWriteDoctype('Stock Entry');
+
+  Future<RejectStockEntryStatus> fetchStockEntryStatus(String rejectName) async {
+    final raw = await frappeService.callMethod(
+      'reject_copy_attachments',
+      args: {
+        'action': 'status',
+        'reject_name': rejectName.trim(),
+      },
+    );
+    final map = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+    final name = map['stock_entry']?.toString().trim() ?? '';
+    final status = map['docstatus'];
+    return RejectStockEntryStatus(
+      stockEntry: name.isEmpty || name == 'null' ? null : name,
+      docstatus: status == null ? null : int.tryParse(status.toString()),
+    );
+  }
+
+  Future<String> createRejectStockEntry(String rejectName) async {
+    final raw = await frappeService.callMethod(
+      'reject_create_stock_entry_v3',
+      args: {'reject_name': rejectName.trim()},
+    );
+    final map = raw is Map ? Map<String, dynamic>.from(raw) : null;
+    final name = map?['stock_entry']?.toString().trim() ?? '';
+    if (name.isEmpty) {
+      throw Exception('Nomor Stock Entry tidak diterima.');
+    }
+    return name;
+  }
+
+  Future<RejectPhotoSyncResult> syncRejectPhotos({
+    required String rejectName,
+    required String stockEntryName,
+  }) async {
+    final raw = await frappeService.callMethod(
+      'reject_copy_attachments',
+      args: {
+        'action': 'copy',
+        'reject_name': rejectName.trim(),
+        'stock_entry_name': stockEntryName.trim(),
+      },
+    );
+    final map = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : const <String, dynamic>{};
+    return RejectPhotoSyncResult(
+      copied: int.tryParse(map['copied']?.toString() ?? '') ?? 0,
+      skipped: int.tryParse(map['skipped']?.toString() ?? '') ?? 0,
+    );
+  }
+}
+
+class RejectStockEntryStatus {
+  final String? stockEntry;
+  final int? docstatus;
+
+  const RejectStockEntryStatus({this.stockEntry, this.docstatus});
+}
+
+class RejectPhotoSyncResult {
+  final int copied;
+  final int skipped;
+
+  const RejectPhotoSyncResult({required this.copied, required this.skipped});
 }

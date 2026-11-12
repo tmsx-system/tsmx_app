@@ -10,6 +10,7 @@ import '../../../utils/erp_error_message.dart';
 import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../selling/shared/sales_attachment_card.dart';
 import '../../selling/shared/sales_ui.dart';
+import '../transaction/stock/stock_entry/stock_entry_detail_screen.dart';
 
 class CreateRejectScreen extends StatefulWidget {
   final String? existingName;
@@ -36,6 +37,8 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
   String? _company;
   DateTime _postingDate = DateTime.now();
   String? _stockEntry;
+  String _workflowState = 'Draft';
+  int _docstatus = 0;
   String? _savedName;
   final _itemMeta = <String, ({String name, String uom})>{};
   List<String> _existingAttachmentNames = const [];
@@ -108,6 +111,10 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
     _series = doc['naming_series']?.toString().trim() ?? _series;
     _company = doc['company']?.toString().trim() ?? _company;
     _stockEntry = doc['stock_entry']?.toString().trim();
+    _workflowState = (doc['workflow_state']?.toString().trim().isNotEmpty == true)
+        ? doc['workflow_state'].toString().trim()
+        : 'Draft';
+    _docstatus = int.tryParse(doc['docstatus']?.toString() ?? '') ?? 0;
     _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
     try {
       final files = await state.fetchAttachments(name);
@@ -456,6 +463,16 @@ class _CreateRejectScreenState extends State<CreateRejectScreen> {
                           ),
                         ),
                       ],
+                      if (_documentName != null &&
+                          _workflowState.trim() == 'Approved' &&
+                          _docstatus == 1) ...[
+                        const SizedBox(height: 14),
+                        RejectWarehouseActions(
+                          rejectName: _documentName!,
+                          workflowState: _workflowState,
+                          docstatus: _docstatus,
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -735,4 +752,257 @@ class _ItemRow {
   double get qty => double.tryParse(qtyCtrl.text.trim()) ?? 0;
 
   void dispose() => qtyCtrl.dispose();
+}
+
+class RejectWarehouseActions extends StatefulWidget {
+  final String rejectName;
+  final String workflowState;
+  final int docstatus;
+
+  const RejectWarehouseActions({
+    super.key,
+    required this.rejectName,
+    required this.workflowState,
+    required this.docstatus,
+  });
+
+  @override
+  State<RejectWarehouseActions> createState() => _RejectWarehouseActionsState();
+}
+
+class _RejectWarehouseActionsState extends State<RejectWarehouseActions> {
+  bool _loading = true;
+  bool _busy = false;
+  bool _canCreate = false;
+  bool _canWrite = false;
+  String? _error;
+  RejectStockEntryStatus? _status;
+
+  bool get _visible =>
+      widget.workflowState.trim() == 'Approved' && widget.docstatus == 1;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_visible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    } else {
+      _loading = false;
+    }
+  }
+
+  Future<void> _load() async {
+    final state = context.read<RejectState>();
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      var canCreate = false;
+      var canWrite = false;
+      try {
+        canCreate = await state.canCreateStockEntry();
+      } catch (_) {}
+      try {
+        canWrite = await state.canWriteStockEntry();
+      } catch (_) {}
+      final status = await state.fetchStockEntryStatus(widget.rejectName);
+      if (!mounted) return;
+      setState(() {
+        _canCreate = canCreate;
+        _canWrite = canWrite;
+        _status = status;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = captureErpError(context, error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openStockEntry(String name) {
+    return Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => StockEntryDetailScreen(stockEntryId: name),
+      ),
+    );
+  }
+
+  Future<void> _sync(String stockEntry) async {
+    setState(() => _busy = true);
+    try {
+      final result = await context.read<RejectState>().syncRejectPhotos(
+        rejectName: widget.rejectName,
+        stockEntryName: stockEntry,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sync berhasil. ${result.copied} lampiran disalin, ${result.skipped} dilewati.',
+          ),
+        ),
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(captureErpError(context, error))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _create() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Stock Entry'),
+        content: Text(
+          'Buat Stock Entry Material Issue untuk Reject ${widget.rejectName}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Buat'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final state = context.read<RejectState>();
+    setState(() => _busy = true);
+    try {
+      final current = await state.fetchStockEntryStatus(widget.rejectName);
+      if (!mounted) return;
+      final existing = current.stockEntry;
+      if (existing != null) {
+        setState(() => _status = current);
+        await _openStockEntry(existing);
+        return;
+      }
+      final created = await state.createRejectStockEntry(widget.rejectName);
+      var copied = 0;
+      var synced = false;
+      try {
+        final sync = await state.syncRejectPhotos(
+          rejectName: widget.rejectName,
+          stockEntryName: created,
+        );
+        copied = sync.copied;
+        synced = true;
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        _status = RejectStockEntryStatus(stockEntry: created, docstatus: 0);
+      });
+      if (synced) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Stock Entry berhasil dibuat. $copied foto disalin.',
+            ),
+          ),
+        );
+      } else {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Stock Entry Dibuat'),
+            content: Text(
+              'Stock Entry $created sudah dibuat, tetapi sinkronisasi foto gagal. '
+              'Jangan membuat Stock Entry lagi. Gunakan Sync Foto setelah error diperbaiki.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      if (!mounted) return;
+      await _openStockEntry(created);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(captureErpError(context, error))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return const SizedBox.shrink();
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: LinearProgressIndicator(),
+      );
+    }
+    final linked = _status?.stockEntry;
+    final submitted = _status?.docstatus == 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_error != null)
+          _banner(
+            'Tidak dapat membaca status Stock Entry.',
+            AppColors.warning,
+          )
+        else if (linked != null)
+          _banner(
+            submitted ? 'Barang Sudah Keluar' : 'Stock Entry masih Draft',
+            submitted ? AppColors.primary : AppColors.warning,
+          ),
+        if (linked != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : () => _openStockEntry(linked),
+            icon: const Icon(Icons.open_in_new_rounded),
+            label: const Text('Open Stock Entry'),
+          ),
+          if (_canWrite) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : () => _sync(linked),
+              icon: const Icon(Icons.photo_library_outlined),
+              label: Text(_busy ? 'Menyalin foto...' : 'Sync Foto'),
+            ),
+          ],
+        ] else if (_canCreate) ...[
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _busy ? null : _create,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(_busy ? 'Membuat Stock Entry...' : 'Create Stock Entry'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _banner(String message, Color color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(color: color, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
 }
