@@ -17,6 +17,7 @@ class LogisticsDoctypeListPanel extends StatefulWidget {
   final List<String> fields;
   final String Function(Map<String, dynamic> row) titleOf;
   final String Function(Map<String, dynamic> row) subtitleOf;
+  final void Function(Map<String, dynamic> row)? onOpen;
 
   const LogisticsDoctypeListPanel({
     super.key,
@@ -26,6 +27,7 @@ class LogisticsDoctypeListPanel extends StatefulWidget {
     required this.fields,
     required this.titleOf,
     required this.subtitleOf,
+    this.onOpen,
   });
 
   @override
@@ -154,45 +156,59 @@ class _LogisticsDoctypeListPanelState extends State<LogisticsDoctypeListPanel> {
     final status = rawStatus.isEmpty && docstatus == null
         ? ''
         : normalizeStatusText(rawStatus.isEmpty ? null : rawStatus, docstatus: docstatus);
+    final card = LogisticsModernCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            backgroundColor: AppColors.softGreen,
+            foregroundColor: AppColors.primary,
+            child: Icon(widget.icon),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.titleOf(row),
+                  style: const TextStyle(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.subtitleOf(row),
+                  style: const TextStyle(
+                    color: AppColors.slate,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (status.isNotEmpty) ErpStatusBadge(statusText: status),
+          if (widget.onOpen != null) ...[
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.slate),
+          ],
+        ],
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: LogisticsModernCard(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              backgroundColor: AppColors.softGreen,
-              foregroundColor: AppColors.primary,
-              child: Icon(widget.icon),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.titleOf(row),
-                    style: const TextStyle(
-                      color: AppColors.navy,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.subtitleOf(row),
-                    style: const TextStyle(
-                      color: AppColors.slate,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+      child: widget.onOpen == null
+          ? card
+          : Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: () => widget.onOpen!(row),
+                child: card,
               ),
             ),
-            if (status.isNotEmpty) ErpStatusBadge(statusText: status),
-          ],
-        ),
-      ),
     );
   }
 }

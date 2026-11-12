@@ -52,6 +52,54 @@ mixin LogisticsDeliveryNoteQueryMixin on AppStateProxyNotifier {
     return DeliveryNote.fromJson(doc);
   }
 
+  Future<Map<String, dynamic>> fetchDeliveryTrip(String name) async {
+    await appState.frappeService.ensureLoggedIn();
+    return appState.frappeService.fetchDocument('Delivery Trip', name.trim());
+  }
+
+  Future<List<Map<String, dynamic>>> fetchDoctypeFields(String doctype) async {
+    await appState.frappeService.ensureLoggedIn();
+    const fields = [
+      'fieldname',
+      'label',
+      'fieldtype',
+      'options',
+      'idx',
+    ];
+    final rows = <Map<String, dynamic>>[];
+    try {
+      rows.addAll(
+        await appState.frappeService.fetchResource(
+          'DocField',
+          fields: fields,
+          filters: [
+            ['parent', '=', doctype],
+          ],
+          orderBy: 'idx asc',
+          limit: 300,
+        ),
+      );
+    } catch (_) {}
+    try {
+      rows.addAll(
+        await appState.frappeService.fetchResource(
+          'Custom Field',
+          fields: const [
+            'fieldname',
+            'label',
+            'fieldtype',
+            'options',
+          ],
+          filters: [
+            ['dt', '=', doctype],
+          ],
+          limit: 200,
+        ),
+      );
+    } catch (_) {}
+    return rows;
+  }
+
   Future<List<Map<String, dynamic>>> fetchLogisticsDocuments({
     required String doctype,
     required List<String> fields,

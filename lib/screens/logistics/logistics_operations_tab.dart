@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/logistics/logistics_overview_state.dart';
 import '../../theme/app_colors.dart';
+import 'delivery_trip_detail_screen.dart';
 import 'logistics_delivery_tab.dart';
 import 'logistics_doctype_list_panel.dart';
 import 'logistics_widgets.dart';
@@ -98,6 +99,16 @@ class _LogisticsOperationsTabState extends State<LogisticsOperationsTab> {
                   if ((row['departure_time'] ?? '').toString().trim().isNotEmpty)
                     row['departure_time'].toString(),
                 ].join(' · '),
+                onOpen: (row) {
+                  final name = row['name']?.toString().trim() ?? '';
+                  if (name.isEmpty) return;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DeliveryTripDetailScreen(tripName: name),
+                    ),
+                  );
+                },
               ),
             ),
           ),
