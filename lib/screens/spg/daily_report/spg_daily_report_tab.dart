@@ -20,6 +20,8 @@ class SpgDailyReportTab extends StatefulWidget {
 class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
   List<Map<String, dynamic>> _records = const [];
   bool _loading = true;
+  bool _canWrite = false;
+  bool _canSubmit = false;
   String? _error;
 
   @override
@@ -34,9 +36,18 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
       _error = null;
     });
     try {
-      final records = await context.read<SpgState>().fetchSpgDailyReports();
+      final state = context.read<SpgState>();
+      final results = await Future.wait<Object>([
+        state.fetchSpgDailyReports(),
+        state.canWriteSpgDailyReport(),
+        state.canSubmitSpgDailyReport(),
+      ]);
       if (!mounted) return;
-      setState(() => _records = records);
+      setState(() {
+        _records = results[0] as List<Map<String, dynamic>>;
+        _canWrite = results[1] as bool;
+        _canSubmit = results[2] as bool;
+      });
     } catch (error) {
       if (mounted) {
         setState(() => _error = captureErpError(context, error));
@@ -51,6 +62,53 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
       MaterialPageRoute(builder: (_) => const CreateSpgDailyReportScreen()),
     );
     if (created == true && mounted) await _load();
+  }
+
+  Future<void> _openEdit(String name) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CreateSpgDailyReportScreen(existingName: name),
+      ),
+    );
+    if (saved == true && mounted) await _load();
+  }
+
+  Future<void> _submit(String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Submit Report Selling'),
+        content: Text('Submit $name?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await context.read<SpgState>().submitSpgDailyReport(name);
+      if (mounted) await _load();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = captureErpError(context, error));
+      }
+    }
+  }
+
+  int _docStatus(Map<String, dynamic> row) =>
+      int.tryParse(row['docstatus']?.toString() ?? '') ?? 0;
+
+  String _statusLabel(int docstatus) {
+    if (docstatus == 1) return 'Submitted';
+    if (docstatus == 2) return 'Cancelled';
+    return 'Draft';
   }
 
   @override
@@ -109,6 +167,8 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
     final employee = row['employee']?.toString() ?? '-';
     final date =
         row['report_date']?.toString() ?? row['modified']?.toString() ?? '-';
+    final docstatus = _docStatus(row);
+    final isDraft = docstatus == 0;
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(24),
@@ -185,8 +245,34 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
                           label: 'Selling',
                           color: AppColors.primary,
                         ),
+                        _MetaPill(
+                          icon: Icons.flag_outlined,
+                          label: _statusLabel(docstatus),
+                          color: isDraft
+                              ? const Color(0xFF0891B2)
+                              : AppColors.primary,
+                        ),
                       ],
                     ),
+                    if (isDraft && (_canWrite || _canSubmit)) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          if (_canWrite)
+                            TextButton.icon(
+                              onPressed: () => _openEdit(name),
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              label: const Text('Edit'),
+                            ),
+                          if (_canSubmit)
+                            TextButton.icon(
+                              onPressed: () => _submit(name),
+                              icon: const Icon(Icons.verified_outlined, size: 18),
+                              label: const Text('Submit'),
+                            ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -209,7 +295,19 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => _SpgDailyReportDetailSheet(detail: detail),
+        builder: (sheetContext) => _SpgDailyReportDetailSheet(
+          detail: detail,
+          canEdit: _canWrite && _docStatus(detail) == 0,
+          canSubmit: _canSubmit && _docStatus(detail) == 0,
+          onEdit: () {
+            Navigator.pop(sheetContext);
+            _openEdit(name);
+          },
+          onSubmit: () async {
+            Navigator.pop(sheetContext);
+            await _submit(name);
+          },
+        ),
       );
     } catch (error) {
       if (mounted) {
@@ -330,8 +428,18 @@ class _SpgListHeader extends StatelessWidget {
 
 class _SpgDailyReportDetailSheet extends StatelessWidget {
   final Map<String, dynamic> detail;
+  final bool canEdit;
+  final bool canSubmit;
+  final VoidCallback onEdit;
+  final VoidCallback onSubmit;
 
-  const _SpgDailyReportDetailSheet({required this.detail});
+  const _SpgDailyReportDetailSheet({
+    required this.detail,
+    required this.canEdit,
+    required this.canSubmit,
+    required this.onEdit,
+    required this.onSubmit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -390,6 +498,30 @@ class _SpgDailyReportDetailSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
+              if (canEdit || canSubmit) ...[
+                Row(
+                  children: [
+                    if (canEdit)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: onEdit,
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('Edit'),
+                        ),
+                      ),
+                    if (canEdit && canSubmit) const SizedBox(width: 10),
+                    if (canSubmit)
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: onSubmit,
+                          icon: const Icon(Icons.verified_outlined),
+                          label: const Text('Submit'),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
               if (rows.isEmpty)
                 const ErpEmptyState(title: 'Belum ada item selling')
               else

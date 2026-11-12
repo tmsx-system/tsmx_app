@@ -4095,7 +4095,7 @@ class AppState with ChangeNotifier {
     return _fetchVisitRows(
       doctype: 'SPG Daily Report',
       fieldSets: const [
-        ['name', 'employee', 'customer', 'report_date', 'notes', 'modified'],
+        ['name', 'employee', 'customer', 'report_date', 'notes', 'docstatus', 'modified'],
         ['name', 'employee', 'customer', 'report_date', 'modified'],
         ['name', 'modified'],
         ['name'],
@@ -4118,27 +4118,69 @@ class AppState with ChangeNotifier {
     required String customer,
     required List<Map<String, dynamic>> sellingItems,
     String? employee,
+    DateTime? reportDate,
     String notes = '',
   }) async {
-    var selectedEmployee = employee?.trim() ?? _currentEmployee?.trim() ?? '';
-    if (selectedEmployee.isEmpty && !mobileAccess.canSelectAnyEmployee) {
+    final payload = await _spgDailyReportPayload(
+      customer: customer,
+      sellingItems: sellingItems,
+      employee: employee,
+      reportDate: reportDate,
+      notes: notes,
+    );
+    return _frappeService.createDocument('SPG Daily Report', payload);
+  }
+
+  Future<void> updateSpgDailyReport({
+    required String name,
+    required String customer,
+    required List<Map<String, dynamic>> sellingItems,
+    String? employee,
+    DateTime? reportDate,
+    String notes = '',
+  }) async {
+    final id = name.trim();
+    if (id.isEmpty) throw Exception('Report Selling tidak valid.');
+    final payload = await _spgDailyReportPayload(
+      customer: customer,
+      sellingItems: sellingItems,
+      employee: employee,
+      reportDate: reportDate,
+      notes: notes,
+      parent: id,
+    );
+    await _frappeService.updateDocument('SPG Daily Report', id, payload);
+  }
+
+  Future<Map<String, dynamic>> submitSpgDailyReport(String name) {
+    final id = name.trim();
+    if (id.isEmpty) throw Exception('Report Selling tidak valid.');
+    return _frappeService.submitDocument('SPG Daily Report', id);
+  }
+
+  Future<Map<String, dynamic>> _spgDailyReportPayload({
+    required String customer,
+    required List<Map<String, dynamic>> sellingItems,
+    String? employee,
+    DateTime? reportDate,
+    String notes = '',
+    String? parent,
+  }) async {
+    var selectedEmployee = employee?.trim() ?? '';
+    if (selectedEmployee.isEmpty && mobileAccess.isSpg) {
       await _ensureCurrentEmployee();
       selectedEmployee = _currentEmployee?.trim() ?? '';
     }
     if (selectedEmployee.isEmpty) {
       throw Exception(
-        mobileAccess.canSelectAnyEmployee
-            ? 'Employee wajib dipilih.'
-            : 'User belum terhubung ke Employee melalui field User ID.',
+        mobileAccess.isSpg
+            ? 'User belum terhubung ke Employee melalui field User ID.'
+            : 'Employee wajib dipilih.',
       );
     }
     if (customer.trim().isEmpty) {
       throw Exception('Customer wajib dipilih.');
     }
-    await _ensureSpgCustomerAssigned(
-      customer: customer.trim(),
-      employee: selectedEmployee,
-    );
     final rows = sellingItems
         .where((row) => row['item']?.toString().trim().isNotEmpty == true)
         .map(
@@ -4148,20 +4190,24 @@ class AppState with ChangeNotifier {
             'opening_stock': NumParse.asDouble(row['opening_stock']),
             'closing_stock': NumParse.asDouble(row['closing_stock']),
             'sell_out': NumParse.asDouble(row['sell_out']),
+            if ((parent ?? '').isNotEmpty) ...{
+              'parent': parent,
+              'parenttype': 'SPG Daily Report',
+              'parentfield': 'selling_items',
+            },
           },
         )
         .toList();
     if (rows.isEmpty) {
       throw Exception('Minimal 1 item selling wajib diisi.');
     }
-    final payload = {
+    return {
       'employee': selectedEmployee,
       'customer': customer.trim(),
-      'report_date': _formatFrappeDate(DateTime.now()),
+      'report_date': _formatFrappeDate(reportDate ?? DateTime.now()),
       'selling_items': rows,
-      if (notes.trim().isNotEmpty) 'notes': notes.trim(),
+      'notes': notes.trim(),
     };
-    return _frappeService.createDocument('SPG Daily Report', payload);
   }
 
   Future<List<Map<String, dynamic>>> _fetchVisitRows({

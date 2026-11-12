@@ -5,11 +5,14 @@ import '../../../models/spg_workspace.dart';
 import '../../../state/spg/spg_state.dart';
 import '../../../theme/app_colors.dart';
 import '../../../widgets/erp/erp_error_box.dart';
+import '../../../widgets/erp/erp_item_autocomplete_field.dart';
 import '../../../utils/erp_error_message.dart';
 import '../../../widgets/responsive/responsive_layout.dart';
 
 class CreateSpgDailyReportScreen extends StatefulWidget {
-  const CreateSpgDailyReportScreen({super.key});
+  final String? existingName;
+
+  const CreateSpgDailyReportScreen({super.key, this.existingName});
 
   @override
   State<CreateSpgDailyReportScreen> createState() =>
@@ -22,9 +25,11 @@ class _CreateSpgDailyReportScreenState
   final List<_SpgSellingRow> _rows = [_SpgSellingRow()];
   List<SpgCustomerOption> _customers = const [];
   List<Map<String, dynamic>> _items = const [];
+  final _itemCache = <String, Map<String, dynamic>>{};
   List<Map<String, dynamic>> _employees = const [];
   SpgCustomerOption? _customer;
   Map<String, dynamic>? _employee;
+  DateTime _reportDate = DateTime.now();
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -51,22 +56,23 @@ class _CreateSpgDailyReportScreenState
     });
     try {
       final state = context.read<SpgState>();
+      final selectsEmployee = !state.mobileAccess.isSpg;
       final results = await Future.wait([
-        state.mobileAccess.canSelectAnyEmployee
+        selectsEmployee
             ? Future.value(const <SpgCustomerOption>[])
-            : state.fetchScheduledSpgCustomers(),
+            : _customersFor(state, ''),
         state.fetchSpgSellingItems(''),
-        if (state.mobileAccess.canSelectAnyEmployee)
-          state.fetchEmployeeOptions(),
+        if (selectsEmployee) state.fetchEmployeeOptions(),
       ]);
       if (!mounted) return;
       setState(() {
         _customers = results[0] as List<SpgCustomerOption>;
         _items = results[1] as List<Map<String, dynamic>>;
-        _employees = state.mobileAccess.canSelectAnyEmployee
+        _employees = selectsEmployee
             ? results[2] as List<Map<String, dynamic>>
             : const <Map<String, dynamic>>[];
       });
+      await _applyExisting(state);
     } catch (error) {
       if (mounted) {
         setState(() => _error = captureErpError(context, error));
@@ -76,7 +82,82 @@ class _CreateSpgDailyReportScreenState
     }
   }
 
+  Future<void> _applyExisting(SpgState state) async {
+    final name = widget.existingName?.trim() ?? '';
+    if (name.isEmpty) return;
+    final doc = await state.fetchSpgDailyReportDetail(name);
+    final docstatus = int.tryParse(doc['docstatus']?.toString() ?? '') ?? 0;
+    if (docstatus != 0) {
+      throw Exception('Report yang sudah Submit tidak bisa diedit.');
+    }
+    final customerId = doc['customer']?.toString().trim() ?? '';
+    final customerName = doc['customer_name']?.toString().trim() ?? '';
+    final employeeId = doc['employee']?.toString().trim() ?? '';
+    final employeeName = doc['employee_name']?.toString().trim() ?? '';
+    final parsed = DateTime.tryParse(doc['report_date']?.toString() ?? '');
+    if (customerId.isNotEmpty &&
+        !_customers.any((customer) => customer.id == customerId)) {
+      _customers = [
+        SpgCustomerOption(
+          id: customerId,
+          name: customerName.isEmpty ? customerId : customerName,
+        ),
+        ..._customers,
+      ];
+    }
+    if (employeeId.isNotEmpty &&
+        !_employees.any((row) => row['name']?.toString() == employeeId)) {
+      _employees = [
+        {
+          'name': employeeId,
+          'employee_name': employeeName.isEmpty ? employeeId : employeeName,
+        },
+        ..._employees,
+      ];
+    }
+    for (final row in _rows) {
+      row.dispose();
+    }
+    _rows
+      ..clear()
+      ..addAll(_rowsFromDoc(doc['selling_items']));
+    if (_rows.isEmpty) _rows.add(_SpgSellingRow());
+    _customer = customerId.isEmpty
+        ? null
+        : SpgCustomerOption(
+            id: customerId,
+            name: customerName.isEmpty ? customerId : customerName,
+          );
+    _employee = employeeId.isEmpty
+        ? null
+        : {
+            'name': employeeId,
+            'employee_name': employeeName.isEmpty ? employeeId : employeeName,
+          };
+    if (parsed != null) {
+      _reportDate = DateTime(parsed.year, parsed.month, parsed.day);
+    }
+    _notes.text = doc['notes']?.toString() ?? '';
+    if (mounted) setState(() {});
+  }
+
+  List<_SpgSellingRow> _rowsFromDoc(dynamic value) {
+    if (value is! List) return const [];
+    return [
+      for (final raw in value.whereType<Map>())
+        _SpgSellingRow(
+          item: raw['item']?.toString() ?? '',
+          itemLabel: raw['item']?.toString() ?? '',
+          uom: raw['uom']?.toString() ?? '',
+          opening: raw['opening_stock']?.toString() ?? '',
+          closing: raw['closing_stock']?.toString() ?? '',
+          sellOut: raw['sell_out']?.toString() ?? '',
+        ),
+    ];
+  }
+
   Future<void> _loadScheduledCustomersForEmployee() async {
+    final state = context.read<SpgState>();
     final employee = _employee?['name']?.toString().trim() ?? '';
     if (employee.isEmpty) {
       setState(() {
@@ -91,9 +172,7 @@ class _CreateSpgDailyReportScreenState
       _customer = null;
     });
     try {
-      final customers = await context
-          .read<SpgState>()
-          .fetchScheduledSpgCustomers(employee: employee);
+      final customers = await _customersFor(state, '', employee: employee);
       if (!mounted) return;
       setState(() => _customers = customers);
     } catch (error) {
@@ -105,12 +184,44 @@ class _CreateSpgDailyReportScreenState
     }
   }
 
+  Future<List<SpgCustomerOption>> _customersFor(
+    SpgState state,
+    String query, {
+    String? employee,
+  }) async {
+    List<SpgCustomerOption> scheduled = const [];
+    try {
+      scheduled = await state.fetchScheduledSpgCustomers(
+        query: query,
+        employee: employee,
+      );
+    } catch (_) {}
+    if (scheduled.isNotEmpty) return scheduled;
+    return state.fetchSpgCustomers(query: query);
+  }
+
+  Future<void> _pickReportDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _reportDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _reportDate = DateTime(picked.year, picked.month, picked.day);
+    });
+  }
+
+  String _reportDateLabel() {
+    final day = _reportDate.day.toString().padLeft(2, '0');
+    final month = _reportDate.month.toString().padLeft(2, '0');
+    return '$day-$month-${_reportDate.year}';
+  }
+
   Future<void> _save() async {
-    final canSelectEmployee = context
-        .read<SpgState>()
-        .mobileAccess
-        .canSelectAnyEmployee;
-    if (canSelectEmployee && _employee == null) {
+    final selectsEmployee = !context.read<SpgState>().mobileAccess.isSpg;
+    if (selectsEmployee && _employee == null) {
       setState(() => _error = 'Employee wajib dipilih.');
       return;
     }
@@ -132,12 +243,33 @@ class _CreateSpgDailyReportScreenState
       _error = null;
     });
     try {
-      await context.read<SpgState>().createSpgDailyReport(
+      final state = context.read<SpgState>();
+      final draft = (
         customer: _customer!.id,
         sellingItems: _rows.map((row) => row.toPayload()).toList(),
         employee: _employee?['name']?.toString(),
+        reportDate: _reportDate,
         notes: _notes.text,
       );
+      final existing = widget.existingName?.trim() ?? '';
+      if (existing.isNotEmpty) {
+        await state.updateSpgDailyReport(
+          name: existing,
+          customer: draft.customer,
+          sellingItems: draft.sellingItems,
+          employee: draft.employee,
+          reportDate: draft.reportDate,
+          notes: draft.notes,
+        );
+      } else {
+        await state.createSpgDailyReport(
+          customer: draft.customer,
+          sellingItems: draft.sellingItems,
+          employee: draft.employee,
+          reportDate: draft.reportDate,
+          notes: draft.notes,
+        );
+      }
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (error) {
@@ -154,7 +286,11 @@ class _CreateSpgDailyReportScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Buat Report Selling'),
+        title: Text(
+          (widget.existingName ?? '').trim().isEmpty
+              ? 'Buat Report Selling'
+              : 'Edit Report Selling',
+        ),
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.navy,
       ),
@@ -196,7 +332,13 @@ class _CreateSpgDailyReportScreenState
                 : const Icon(Icons.send_rounded),
             label: Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(_saving ? 'Menyimpan...' : 'Kirim Report Selling'),
+              child: Text(
+                _saving
+                    ? 'Menyimpan...'
+                    : ((widget.existingName ?? '').trim().isEmpty
+                          ? 'Kirim Report Selling'
+                          : 'Simpan Perubahan'),
+              ),
             ),
           ),
         ),
@@ -276,10 +418,12 @@ class _CreateSpgDailyReportScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (context.watch<SpgState>().mobileAccess.canSelectAnyEmployee) ...[
+          if (!context.watch<SpgState>().mobileAccess.isSpg) ...[
             _employeeSearchField(),
             const SizedBox(height: 12),
           ],
+          _reportDateField(),
+          const SizedBox(height: 12),
           _customerSearchField(),
           const SizedBox(height: 12),
           ..._rows.asMap().entries.map(
@@ -384,60 +528,20 @@ class _CreateSpgDailyReportScreenState
             ],
           ),
           const SizedBox(height: 12),
-          Autocomplete<Map<String, dynamic>>(
-            displayStringForOption: _itemLabel,
-            optionsMaxHeight: 280,
-            optionsBuilder: (value) async {
-              final query = value.text.toLowerCase().trim();
-              if (query.isEmpty) return _items;
-              final remoteItems = await context
-                  .read<SpgState>()
-                  .fetchSpgSellingItems(query);
-              if (remoteItems.isNotEmpty) return remoteItems;
-              return _items.where((item) {
-                final code = item['item_code']?.toString().toLowerCase() ?? '';
-                final name = item['item_name']?.toString().toLowerCase() ?? '';
-                final id = item['name']?.toString().toLowerCase() ?? '';
-                return code.contains(query) ||
-                    name.contains(query) ||
-                    id.contains(query);
-              });
-            },
-            onSelected: (option) {
-              setState(() {
-                row.item =
-                    option['item_code']?.toString() ??
-                    option['name']?.toString() ??
-                    '';
-                row.itemLabel = _itemLabel(option);
-                row.uom = option['stock_uom']?.toString() ?? '';
-              });
-            },
-            fieldViewBuilder: (context, controller, focusNode, onSubmit) {
-              if (row.itemLabel.isNotEmpty && controller.text.isEmpty) {
-                controller.text = row.itemLabel;
-              }
-              return TextField(
-                controller: controller,
-                focusNode: focusNode,
-                enabled: !_saving,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  hintText: 'Cari name atau kode item',
-                  prefixIcon: Icon(Icons.inventory_2_outlined),
-                  suffixIcon: Icon(Icons.search_rounded),
-                ),
-                onChanged: (value) {
-                  if (value.trim() != row.itemLabel) {
-                    setState(() {
-                      row.item = '';
-                      row.itemLabel = value.trim();
-                      row.uom = '';
-                    });
-                  }
-                },
-              );
-            },
+          IgnorePointer(
+            ignoring: _saving,
+            child: ErpItemAutocompleteField(
+              label: 'Name',
+              selectedId: row.item.isEmpty ? null : row.item,
+              options: _itemOptionsFor(row),
+              onSearch: _searchItems,
+              onSelected: (id) => _selectItem(row, id),
+              decoration: _pickerDecoration(
+                'Name',
+                hint: 'Pilih atau search item',
+                icon: Icons.inventory_2_outlined,
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           Container(
@@ -521,107 +625,204 @@ class _CreateSpgDailyReportScreenState
   }
 
   Widget _customerSearchField() {
-    final needsEmployee =
-        context.read<SpgState>().mobileAccess.canSelectAnyEmployee &&
+    final needsEmployee = !context.read<SpgState>().mobileAccess.isSpg &&
         _employee == null;
-    return Autocomplete<SpgCustomerOption>(
-      displayStringForOption: _customerLabel,
-      optionsMaxHeight: 280,
-      optionsBuilder: (value) {
-        if (needsEmployee) return const Iterable<SpgCustomerOption>.empty();
-        final query = value.text.toLowerCase().trim();
-        if (query.isEmpty) return _customers;
-        return _customers.where((customer) {
-          return customer.id.toLowerCase().contains(query) ||
-              customer.name.toLowerCase().contains(query) ||
-              customer.address.toLowerCase().contains(query);
-        });
-      },
-      onSelected: (value) => setState(() => _customer = value),
-      fieldViewBuilder: (context, controller, focusNode, onSubmit) {
-        final selectedLabel = _customer == null
-            ? ''
-            : _customerLabel(_customer!);
-        if (selectedLabel.isNotEmpty && controller.text.isEmpty) {
-          controller.text = selectedLabel;
-        }
-        return TextField(
-          controller: controller,
-          focusNode: focusNode,
-          enabled: !_saving && !_loading && !needsEmployee,
-          decoration: InputDecoration(
-            labelText: 'Customer',
-            hintText: needsEmployee
-                ? 'Pilih employee dulu'
-                : 'Cari customer dari schedule',
-            prefixIcon: const Icon(Icons.storefront_outlined),
-            suffixIcon: const Icon(Icons.search_rounded),
-          ),
-          onChanged: (text) {
-            if (_customer != null && text != selectedLabel) {
-              setState(() => _customer = null);
+    return IgnorePointer(
+      ignoring: _saving,
+      child: ErpItemAutocompleteField(
+        label: 'Customer',
+        selectedId: _customer?.id,
+        options: [for (final customer in _customers) _customerOption(customer)],
+        onSearch: needsEmployee ? null : _searchCustomers,
+        onSelected: (id) {
+          SpgCustomerOption? selected;
+          if (id != null && id.isNotEmpty) {
+            for (final customer in _customers) {
+              if (customer.id == id) {
+                selected = customer;
+                break;
+              }
             }
-          },
-        );
-      },
+            selected ??= SpgCustomerOption(id: id, name: id);
+          }
+          setState(() => _customer = selected);
+        },
+        decoration: _pickerDecoration(
+          'Customer',
+          hint: needsEmployee
+              ? 'Pilih employee dulu'
+              : 'Pilih atau search customer',
+          icon: Icons.storefront_outlined,
+        ),
+      ),
+    );
+  }
+
+  Widget _reportDateField() {
+    return InkWell(
+      onTap: _saving ? null : _pickReportDate,
+      borderRadius: BorderRadius.circular(14),
+      child: InputDecorator(
+        decoration: _pickerDecoration(
+          'Report Date',
+          hint: 'Tanggal report',
+          icon: Icons.calendar_today_rounded,
+        ),
+        child: Text(
+          _reportDateLabel(),
+          style: const TextStyle(
+            color: AppColors.navy,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
     );
   }
 
   Widget _employeeSearchField() {
-    return Autocomplete<Map<String, dynamic>>(
-      displayStringForOption: _employeeLabel,
-      optionsMaxHeight: 280,
-      optionsBuilder: (value) {
-        final query = value.text.toLowerCase().trim();
-        if (query.isEmpty) return _employees;
-        return _employees.where((employee) {
-          final name = employee['name']?.toString().toLowerCase() ?? '';
-          final employeeName =
-              employee['employee_name']?.toString().toLowerCase() ?? '';
-          final userId = employee['user_id']?.toString().toLowerCase() ?? '';
-          return name.contains(query) ||
-              employeeName.contains(query) ||
-              userId.contains(query);
-        });
-      },
-      onSelected: (value) {
-        setState(() => _employee = value);
-        _loadScheduledCustomersForEmployee();
-      },
-      fieldViewBuilder: (context, controller, focusNode, onSubmit) {
-        final selectedLabel = _employee == null
-            ? ''
-            : _employeeLabel(_employee!);
-        if (selectedLabel.isNotEmpty && controller.text.isEmpty) {
-          controller.text = selectedLabel;
-        }
-        return TextField(
-          controller: controller,
-          focusNode: focusNode,
-          enabled: !_saving && !_loading,
-          decoration: const InputDecoration(
-            labelText: 'Employee',
-            hintText: 'Cari employee',
-            prefixIcon: Icon(Icons.badge_outlined),
-            suffixIcon: Icon(Icons.search_rounded),
-          ),
-          onChanged: (text) {
-            if (_employee != null && text != selectedLabel) {
-              setState(() {
-                _employee = null;
-                _customer = null;
-                _customers = const [];
-              });
+    return IgnorePointer(
+      ignoring: _saving,
+      child: ErpItemAutocompleteField(
+        label: 'Employee',
+        selectedId: _employee?['name']?.toString(),
+        options: [for (final employee in _employees) _employeeOption(employee)],
+        onSearch: _searchEmployees,
+        onSelected: (id) {
+          Map<String, dynamic>? selected;
+          if (id != null && id.isNotEmpty) {
+            for (final employee in _employees) {
+              if (employee['name']?.toString() == id) {
+                selected = employee;
+                break;
+              }
             }
-          },
-        );
-      },
+            selected ??= {'name': id, 'employee_name': id};
+          }
+          setState(() {
+            _employee = selected;
+            _customer = null;
+            _customers = const [];
+          });
+          if (selected != null) _loadScheduledCustomersForEmployee();
+        },
+        decoration: _pickerDecoration(
+          'Employee',
+          hint: 'Pilih atau search employee',
+          icon: Icons.badge_outlined,
+        ),
+      ),
     );
+  }
+
+  ErpItemOption _employeeOption(Map<String, dynamic> employee) {
+    return ErpItemOption(
+      id: employee['name']?.toString() ?? '',
+      label: _employeeLabel(employee),
+    );
+  }
+
+  Future<List<ErpItemOption>> _searchEmployees(String query) async {
+    final rows = await context.read<SpgState>().fetchEmployeeOptions(
+      query: query,
+    );
+    final merged = <String, Map<String, dynamic>>{
+      for (final employee in _employees)
+        if ((employee['name']?.toString() ?? '').isNotEmpty)
+          employee['name'].toString(): employee,
+      for (final employee in rows)
+        if ((employee['name']?.toString() ?? '').isNotEmpty)
+          employee['name'].toString(): employee,
+    };
+    _employees = merged.values.toList();
+    return [for (final employee in rows) _employeeOption(employee)];
   }
 
   String _customerLabel(SpgCustomerOption customer) {
     if (customer.id.trim().isEmpty) return customer.name;
     return '${customer.name} - ${customer.id}';
+  }
+
+  ErpItemOption _customerOption(SpgCustomerOption customer) {
+    return ErpItemOption(id: customer.id, label: _customerLabel(customer));
+  }
+
+  Future<List<ErpItemOption>> _searchCustomers(String query) async {
+    final state = context.read<SpgState>();
+    List<SpgCustomerOption> scheduled = const [];
+    try {
+      scheduled = await state.fetchScheduledSpgCustomers(
+        query: query,
+        employee: _employee?['name']?.toString(),
+      );
+    } catch (_) {}
+    final resolved = scheduled.isNotEmpty
+        ? scheduled
+        : await state.fetchSpgCustomers(query: query);
+    final merged = <String, SpgCustomerOption>{
+      for (final customer in _customers) customer.id: customer,
+      for (final customer in resolved) customer.id: customer,
+    };
+    _customers = merged.values.toList();
+    return [for (final customer in resolved) _customerOption(customer)];
+  }
+
+  List<ErpItemOption> _itemOptionsFor(_SpgSellingRow row) {
+    final options = <ErpItemOption>[
+      for (final item in _items) _rememberItem(item),
+    ];
+    if (row.item.isNotEmpty && !options.any((option) => option.id == row.item)) {
+      options.insert(
+        0,
+        ErpItemOption(
+          id: row.item,
+          label: row.itemLabel.isEmpty ? row.item : row.itemLabel,
+        ),
+      );
+    }
+    return options;
+  }
+
+  Future<List<ErpItemOption>> _searchItems(String query) async {
+    final rows = await context.read<SpgState>().fetchSpgSellingItems(query);
+    if (query.trim().isEmpty) _items = rows;
+    return [for (final item in rows) _rememberItem(item)];
+  }
+
+  ErpItemOption _rememberItem(Map<String, dynamic> item) {
+    final code = item['item_code']?.toString().trim() ?? '';
+    final name = item['name']?.toString().trim() ?? '';
+    final id = code.isNotEmpty ? code : name;
+    if (id.isNotEmpty) _itemCache[id] = item;
+    return ErpItemOption(id: id, label: _itemLabel(item));
+  }
+
+  void _selectItem(_SpgSellingRow row, String? id) {
+    final item = id == null ? null : _itemCache[id];
+    setState(() {
+      row.item = id?.trim() ?? '';
+      row.itemLabel = item == null
+          ? (id?.trim() ?? '')
+          : _itemLabel(item);
+      row.uom = item?['stock_uom']?.toString() ?? '';
+    });
+  }
+
+  InputDecoration _pickerDecoration(
+    String label, {
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon),
+      filled: true,
+      fillColor: AppColors.background,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: AppColors.primary.withValues(alpha: 0.16)),
+      ),
+    );
   }
 
   String _employeeLabel(Map<String, dynamic> employee) {
@@ -663,6 +864,19 @@ class _SpgSellingRow {
   final stockAwal = TextEditingController();
   final stockAkhir = TextEditingController();
   final sellOut = TextEditingController();
+
+  _SpgSellingRow({
+    this.item = '',
+    this.itemLabel = '',
+    this.uom = '',
+    String opening = '',
+    String closing = '',
+    String sellOut = '',
+  }) {
+    stockAwal.text = opening;
+    stockAkhir.text = closing;
+    this.sellOut.text = sellOut;
+  }
 
   Map<String, dynamic> toPayload() => {
     'item': item,

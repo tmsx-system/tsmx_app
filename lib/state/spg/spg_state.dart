@@ -129,13 +129,43 @@ class SpgState extends AppStateProxyNotifier {
     required String customer,
     required List<Map<String, dynamic>> sellingItems,
     String? employee,
+    DateTime? reportDate,
     String notes = '',
   }) {
     return appState.createSpgDailyReport(
       customer: customer,
       sellingItems: sellingItems,
       employee: employee,
+      reportDate: reportDate,
       notes: notes,
     );
   }
+
+  Future<void> updateSpgDailyReport({
+    required String name,
+    required String customer,
+    required List<Map<String, dynamic>> sellingItems,
+    String? employee,
+    DateTime? reportDate,
+    String notes = '',
+  }) {
+    return appState.updateSpgDailyReport(
+      name: name,
+      customer: customer,
+      sellingItems: sellingItems,
+      employee: employee,
+      reportDate: reportDate,
+      notes: notes,
+    );
+  }
+
+  Future<void> submitSpgDailyReport(String name) {
+    return appState.submitSpgDailyReport(name);
+  }
+
+  Future<bool> canWriteSpgDailyReport() =>
+      appState.canWriteDoctype('SPG Daily Report');
+
+  Future<bool> canSubmitSpgDailyReport() =>
+      appState.canSubmitDoctype('SPG Daily Report');
 }
