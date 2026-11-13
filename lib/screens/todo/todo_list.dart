@@ -13,20 +13,8 @@ import '../../utils/num_parse.dart';
 import '../../widgets/erp/erp_empty_state.dart';
 import '../../utils/erp_error_message.dart';
 import '../../widgets/erp/erp_status_badge.dart';
-import '../../widgets/erp/erp_status_chip_bar.dart';
 import '../../widgets/erp/erp_workflow_helper.dart';
 import '../../widgets/responsive/responsive_layout.dart';
-
-enum _ApprovalTodoSortOption { newest, oldest, amountHigh, amountLow }
-
-enum _ApprovalReviewFilter {
-  todo,
-  done,
-  submitted,
-  approved,
-  rejected,
-  cancelled,
-}
 
 String _itemDiscountLabel(Map<String, dynamic> item) {
   final amount = NumParse.asDouble(item['discount_amount']);
@@ -252,14 +240,12 @@ class SalesOrderApprovalScreen extends StatefulWidget {
   final bool embedded;
   final String title;
   final Set<String>? doctypeFilter;
-  final bool showHistoryTab;
 
   const SalesOrderApprovalScreen({
     super.key,
     this.embedded = false,
     this.title = 'Approval Dokumen',
     this.doctypeFilter,
-    this.showHistoryTab = true,
   });
 
   @override
@@ -268,23 +254,17 @@ class SalesOrderApprovalScreen extends StatefulWidget {
 }
 
 class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
-  final _search = TextEditingController();
   List<ErpApprovalTodo> _rows = const [];
-  List<SalesOrderApprovalHistory> _history = const [];
   Timer? _syncTimer;
   Future<void>? _loadInFlight;
   bool _loading = true;
   String? _error;
-  String? _historyError;
-  String? _doctypeQuickFilter;
-  String? _statusQuickFilter;
-  _ApprovalReviewFilter _reviewFilter = _ApprovalReviewFilter.todo;
-  _ApprovalTodoSortOption _sortOption = _ApprovalTodoSortOption.newest;
+  String? _openDoctype;
+  String? _statusFilter;
 
   @override
   void initState() {
     super.initState();
-    _search.addListener(_onSearchChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final cachedRows = _filterRows(
@@ -303,15 +283,9 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     });
   }
 
-  void _onSearchChanged() {
-    if (mounted) setState(() {});
-  }
-
   @override
   void dispose() {
     _syncTimer?.cancel();
-    _search.removeListener(_onSearchChanged);
-    _search.dispose();
     super.dispose();
   }
 
@@ -334,7 +308,6 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       setState(() {
         _loading = true;
         _error = null;
-        _historyError = null;
       });
     }
     final appState = context.read<TodoState>();
@@ -368,22 +341,6 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
           );
           _loading = false;
         });
-      }
-    }
-    if (widget.showHistoryTab) {
-      try {
-        final history = await appState.fetchSalesOrderApprovalHistory();
-        if (mounted) setState(() => _history = history);
-      } catch (error) {
-        if (!silent && mounted) {
-          setState(
-            () => _historyError = captureErpError(
-              context,
-              error,
-              action: 'memuat riwayat approval',
-            ),
-          );
-        }
       }
     }
   }
@@ -453,81 +410,64 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
   }
 
   Widget _approvalList() {
-    final query = _search.text.trim().toLowerCase();
-    final allHistoryGroups = _groupedHistory();
-    final reviewTabs = _availableReviewFilters(allHistoryGroups);
-    final activeHistoryGroups = allHistoryGroups
-        .where(
-          (group) => _historyGroupMatchesReviewFilter(group, _reviewFilter),
-        )
-        .toList();
-    final doctypeCounts = _reviewFilter == _ApprovalReviewFilter.todo
-        ? _approvalTodoDoctypeCounts(_rows)
-        : _approvalHistoryDoctypeCounts(activeHistoryGroups);
-    final doctypeOptions = _sortedDoctypes(doctypeCounts.keys);
-    final effectiveDoctypeFilter =
-        doctypeCounts.containsKey(_doctypeQuickFilter)
-        ? _doctypeQuickFilter
+    final allRows = List<ErpApprovalTodo>.from(_rows)
+      ..sort(_compareApprovalTodos);
+    final statusCounts = <String, int>{};
+    final statusLabels = <String, String>{};
+    for (final row in allRows) {
+      final label = _todoStatusLabel(row);
+      final key = label.toLowerCase();
+      statusLabels.putIfAbsent(key, () => label);
+      statusCounts[key] = (statusCounts[key] ?? 0) + 1;
+    }
+    final statusKeys = statusCounts.keys.toList()
+      ..sort((a, b) {
+        final byCount = (statusCounts[b] ?? 0).compareTo(statusCounts[a] ?? 0);
+        if (byCount != 0) return byCount;
+        return a.compareTo(b);
+      });
+    final selectedStatus = statusCounts.containsKey(_statusFilter)
+        ? _statusFilter
         : null;
-    final baseRows = _rows.where((row) {
-      final matchType =
-          effectiveDoctypeFilter == null ||
-          row.doctype == effectiveDoctypeFilter;
-      final matchSearch =
-          query.isEmpty ||
-          row.name.toLowerCase().contains(query) ||
-          row.doctype.toLowerCase().contains(query) ||
-          row.party.toLowerCase().contains(query) ||
-          row.partyName.toLowerCase().contains(query) ||
-          row.workflowState.toLowerCase().contains(query);
-      return matchType && matchSearch;
+    final rows = allRows.where((row) {
+      if (selectedStatus == null) return true;
+      return _todoStatusLabel(row).toLowerCase() == selectedStatus;
     }).toList();
-    final historyGroups = _filteredHistoryGroups(
-      query,
-      doctypeFilter: effectiveDoctypeFilter,
-    );
-    final statusOptions = _approvalStatusOptions(baseRows);
-    final statusCounts = _approvalStatusCounts(baseRows);
-    final rows = baseRows.where((row) {
-      return _statusQuickFilter == null ||
-          _approvalStatus(row).toLowerCase() ==
-              _statusQuickFilter!.toLowerCase();
-    }).toList();
-    rows.sort(_compareApprovalTodos);
-    final visibleCount = _reviewFilter == _ApprovalReviewFilter.todo
-        ? rows.length
-        : historyGroups.length;
-    final totalCount = _reviewFilter == _ApprovalReviewFilter.todo
-        ? _rows.length
-        : _reviewCount(_reviewFilter, allHistoryGroups);
+    final counts = _approvalTodoDoctypeCounts(rows);
+    final doctypes = counts.keys.toList()
+      ..sort((a, b) {
+        final byCount = (counts[b] ?? 0).compareTo(counts[a] ?? 0);
+        if (byCount != 0) return byCount;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
+    final open = _openDoctype == ''
+        ? null
+        : counts.containsKey(_openDoctype)
+        ? _openDoctype
+        : (doctypes.isEmpty ? null : doctypes.first);
+    final grouped = <String, List<ErpApprovalTodo>>{};
+    for (final row in rows) {
+      grouped.putIfAbsent(row.doctype, () => []).add(row);
+    }
     return RefreshIndicator(
       onRefresh: () => _load(forceRefresh: true),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: TmsxResponsive.pagePadding(context, top: 16, bottom: 90),
         children: [
-          _ApprovalReviewTabBar(
-            selected: _reviewFilter,
-            tabs: reviewTabs,
-            countFor: (filter) => _reviewCount(filter, allHistoryGroups),
-            labelFor: _reviewFilterLabel,
-            onChanged: (filter) {
-              setState(() {
-                _reviewFilter = filter;
-                _statusQuickFilter = null;
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          _approvalSearchBox(
-            visibleCount: visibleCount,
-            totalCount: totalCount,
-            doctypeCounts: doctypeCounts,
-            statusOptions: statusOptions,
-            statusCounts: statusCounts,
-            allStatusCount: baseRows.length,
-            doctypeOptions: doctypeOptions,
-          ),
+          _todoHeader(allRows.length),
+          if (allRows.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _statusFilterBar(
+              total: allRows.length,
+              statusKeys: statusKeys,
+              statusLabels: statusLabels,
+              statusCounts: statusCounts,
+              selected: selectedStatus,
+            ),
+          ],
+          const SizedBox(height: 14),
+          if (doctypes.isNotEmpty) _todoSummaryCards(doctypes, counts, open),
           if (_loading) ...[
             const SizedBox(height: 12),
             const LinearProgressIndicator(),
@@ -536,197 +476,333 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
             const SizedBox(height: 12),
             _errorBox(_error!),
           ],
-          if (_historyError != null &&
-              _reviewFilter != _ApprovalReviewFilter.todo) ...[
-            const SizedBox(height: 12),
-            _errorBox(_historyError!),
-          ],
-          const SizedBox(height: 16),
-          if (_reviewFilter == _ApprovalReviewFilter.todo &&
-              rows.isEmpty &&
-              !_loading)
-            const ErpEmptyState(
-              title: 'Todo approval sudah kosong',
-              message:
-                  'Hanya action Workflow yang tersedia untuk role login yang ditampilkan.',
+          const SizedBox(height: 8),
+          if (rows.isEmpty && !_loading)
+            ErpEmptyState(
+              title: allRows.isEmpty
+                  ? 'Todo approval sudah kosong'
+                  : 'Tidak ada dokumen di filter ini',
+              message: allRows.isEmpty
+                  ? 'Hanya action Workflow yang tersedia untuk role login yang ditampilkan.'
+                  : 'Pilih Semua atau status workflow lain untuk melihat dokumen yang tersisa.',
             )
-          else if (_reviewFilter == _ApprovalReviewFilter.todo)
-            TmsxResponsiveCardGrid(
-              wideTabletColumns: 2,
-              desktopColumns: 3,
-              children: rows.map(_approvalCard).toList(),
+          else
+            for (final doctype in doctypes)
+              _todoSection(
+                doctype: doctype,
+                rows: grouped[doctype] ?? const [],
+                expanded: doctype == open,
+              ),
+        ],
+      ),
+    );
+  }
+
+  String _todoStatusLabel(ErpApprovalTodo row) {
+    final workflow = row.workflowState.trim();
+    if (workflow.isNotEmpty) return workflow;
+    final status = row.status.trim();
+    if (status.isNotEmpty) return status;
+    if (row.docStatus == 0) return 'Draft';
+    return 'Tanpa status';
+  }
+
+  Widget _statusFilterBar({
+    required int total,
+    required List<String> statusKeys,
+    required Map<String, String> statusLabels,
+    required Map<String, int> statusCounts,
+    required String? selected,
+  }) {
+    Widget chip({
+      required String label,
+      required int count,
+      required String? value,
+    }) {
+      final active = selected == value;
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Material(
+          color: active ? AppColors.primary : AppColors.white,
+          borderRadius: BorderRadius.circular(999),
+          child: InkWell(
+            onTap: () => setState(() => _statusFilter = value),
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              height: 30,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: active ? AppColors.primary : AppColors.border,
+                ),
+              ),
+              child: Text(
+                '$label  $count',
+                style: TextStyle(
+                  color: active ? AppColors.white : AppColors.navy,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
-          if (_reviewFilter != _ApprovalReviewFilter.todo &&
-              historyGroups.isEmpty &&
-              !_loading)
-            const ErpEmptyState(
-              title: 'Belum ada approval selesai',
-              message:
-                  'Dokumen yang sudah pernah di-approve/reject dari aplikasi akan muncul di sini.',
-            )
-          else if (_reviewFilter != _ApprovalReviewFilter.todo)
-            TmsxResponsiveCardGrid(
-              wideTabletColumns: 2,
-              desktopColumns: 3,
-              children: historyGroups.map(_historyGroupCard).toList(),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 30,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          chip(label: 'Semua', count: total, value: null),
+          for (final key in statusKeys)
+            chip(
+              label: statusLabels[key] ?? key,
+              count: statusCounts[key] ?? 0,
+              value: key,
             ),
         ],
       ),
     );
   }
 
-  Widget _approvalSearchBox({
-    required int visibleCount,
-    required int totalCount,
-    required Map<String, int> doctypeCounts,
-    required List<String> statusOptions,
-    required Map<String, int> statusCounts,
-    required int allStatusCount,
-    required List<String> doctypeOptions,
-  }) {
-    final hasActiveFilter =
-        _search.text.trim().isNotEmpty ||
-        _doctypeQuickFilter != null ||
-        _statusQuickFilter != null ||
-        _reviewFilter != _ApprovalReviewFilter.todo ||
-        _sortOption != _ApprovalTodoSortOption.newest;
-    final selectedDoctype = doctypeOptions.contains(_doctypeQuickFilter)
-        ? _doctypeQuickFilter
-        : null;
-    return Column(
+  Widget _todoHeader(int total) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ApprovalCompactFilterBar(
-          title: selectedDoctype == null
-              ? 'Semua dokumen ($totalCount)'
-              : '${_approvalShortLabel(selectedDoctype)} - $selectedDoctype (${doctypeCounts[selectedDoctype] ?? 0})',
-          subtitle: _approvalSortLabel(_sortOption),
-          hasActiveFilter: hasActiveFilter,
-          onOpenFilter: () => _openApprovalFilterSheet(
-            totalCount: totalCount,
-            doctypeCounts: doctypeCounts,
-            doctypeOptions: doctypeOptions,
-            selectedDoctype: selectedDoctype,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.border),
-            boxShadow: AppColors.cardShadow,
-          ),
-          child: TextField(
-            controller: _search,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: 'Search SO or customer...',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _search.text.trim().isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Bersihkan pencarian',
-                      onPressed: _search.clear,
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-              filled: true,
-              fillColor: Colors.transparent,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(22),
-                borderSide: BorderSide.none,
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'To-do List',
+                style: TextStyle(
+                  color: AppColors.navy,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(22),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(22),
-                borderSide: const BorderSide(color: AppColors.primary),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 16,
-              ),
-              isDense: true,
-            ),
-          ),
-        ),
-        if (_reviewFilter == _ApprovalReviewFilter.todo) ...[
-          const SizedBox(height: 14),
-          ErpStatusChipBar<String?>(
-            selected: _statusQuickFilter,
-            onSelected: (status) => setState(() => _statusQuickFilter = status),
-            chips: [
-              ErpStatusChip<String?>(
-                label: 'Semua',
-                value: null,
-                count: allStatusCount,
-              ),
-              ...statusOptions.map(
-                (status) => ErpStatusChip<String?>(
-                  label: status,
-                  value: status,
-                  count: statusCounts[status] ?? 0,
+              SizedBox(height: 2),
+              Text(
+                'Dokumen yang perlu ditindaklanjuti',
+                style: TextStyle(
+                  color: AppColors.slate,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
-        ],
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            const Icon(
-              Icons.filter_list_rounded,
-              size: 16,
-              color: AppColors.slate,
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.softGreen,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            'Total  $total',
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
             ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                '$visibleCount dari $totalCount dokumen ditampilkan',
-                style: const TextStyle(
-                  color: AppColors.slate,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ],
     );
   }
 
-  Future<void> _openApprovalFilterSheet({
-    required int totalCount,
-    required Map<String, int> doctypeCounts,
-    required List<String> doctypeOptions,
-    required String? selectedDoctype,
-  }) async {
-    final result = await showModalBottomSheet<_ApprovalFilterResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.white,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
-      builder: (context) => _ApprovalFilterSheet(
-        totalCount: totalCount,
-        doctypeCounts: doctypeCounts,
-        doctypeOptions: doctypeOptions,
-        selectedDoctype: selectedDoctype,
-        selectedSort: _sortOption,
-        labelForDoctype: (doctype) =>
-            '${_approvalShortLabel(doctype)} - $doctype (${doctypeCounts[doctype] ?? 0})',
-        labelForSort: _approvalSortLabel,
+  Widget _todoSummaryCards(
+    List<String> doctypes,
+    Map<String, int> counts,
+    String? focused,
+  ) {
+    return SizedBox(
+      height: 118,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: doctypes.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final doctype = doctypes[index];
+          final selected = doctype == focused;
+          final accent = _approvalAccent(doctype);
+          return InkWell(
+            onTap: () => setState(() => _openDoctype = doctype),
+            borderRadius: BorderRadius.circular(20),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 116,
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.white : accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: selected ? accent : accent.withValues(alpha: 0.16),
+                  width: selected ? 1.6 : 1,
+                ),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.16),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Icon(_approvalIcon(doctype), color: accent, size: 16),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _approvalShortLabel(doctype),
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${counts[doctype] ?? 0}',
+                    style: const TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    doctype,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.slate,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    height: 3,
+                    width: selected ? 36 : 18,
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
-    if (result == null || !mounted) return;
-    setState(() {
-      _doctypeQuickFilter = result.doctype;
-      _sortOption = result.sort;
-    });
+  }
+
+  Widget _todoSection({
+    required String doctype,
+    required List<ErpApprovalTodo> rows,
+    required bool expanded,
+  }) {
+    final accent = _approvalAccent(doctype);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(
+              () => _openDoctype = expanded ? '' : doctype,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: expanded
+                    ? accent.withValues(alpha: 0.08)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(_approvalIcon(doctype), color: accent, size: 16),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      doctype,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.navy,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${rows.length}',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.slate,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expanded) ...[
+            const SizedBox(height: 8),
+            ...rows.map(_approvalCard),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _approvalCard(ErpApprovalTodo row) => Padding(
@@ -735,9 +811,20 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       onTap: () => _selectApproval(row),
       borderRadius: BorderRadius.circular(22),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        clipBehavior: Clip.antiAlias,
         decoration: _cardDecoration(accent: _approvalAccent(row.doctype)),
-        child: Column(
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 4,
+              child: ColoredBox(color: _approvalAccent(row.doctype)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+              child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -864,6 +951,9 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
             ),
           ],
         ),
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -909,15 +999,15 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
   };
 
   Color _approvalAccent(String doctype) => switch (doctype) {
-    'Sales Order' => const Color(0xFF16A34A),
-    'Purchase Order' => const Color(0xFFF97316),
-    'Purchase Invoice' => const Color(0xFF3B82F6),
-    'Material Request' => const Color(0xFF6366F1),
-    'Journal Entry' => const Color(0xFF0EA5E9),
-    'Tukar Guling' => AppColors.primary,
-    'Delivery Return' => AppColors.primary,
-    'Reject' => AppColors.danger,
-    _ => AppColors.primary,
+    'Sales Order' => const Color(0xFF15803D),
+    'Purchase Order' => const Color(0xFFEA580C),
+    'Purchase Invoice' => const Color(0xFF0F766E),
+    'Material Request' => const Color(0xFF4F46E5),
+    'Journal Entry' => const Color(0xFF0284C7),
+    'Tukar Guling' => const Color(0xFF7C3AED),
+    'Delivery Return' => const Color(0xFF2563EB),
+    'Reject' => const Color(0xFFE11D48),
+    _ => const Color(0xFF0F766E),
   };
 
   String _approvalAmount(ErpApprovalTodo row) {
@@ -943,12 +1033,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
   };
 
   int _compareApprovalTodos(ErpApprovalTodo a, ErpApprovalTodo b) {
-    return switch (_sortOption) {
-      _ApprovalTodoSortOption.newest => _compareDateDesc(a.date, b.date),
-      _ApprovalTodoSortOption.oldest => _compareDateAsc(a.date, b.date),
-      _ApprovalTodoSortOption.amountHigh => b.amount.compareTo(a.amount),
-      _ApprovalTodoSortOption.amountLow => a.amount.compareTo(b.amount),
-    };
+    return _compareDateDesc(a.date, b.date);
   }
 
   int _compareDateDesc(String a, String b) {
@@ -960,46 +1045,6 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     return right.compareTo(left);
   }
 
-  int _compareDateAsc(String a, String b) {
-    final left = DateTime.tryParse(a.trim());
-    final right = DateTime.tryParse(b.trim());
-    if (left == null && right == null) return a.compareTo(b);
-    if (left == null) return 1;
-    if (right == null) return -1;
-    return left.compareTo(right);
-  }
-
-  String _approvalSortLabel(_ApprovalTodoSortOption option) {
-    return switch (option) {
-      _ApprovalTodoSortOption.newest => 'Terbaru',
-      _ApprovalTodoSortOption.oldest => 'Terlama',
-      _ApprovalTodoSortOption.amountHigh => 'Nilai tertinggi',
-      _ApprovalTodoSortOption.amountLow => 'Nilai terendah',
-    };
-  }
-
-  String _approvalStatus(ErpApprovalTodo row) {
-    final workflowState = row.workflowState.trim();
-    if (workflowState.isNotEmpty) return workflowState;
-    final status = row.status.trim();
-    return status.isEmpty ? 'Tanpa status' : status;
-  }
-
-  List<String> _approvalStatusOptions(List<ErpApprovalTodo> rows) {
-    final statuses = rows.map(_approvalStatus).toSet().toList();
-    statuses.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return statuses;
-  }
-
-  Map<String, int> _approvalStatusCounts(List<ErpApprovalTodo> rows) {
-    final counts = <String, int>{};
-    for (final row in rows) {
-      final status = _approvalStatus(row);
-      counts[status] = (counts[status] ?? 0) + 1;
-    }
-    return counts;
-  }
-
   Map<String, int> _approvalTodoDoctypeCounts(List<ErpApprovalTodo> rows) {
     final counts = <String, int>{};
     for (final row in rows) {
@@ -1008,254 +1053,6 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       counts[doctype] = (counts[doctype] ?? 0) + 1;
     }
     return counts;
-  }
-
-  Map<String, int> _approvalHistoryDoctypeCounts(
-    List<_ApprovalHistoryGroup> groups,
-  ) {
-    final counts = <String, int>{};
-    for (final group in groups) {
-      final doctype = group.doctype.trim();
-      if (doctype.isEmpty) continue;
-      counts[doctype] = (counts[doctype] ?? 0) + 1;
-    }
-    return counts;
-  }
-
-  List<String> _sortedDoctypes(Iterable<String> values) {
-    final doctypes = values
-        .map((doctype) => doctype.trim())
-        .where((doctype) => doctype.isNotEmpty)
-        .toSet()
-        .toList();
-    doctypes.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return doctypes;
-  }
-
-  List<_ApprovalHistoryGroup> _filteredHistoryGroups(
-    String query, {
-    required String? doctypeFilter,
-  }) {
-    final groups = _groupedHistory().where((group) {
-      if (!_historyGroupMatchesReviewFilter(group, _reviewFilter)) {
-        return false;
-      }
-      final matchType = doctypeFilter == null || group.doctype == doctypeFilter;
-      if (!matchType) return false;
-      if (query.isEmpty) return true;
-      final latest = group.latest;
-      return group.documentName.toLowerCase().contains(query) ||
-          group.doctype.toLowerCase().contains(query) ||
-          latest.actor.toLowerCase().contains(query) ||
-          latest.content.toLowerCase().contains(query) ||
-          latest.createdAt.toLowerCase().contains(query);
-    }).toList();
-    groups.sort((a, b) {
-      return switch (_sortOption) {
-        _ApprovalTodoSortOption.newest => b.latest.createdAt.compareTo(
-          a.latest.createdAt,
-        ),
-        _ApprovalTodoSortOption.oldest => a.latest.createdAt.compareTo(
-          b.latest.createdAt,
-        ),
-        _ApprovalTodoSortOption.amountHigh ||
-        _ApprovalTodoSortOption.amountLow => b.latest.createdAt.compareTo(
-          a.latest.createdAt,
-        ),
-      };
-    });
-    return groups;
-  }
-
-  List<_ApprovalReviewFilter> _availableReviewFilters(
-    List<_ApprovalHistoryGroup> historyGroups,
-  ) {
-    final filters = <_ApprovalReviewFilter>[_ApprovalReviewFilter.todo];
-    if (historyGroups.isNotEmpty) filters.add(_ApprovalReviewFilter.done);
-    for (final filter in const [
-      _ApprovalReviewFilter.submitted,
-      _ApprovalReviewFilter.approved,
-      _ApprovalReviewFilter.rejected,
-      _ApprovalReviewFilter.cancelled,
-    ]) {
-      if (_reviewCount(filter, historyGroups) > 0) filters.add(filter);
-    }
-    if (!filters.contains(_reviewFilter)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !filters.contains(_reviewFilter)) {
-          setState(() => _reviewFilter = _ApprovalReviewFilter.todo);
-        }
-      });
-    }
-    return filters;
-  }
-
-  int _reviewCount(
-    _ApprovalReviewFilter filter,
-    List<_ApprovalHistoryGroup> historyGroups,
-  ) {
-    if (filter == _ApprovalReviewFilter.todo) return _rows.length;
-    return historyGroups
-        .where((group) => _historyGroupMatchesReviewFilter(group, filter))
-        .length;
-  }
-
-  bool _historyGroupMatchesReviewFilter(
-    _ApprovalHistoryGroup group,
-    _ApprovalReviewFilter filter,
-  ) {
-    if (filter == _ApprovalReviewFilter.todo) return false;
-    if (filter == _ApprovalReviewFilter.done) return true;
-    return _historyReviewFilter(group) == filter;
-  }
-
-  _ApprovalReviewFilter _historyReviewFilter(_ApprovalHistoryGroup group) {
-    final content = _plainText(group.latest.content).toLowerCase();
-    if (content.contains('reject') ||
-        content.contains('return') ||
-        content.contains('tolak')) {
-      return _ApprovalReviewFilter.rejected;
-    }
-    if (content.contains('cancel') || content.contains('batal')) {
-      return _ApprovalReviewFilter.cancelled;
-    }
-    if (content.contains('submit')) return _ApprovalReviewFilter.submitted;
-    if (content.contains('approve')) return _ApprovalReviewFilter.approved;
-    return _ApprovalReviewFilter.done;
-  }
-
-  String _reviewFilterLabel(_ApprovalReviewFilter filter) {
-    return switch (filter) {
-      _ApprovalReviewFilter.todo => 'To-do',
-      _ApprovalReviewFilter.done => 'Done',
-      _ApprovalReviewFilter.submitted => 'Submitted',
-      _ApprovalReviewFilter.approved => 'Approved',
-      _ApprovalReviewFilter.rejected => 'Rejected',
-      _ApprovalReviewFilter.cancelled => 'Cancelled',
-    };
-  }
-
-  Widget _historyGroupCard(_ApprovalHistoryGroup group) {
-    final latest = group.latest;
-    final rejected = latest.content.toLowerCase().contains('reject');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        onTap: () => _openHistoryDetail(group),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: _cardDecoration(),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                backgroundColor:
-                    (rejected ? AppColors.danger : AppColors.success)
-                        .withValues(alpha: 0.1),
-                foregroundColor: rejected
-                    ? AppColors.danger
-                    : AppColors.success,
-                child: Icon(
-                  rejected ? Icons.close_rounded : Icons.check_rounded,
-                ),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            group.documentName,
-                            style: const TextStyle(
-                              color: AppColors.navy,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.softGreen,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '${group.items.length} log',
-                            style: const TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _plainText(latest.content),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      latest.doctype,
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${latest.actor} | ${latest.createdAt}',
-                      style: const TextStyle(
-                        color: AppColors.slate,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.slate),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openHistoryDetail(_ApprovalHistoryGroup group) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _SalesOrderApprovalHistoryDetailPage(group: group),
-      ),
-    );
-  }
-
-  List<_ApprovalHistoryGroup> _groupedHistory() {
-    final grouped = <String, List<SalesOrderApprovalHistory>>{};
-    for (final item in _history) {
-      final documentName = item.salesOrder.isEmpty ? item.id : item.salesOrder;
-      final key = '${item.doctype}::$documentName';
-      grouped.putIfAbsent(key, () => []).add(item);
-    }
-    final groups = grouped.entries
-        .map((entry) => _ApprovalHistoryGroup(entry.key, entry.value))
-        .toList();
-    groups.sort((a, b) => b.latest.createdAt.compareTo(a.latest.createdAt));
-    return groups;
   }
 
   Widget _errorBox(String message) => Container(
@@ -1289,413 +1086,6 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
     );
   }
 
-  String _plainText(String value) => value
-      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'[ \t]+'), ' ')
-      .trim();
-}
-
-class _ApprovalCompactFilterBar extends StatelessWidget {
-  const _ApprovalCompactFilterBar({
-    required this.title,
-    required this.subtitle,
-    required this.hasActiveFilter,
-    required this.onOpenFilter,
-  });
-
-  final String title;
-  final String subtitle;
-  final bool hasActiveFilter;
-  final VoidCallback onOpenFilter;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryDark.withValues(alpha: 0.07),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.softGreen,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.assignment_turned_in_outlined,
-              color: AppColors.primary,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.slate,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: onOpenFilter,
-            icon: Icon(
-              hasActiveFilter
-                  ? Icons.filter_alt_rounded
-                  : Icons.filter_alt_outlined,
-              size: 15,
-            ),
-            label: const Text('Filter'),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.softGreen,
-              foregroundColor: AppColors.primary,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              minimumSize: const Size(0, 38),
-              textStyle: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ApprovalFilterResult {
-  const _ApprovalFilterResult({required this.doctype, required this.sort});
-
-  final String? doctype;
-  final _ApprovalTodoSortOption sort;
-}
-
-class _ApprovalFilterSheet extends StatefulWidget {
-  const _ApprovalFilterSheet({
-    required this.totalCount,
-    required this.doctypeCounts,
-    required this.doctypeOptions,
-    required this.selectedDoctype,
-    required this.selectedSort,
-    required this.labelForDoctype,
-    required this.labelForSort,
-  });
-
-  final int totalCount;
-  final Map<String, int> doctypeCounts;
-  final List<String> doctypeOptions;
-  final String? selectedDoctype;
-  final _ApprovalTodoSortOption selectedSort;
-  final String Function(String doctype) labelForDoctype;
-  final String Function(_ApprovalTodoSortOption sort) labelForSort;
-
-  @override
-  State<_ApprovalFilterSheet> createState() => _ApprovalFilterSheetState();
-}
-
-class _ApprovalFilterSheetState extends State<_ApprovalFilterSheet> {
-  late String? _doctype = widget.selectedDoctype;
-  late _ApprovalTodoSortOption _sort = widget.selectedSort;
-
-  void _reset() {
-    setState(() {
-      _doctype = null;
-      _sort = _ApprovalTodoSortOption.newest;
-    });
-  }
-
-  void _apply() {
-    Navigator.pop(
-      context,
-      _ApprovalFilterResult(doctype: _doctype, sort: _sort),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedDoctype = widget.doctypeOptions.contains(_doctype)
-        ? _doctype
-        : null;
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 14,
-          right: 14,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 14,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Filter Approval',
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              DropdownButtonFormField<String?>(
-                initialValue: selectedDoctype,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Tipe dokumen',
-                  prefixIcon: Icon(Icons.list_alt_rounded, size: 18),
-                ),
-                items: [
-                  DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Semua dokumen (${widget.totalCount})'),
-                  ),
-                  ...widget.doctypeOptions.map(
-                    (doctype) => DropdownMenuItem<String?>(
-                      value: doctype,
-                      child: Text(
-                        widget.labelForDoctype(doctype),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: (value) => setState(() => _doctype = value),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<_ApprovalTodoSortOption>(
-                initialValue: _sort,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Urutkan',
-                  prefixIcon: Icon(Icons.sort_rounded, size: 18),
-                ),
-                items: _ApprovalTodoSortOption.values.map((option) {
-                  return DropdownMenuItem<_ApprovalTodoSortOption>(
-                    value: option,
-                    child: Text(widget.labelForSort(option)),
-                  );
-                }).toList(),
-                onChanged: (value) => setState(() {
-                  _sort = value ?? _ApprovalTodoSortOption.newest;
-                }),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _reset,
-                      child: const Text('Atur ulang'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _apply,
-                      child: const Text('Terapkan Filter'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ApprovalReviewTabBar extends StatelessWidget {
-  const _ApprovalReviewTabBar({
-    required this.selected,
-    required this.tabs,
-    required this.countFor,
-    required this.labelFor,
-    required this.onChanged,
-  });
-
-  final _ApprovalReviewFilter selected;
-  final List<_ApprovalReviewFilter> tabs;
-  final int Function(_ApprovalReviewFilter filter) countFor;
-  final String Function(_ApprovalReviewFilter filter) labelFor;
-  final ValueChanged<_ApprovalReviewFilter> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: tabs.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final tab = tabs[index];
-          return _ApprovalReviewTabButton(
-            label: labelFor(tab),
-            count: countFor(tab),
-            selected: selected == tab,
-            onTap: () => onChanged(tab),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _ApprovalReviewTabButton extends StatelessWidget {
-  const _ApprovalReviewTabButton({
-    required this.label,
-    required this.count,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final int count;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? AppColors.primary : AppColors.white,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          constraints: const BoxConstraints(minWidth: 92),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: selected
-                  ? AppColors.primary
-                  : AppColors.primary.withValues(alpha: 0.16),
-            ),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.14),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? AppColors.white : AppColors.slate,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? AppColors.white.withValues(alpha: 0.18)
-                      : AppColors.softGreen,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: selected
-                        ? AppColors.white.withValues(alpha: 0.24)
-                        : AppColors.primary.withValues(alpha: 0.16),
-                  ),
-                ),
-                child: Text(
-                  '$count',
-                  style: TextStyle(
-                    color: selected ? AppColors.white : AppColors.primary,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SalesOrderApprovalDetailPage extends StatefulWidget {
-  final SalesOrderApproval approval;
-  final FutureOr<void> Function() onChanged;
-
-  const _SalesOrderApprovalDetailPage({
-    required this.approval,
-    required this.onChanged,
-  });
-
-  @override
-  State<_SalesOrderApprovalDetailPage> createState() =>
-      _SalesOrderApprovalDetailPageState();
-}
-
-class _ApprovalHistoryGroup {
-  final String key;
-  final List<SalesOrderApprovalHistory> items;
-
-  _ApprovalHistoryGroup(this.key, List<SalesOrderApprovalHistory> items)
-    : items = List.unmodifiable(items);
-
-  SalesOrderApprovalHistory get latest => items.first;
-  String get doctype => latest.doctype;
-  String get documentName {
-    if (latest.salesOrder.isNotEmpty) return latest.salesOrder;
-    final parts = key.split('::');
-    return parts.length == 2 ? parts.last : key;
-  }
 }
 
 class _ErpApprovalDetailPage extends StatefulWidget {
@@ -3093,685 +2483,6 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
   }
 }
 
-class _SalesOrderApprovalHistoryDetailPage extends StatefulWidget {
-  final _ApprovalHistoryGroup group;
-
-  const _SalesOrderApprovalHistoryDetailPage({required this.group});
-
-  @override
-  State<_SalesOrderApprovalHistoryDetailPage> createState() =>
-      _SalesOrderApprovalHistoryDetailPageState();
-}
-
-class _SalesOrderApprovalHistoryDetailPageState
-    extends State<_SalesOrderApprovalHistoryDetailPage> {
-  Map<String, dynamic>? _detail;
-  List<SalesOrderApprovalHistory> _activity = const [];
-  String? _error;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _activity = widget.group.items;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDetail());
-  }
-
-  Future<void> _loadDetail() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final appState = context.read<TodoState>();
-      final results = await Future.wait<dynamic>([
-        appState.fetchApprovalDocument(
-          doctype: widget.group.doctype,
-          name: widget.group.documentName,
-        ),
-        appState.fetchApprovalDocumentActivity(
-          doctype: widget.group.doctype,
-          name: widget.group.documentName,
-        ),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _detail = Map<String, dynamic>.from(results[0] as Map);
-        _activity = (results[1] as List)
-            .whereType<SalesOrderApprovalHistory>()
-            .toList();
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = captureErpError(context, error));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final detail = _detail;
-    final party = _historyPartyName(detail);
-    final state = _text(detail?['workflow_state']).isEmpty
-        ? _text(detail?['status'])
-        : _text(detail?['workflow_state']);
-    final items = widget.group.doctype == 'Tukar Guling'
-        ? tukarGulingDocumentRows(detail ?? const {})
-        : _mapRows(detail?['items']);
-    final salesTeam = _mapRows(detail?['sales_team']);
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Riwayat Approval',
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _loading ? null : _loadDetail,
-            icon: const Icon(Icons.sync_rounded),
-          ),
-        ],
-      ),
-      body: TmsxResponsiveBody(
-        maxWidth: 680,
-        child: RefreshIndicator(
-          onRefresh: _loadDetail,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: TmsxResponsive.pagePadding(context, top: 16, bottom: 28),
-            children: [
-              _summaryHeader(
-                documentName: widget.group.documentName,
-                doctype: widget.group.doctype,
-                party: party,
-                state: state,
-                total: _historyTotal(detail),
-              ),
-              if (_loading) ...[
-                const SizedBox(height: 12),
-                const LinearProgressIndicator(),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                _errorBox(_error!),
-              ],
-              if (detail != null) ...[
-                const SizedBox(height: 14),
-                _sectionCard(
-                  title: 'Detail Dokumen',
-                  children: _historyDetailRows(detail, party),
-                ),
-                const SizedBox(height: 12),
-                _sectionCard(
-                  title: widget.group.doctype == 'Material Request'
-                      ? 'Kebutuhan'
-                      : 'Nilai Dokumen',
-                  children: _historyAmountRows(detail),
-                ),
-                const SizedBox(height: 12),
-                _sectionCard(
-                  title: widget.group.doctype == 'Tukar Guling'
-                      ? tukarGulingItemSectionTitle(items)
-                      : 'Item (${items.length})',
-                  children: items.isEmpty
-                      ? [const Text('Tidak ada item.')]
-                      : widget.group.doctype == 'Tukar Guling'
-                      ? items.map(tukarGulingTodoItemCard).toList()
-                      : items.map(_itemRow).toList(),
-                ),
-                if (salesTeam.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _sectionCard(
-                    title: 'Sales Team',
-                    children: salesTeam
-                        .map(
-                          (row) => _detailRow(
-                            _text(row['sales_person']),
-                            '${_number(row['allocated_percentage'])}% kontribusi',
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
-              ],
-              const SizedBox(height: 16),
-              const Text(
-                'Activity Log',
-                style: TextStyle(
-                  color: AppColors.navy,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (_activity.isEmpty)
-                _sectionCard(
-                  title: 'Belum ada aktivitas',
-                  children: const [Text('Activity dokumen belum tersedia.')],
-                )
-              else
-                ..._activity.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final item = entry.value;
-                  return _timelineItem(
-                    item,
-                    isFirst: index == 0,
-                    isLast: index == _activity.length - 1,
-                  );
-                }),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _summaryHeader({
-    required String documentName,
-    required String doctype,
-    required String party,
-    required String state,
-    required double total,
-  }) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: _cardDecoration(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                documentName,
-                style: const TextStyle(
-                  color: AppColors.navy,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            if (state.isNotEmpty) ErpStatusBadge(statusText: state),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          doctype,
-          style: const TextStyle(
-            color: AppColors.primary,
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          party.isEmpty ? 'Party belum terbaca' : party,
-          style: const TextStyle(color: AppColors.slate),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                doctype == 'Material Request'
-                    ? '${formatErpCurrency(total)} qty'
-                    : 'Rp ${formatErpCurrency(total)}',
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            Text(
-              '${_activity.length} aktivitas',
-              style: const TextStyle(
-                color: AppColors.slate,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-
-  String _historyPartyName(Map<String, dynamic>? detail) {
-    if (detail == null) return '';
-    if (widget.group.doctype == 'Sales Order') {
-      return _text(detail['customer_name']).isEmpty
-          ? _text(detail['customer'])
-          : _text(detail['customer_name']);
-    }
-    if (widget.group.doctype == 'Material Request') {
-      return _text(detail['company']).isEmpty
-          ? _text(detail['material_request_type'])
-          : _text(detail['company']);
-    }
-    return _text(detail['supplier_name']).isEmpty
-        ? _text(detail['supplier'])
-        : _text(detail['supplier_name']);
-  }
-
-  double _historyTotal(Map<String, dynamic>? detail) {
-    if (detail == null) return 0;
-    if (widget.group.doctype == 'Material Request') {
-      return NumParse.asDouble(detail['total_qty']);
-    }
-    if (widget.group.doctype == 'Journal Entry') {
-      return NumParse.asDouble(detail['total_debit'] ?? detail['total_credit']);
-    }
-    return NumParse.asDouble(detail['grand_total'] ?? detail['rounded_total']);
-  }
-
-  List<Widget> _historyDetailRows(Map<String, dynamic> detail, String party) {
-    final partnerLabel = widget.group.doctype == 'Sales Order'
-        ? 'Customer'
-        : widget.group.doctype == 'Material Request'
-        ? 'Tipe Request'
-        : widget.group.doctype == 'Journal Entry'
-        ? 'Title'
-        : 'Supplier';
-    return [
-      _detailRow(partnerLabel, party),
-      _detailRow('Company', _text(detail['company'])),
-      _detailRow(
-        'Tanggal',
-        _text(detail['transaction_date']).isNotEmpty
-            ? _text(detail['transaction_date'])
-            : _text(detail['posting_date']),
-      ),
-      _detailRow('Dibutuhkan', _text(detail['schedule_date'])),
-      _detailRow('Jatuh Tempo', _text(detail['due_date'])),
-      _detailRow('Gudang', _text(detail['set_warehouse'])),
-      _detailRow('Currency', _text(detail['currency'])),
-      _detailRow('Dibuat oleh', _text(detail['owner'])),
-    ];
-  }
-
-  List<Widget> _historyAmountRows(Map<String, dynamic> detail) {
-    if (widget.group.doctype == 'Material Request') {
-      return [
-        _detailRow('Total Qty', formatErpCurrency(detail['total_qty'])),
-        _detailRow('Status Dokumen', _text(detail['status'])),
-      ];
-    }
-    if (widget.group.doctype == 'Journal Entry') {
-      return [
-        _moneyRow('Total Debit', detail['total_debit']),
-        _moneyRow('Total Credit', detail['total_credit']),
-        _detailRow('Status Dokumen', _text(detail['status'])),
-      ];
-    }
-    return [
-      _moneyRow('Subtotal', detail['net_total']),
-      _moneyRow('Diskon', detail['discount_amount']),
-      _moneyRow('Pajak & Biaya', detail['total_taxes_and_charges']),
-      _moneyRow('Outstanding', detail['outstanding_amount']),
-      _moneyRow('Grand Total', detail['grand_total'], emphasized: true),
-    ];
-  }
-
-  Widget _timelineItem(
-    SalesOrderApprovalHistory item, {
-    required bool isFirst,
-    required bool isLast,
-  }) {
-    final plainContent = _plainText(item.content).toLowerCase();
-    final rejected = plainContent.contains('reject');
-    final isUpdate =
-        plainContent.contains('changed') ||
-        plainContent.contains('edited') ||
-        plainContent.contains('created');
-    final color = rejected
-        ? AppColors.danger
-        : isUpdate
-        ? AppColors.slate
-        : AppColors.success;
-    final action = _approvalActionLabel(item.content);
-    final content = _plainText(item.content);
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 32,
-            child: Column(
-              children: [
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    color: isFirst ? Colors.transparent : AppColors.border,
-                  ),
-                ),
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: color.withValues(alpha: 0.12),
-                  foregroundColor: color,
-                  child: Icon(
-                    rejected ? Icons.close_rounded : Icons.check_rounded,
-                    size: 16,
-                  ),
-                ),
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    color: isLast ? Colors.transparent : AppColors.border,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: EdgeInsets.zero,
-              decoration: _cardDecoration(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          radius: 13,
-                          backgroundColor: color.withValues(alpha: 0.1),
-                          foregroundColor: color,
-                          child: Text(
-                            _initials(item.actor),
-                            style: const TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 9),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text.rich(
-                                TextSpan(
-                                  children: [
-                                    TextSpan(
-                                      text: item.actor.isEmpty
-                                          ? 'Unknown'
-                                          : item.actor,
-                                      style: const TextStyle(
-                                        color: AppColors.navy,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    TextSpan(
-                                      text: ' $action',
-                                      style: TextStyle(
-                                        color: color,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                item.createdAt,
-                                style: const TextStyle(
-                                  color: AppColors.slate,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _miniRow('Tipe', item.doctype),
-                        const SizedBox(height: 3),
-                        _miniRow('Dokumen', item.salesOrder),
-                        const SizedBox(height: 6),
-                        Text(
-                          content.isEmpty ? '-' : content,
-                          style: const TextStyle(
-                            color: AppColors.navy,
-                            fontSize: 12,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _miniRow(String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 3),
-    child: Row(
-      children: [
-        SizedBox(
-          width: 78,
-          child: Text(
-            label,
-            style: const TextStyle(color: AppColors.slate, fontSize: 10),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value.isEmpty ? '-' : value,
-            style: const TextStyle(
-              color: AppColors.navy,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _errorBox(String message) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: AppColors.danger.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Text(
-      message,
-      style: const TextStyle(
-        color: AppColors.danger,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
-  );
-
-  BoxDecoration _cardDecoration() => BoxDecoration(
-    color: AppColors.white,
-    borderRadius: BorderRadius.circular(22),
-    border: Border.all(color: AppColors.border),
-    boxShadow: AppColors.cardShadow,
-  );
-
-  String _approvalActionLabel(String content) {
-    final plain = _plainText(content).toLowerCase();
-    if (plain.contains('reject')) return 'rejected';
-    if (plain.contains('approve')) return 'approved';
-    if (plain.contains('created')) return 'created';
-    if (plain.contains('changed') || plain.contains('edited')) return 'updated';
-    return 'Aktivitas Approval';
-  }
-
-  Widget _sectionCard({
-    required String title,
-    required List<Widget> children,
-  }) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: _cardDecoration(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.navy,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const Divider(height: 22),
-        ...children,
-      ],
-    ),
-  );
-
-  Widget _detailRow(String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 9),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 115,
-          child: Text(
-            label,
-            style: const TextStyle(color: AppColors.slate, fontSize: 11),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value.isEmpty ? '-' : value,
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: AppColors.navy,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _moneyRow(String label, dynamic value, {bool emphasized = false}) {
-    final formatted = 'Rp ${formatErpCurrency(NumParse.asDouble(value))}';
-    if (!emphasized) return _detailRow(label, formatted);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          Text(
-            formatted,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _itemRow(Map<String, dynamic> item) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _text(item['item_name']).isEmpty
-              ? _text(item['item_code'])
-              : _text(item['item_name']),
-          style: const TextStyle(
-            color: AppColors.navy,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          '${_number(item['qty'])} ${_text(item['uom'])} x '
-          'Rp ${formatErpCurrency(NumParse.asDouble(item['rate']))} = '
-          'Rp ${formatErpCurrency(NumParse.asDouble(item['amount']))}',
-          style: const TextStyle(color: AppColors.slate, fontSize: 11),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'Diskon ${_itemDiscountLabel(item)}',
-          style: const TextStyle(color: AppColors.slate, fontSize: 11),
-        ),
-      ],
-    ),
-  );
-
-  List<Map<String, dynamic>> _mapRows(dynamic value) {
-    if (value is! List) return const [];
-    return value
-        .whereType<Map>()
-        .map((row) => Map<String, dynamic>.from(row))
-        .toList();
-  }
-
-  String _number(dynamic value) {
-    final number = NumParse.asDouble(value);
-    return number == number.roundToDouble()
-        ? number.toInt().toString()
-        : number.toStringAsFixed(2);
-  }
-
-  String _initials(String value) {
-    final clean = value.trim();
-    if (clean.isEmpty) return '?';
-    final parts = clean
-        .replaceAll('@', ' ')
-        .replaceAll('.', ' ')
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return clean.characters.first.toUpperCase();
-    return parts
-        .take(2)
-        .map((part) => part.characters.first)
-        .join()
-        .toUpperCase();
-  }
-
-  String _plainText(String value) => value
-      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .replaceAll(RegExp(r'[ \t]+'), ' ')
-      .trim();
-
-  String _text(dynamic value) => value?.toString().trim() ?? '';
-}
-
 class _ApproverPickerSheet extends StatefulWidget {
   const _ApproverPickerSheet();
 
@@ -3972,526 +2683,5 @@ class _ApproverPickerSheetState extends State<_ApproverPickerSheet> {
         .map((part) => part.characters.first)
         .join()
         .toUpperCase();
-  }
-}
-
-class _SalesOrderApprovalDetailPageState
-    extends State<_SalesOrderApprovalDetailPage> {
-  Map<String, dynamic>? _detail;
-  String? _error;
-  bool _loading = true;
-  bool _processing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDetail());
-  }
-
-  Future<void> _loadDetail() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final detail = await context
-          .read<TodoState>()
-          .fetchSalesOrderApprovalDetail(widget.approval.name);
-      if (!mounted) return;
-      setState(() => _detail = detail);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = captureErpError(context, error));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _chooseAction(String action) async {
-    final reject = _isRejectAction(action);
-    final decision = await showDialog<_ApprovalDecision>(
-      context: context,
-      builder: (dialogContext) => _ApprovalDecisionDialog(
-        approval: widget.approval,
-        action: action,
-        isReject: reject,
-      ),
-    );
-    if (decision == null || !mounted) return;
-    setState(() {
-      _processing = true;
-      _error = null;
-    });
-    try {
-      await context.read<TodoState>().applySalesOrderWorkflow(
-        approval: widget.approval,
-        action: action,
-        reason: decision.reason,
-        refreshAfterApply: false,
-        waitForComment: false,
-        currentDocument: _detail,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${widget.approval.name}: action $action berhasil.'),
-          backgroundColor: reject ? AppColors.danger : AppColors.success,
-        ),
-      );
-      Navigator.pop(context, true);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _error = captureErpError(context, error));
-      }
-    } finally {
-      if (mounted) setState(() => _processing = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final detail = _detail;
-    final items = _mapRows(detail?['items']);
-    final salesTeam = _mapRows(detail?['sales_team']);
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Detail Approval',
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _loading || _processing ? null : _loadDetail,
-            icon: const Icon(Icons.sync_rounded),
-          ),
-        ],
-      ),
-      body: TmsxResponsiveBody(
-        maxWidth: 680,
-        child: RefreshIndicator(
-          onRefresh: _loadDetail,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: TmsxResponsive.pagePadding(context, top: 16, bottom: 28),
-            children: [
-              _detailHeader(widget.approval),
-              if (_loading) ...[
-                const SizedBox(height: 12),
-                const LinearProgressIndicator(),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                _errorBox(_error!),
-              ],
-              if (detail != null) ...[
-                const SizedBox(height: 14),
-                _sectionCard(
-                  title: 'Informasi Order',
-                  children: [
-                    _detailRow('Customer', _text(detail['customer_name'])),
-                    _detailRow(
-                      'Tanggal Order',
-                      _text(detail['transaction_date']),
-                    ),
-                    _detailRow('Tanggal Kirim', _text(detail['delivery_date'])),
-                    _detailRow('Company', _text(detail['company'])),
-                    _detailRow('Gudang', _text(detail['set_warehouse'])),
-                    _detailRow(
-                      'Price List',
-                      _text(detail['selling_price_list']),
-                    ),
-                    _detailRow('Currency', _text(detail['currency'])),
-                    _detailRow('Dibuat oleh', _text(detail['owner'])),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _sectionCard(
-                  title: 'Nilai Order',
-                  children: [
-                    _moneyRow('Subtotal', detail['net_total']),
-                    _moneyRow('Diskon', detail['discount_amount']),
-                    _moneyRow(
-                      'Pajak & Biaya',
-                      detail['total_taxes_and_charges'],
-                    ),
-                    _moneyRow(
-                      'Grand Total',
-                      detail['grand_total'],
-                      emphasized: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _sectionCard(
-                  title: 'Item (${items.length})',
-                  children: items.isEmpty
-                      ? [const Text('Tidak ada item.')]
-                      : items.map(_itemRow).toList(),
-                ),
-                if (salesTeam.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _sectionCard(
-                    title: 'Sales Team',
-                    children: salesTeam
-                        .map(
-                          (row) => _detailRow(
-                            _text(row['sales_person']),
-                            '${_number(row['allocated_percentage'])}% kontribusi',
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
-              ],
-              const SizedBox(height: 16),
-              _decisionCard(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _detailHeader(SalesOrderApproval approval) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: _cardDecoration(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                approval.name,
-                style: const TextStyle(
-                  color: AppColors.navy,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            ErpStatusBadge(
-              statusText: approval.workflowState.isEmpty
-                  ? approval.status
-                  : approval.workflowState,
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          approval.customerName,
-          style: const TextStyle(color: AppColors.slate),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Rp ${formatErpCurrency(approval.grandTotal)}',
-          style: const TextStyle(
-            color: AppColors.primary,
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _sectionCard({
-    required String title,
-    required List<Widget> children,
-  }) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: _cardDecoration(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.navy,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const Divider(height: 22),
-        ...children,
-      ],
-    ),
-  );
-
-  Widget _detailRow(String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 9),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 115,
-          child: Text(
-            label,
-            style: const TextStyle(color: AppColors.slate, fontSize: 11),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value.isEmpty ? '-' : value,
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: AppColors.navy,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _moneyRow(String label, dynamic value, {bool emphasized = false}) {
-    final formatted = 'Rp ${formatErpCurrency(NumParse.asDouble(value))}';
-    if (!emphasized) return _detailRow(label, formatted);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          Text(
-            formatted,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _itemRow(Map<String, dynamic> item) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _text(item['item_name']).isEmpty
-              ? _text(item['item_code'])
-              : _text(item['item_name']),
-          style: const TextStyle(
-            color: AppColors.navy,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          '${_number(item['qty'])} ${_text(item['uom'])} x '
-          'Rp ${formatErpCurrency(NumParse.asDouble(item['rate']))} = '
-          'Rp ${formatErpCurrency(NumParse.asDouble(item['amount']))}',
-          style: const TextStyle(color: AppColors.slate, fontSize: 11),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'Diskon ${_itemDiscountLabel(item)}',
-          style: const TextStyle(color: AppColors.slate, fontSize: 11),
-        ),
-      ],
-    ),
-  );
-
-  Widget _decisionCard() => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: _cardDecoration(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text(
-          'Keputusan Approval',
-          style: TextStyle(color: AppColors.navy, fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 5),
-        const Text(
-          'Periksa detail, lalu pilih action sesuai Workflow ERPNext.',
-          style: TextStyle(color: AppColors.slate, fontSize: 11),
-        ),
-        const SizedBox(height: 14),
-        if (_processing)
-          const LinearProgressIndicator()
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: widget.approval.actions.map((action) {
-              final reject = _isRejectAction(action);
-              return reject
-                  ? OutlinedButton.icon(
-                      onPressed: () => _chooseAction(action),
-                      icon: const Icon(Icons.close_rounded),
-                      label: Text(action),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.danger,
-                      ),
-                    )
-                  : FilledButton.icon(
-                      onPressed: () => _chooseAction(action),
-                      icon: const Icon(Icons.check_rounded),
-                      label: Text(action),
-                    );
-            }).toList(),
-          ),
-      ],
-    ),
-  );
-
-  Widget _errorBox(String message) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: AppColors.danger.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Text(
-      message,
-      style: const TextStyle(
-        color: AppColors.danger,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
-  );
-
-  BoxDecoration _cardDecoration() => BoxDecoration(
-    color: AppColors.white,
-    borderRadius: BorderRadius.circular(22),
-    border: Border.all(color: AppColors.border),
-    boxShadow: AppColors.cardShadow,
-  );
-
-  List<Map<String, dynamic>> _mapRows(dynamic value) {
-    if (value is! List) return const [];
-    return value
-        .whereType<Map>()
-        .map((row) => Map<String, dynamic>.from(row))
-        .toList();
-  }
-
-  String _text(dynamic value) => value?.toString().trim() ?? '';
-
-  String _number(dynamic value) {
-    final number = NumParse.asDouble(value);
-    return number == number.roundToDouble()
-        ? number.toInt().toString()
-        : number.toStringAsFixed(2);
-  }
-
-  bool _isRejectAction(String action) {
-    final normalized = action.toLowerCase();
-    return normalized.contains('reject') ||
-        normalized.contains('tolak') ||
-        normalized.contains('decline');
-  }
-}
-
-class _ApprovalDecision {
-  final String reason;
-
-  const _ApprovalDecision({this.reason = ''});
-}
-
-class _ApprovalDecisionDialog extends StatefulWidget {
-  final SalesOrderApproval approval;
-  final String action;
-  final bool isReject;
-
-  const _ApprovalDecisionDialog({
-    required this.approval,
-    required this.action,
-    required this.isReject,
-  });
-
-  @override
-  State<_ApprovalDecisionDialog> createState() =>
-      _ApprovalDecisionDialogState();
-}
-
-class _ApprovalDecisionDialogState extends State<_ApprovalDecisionDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _reasonController = TextEditingController();
-
-  @override
-  void dispose() {
-    _reasonController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(
-        widget.isReject ? 'Reject Sales Order?' : 'Approve Sales Order?',
-      ),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '${widget.approval.name}\n${widget.approval.customerName}\n'
-              'Rp ${formatErpCurrency(widget.approval.grandTotal)}',
-            ),
-            if (widget.isReject) ...[
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _reasonController,
-                autofocus: true,
-                minLines: 3,
-                maxLines: 5,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  labelText: 'Alasan reject',
-                  hintText: 'Wajib diisi agar sales dapat memperbaiki order',
-                  alignLabelWithHint: true,
-                ),
-                validator: (value) {
-                  if (!widget.isReject) return null;
-                  final reason = value?.trim() ?? '';
-                  if (reason.isEmpty) return 'Alasan reject wajib diisi';
-                  return null;
-                },
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Batal'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (!_formKey.currentState!.validate()) return;
-            Navigator.pop(
-              context,
-              _ApprovalDecision(reason: _reasonController.text.trim()),
-            );
-          },
-          style: widget.isReject
-              ? FilledButton.styleFrom(backgroundColor: AppColors.danger)
-              : null,
-          child: Text(widget.isReject ? 'Reject' : 'Approve'),
-        ),
-      ],
-    );
   }
 }

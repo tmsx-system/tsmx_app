@@ -51,6 +51,8 @@ class _AppMainScreenState extends State<AppMainScreen> {
   static const _attendanceTabKey = 'attendance';
 
   int _currentIndex = 0;
+  String _selectedTabKey = MobileModule.dashboard;
+  List<_MainTabItem> _visibleTabs = const [];
   bool _pendingOpenApprovalTodo = false;
   bool _createMenuOpen = false;
   bool _createMenuLoading = false;
@@ -107,7 +109,7 @@ class _AppMainScreenState extends State<AppMainScreen> {
     ];
 
     final todoCount = _totalTodoCount(todoState);
-    if (state.canUseApprovals) {
+    if (state.canUseApprovals && todoCount > 0) {
       tabs.add(
         _MainTabItem(
           keyName: MobileModule.approvals,
@@ -170,8 +172,12 @@ class _AppMainScreenState extends State<AppMainScreen> {
   }
 
   void _changeTab(int index) {
+    final key = index >= 0 && index < _visibleTabs.length
+        ? _visibleTabs[index].keyName
+        : MobileModule.dashboard;
     setState(() {
       _currentIndex = index;
+      _selectedTabKey = key;
       _createMenuOpen = false;
     });
   }
@@ -237,7 +243,10 @@ class _AppMainScreenState extends State<AppMainScreen> {
     if (todoIndex < 0) return;
     _pendingOpenApprovalTodo = false;
     Navigator.of(context).popUntil((route) => route.isFirst);
-    setState(() => _currentIndex = todoIndex);
+    setState(() {
+      _currentIndex = todoIndex;
+      _selectedTabKey = MobileModule.approvals;
+    });
   }
 
   void _redirectToLogin() {
@@ -268,16 +277,22 @@ class _AppMainScreenState extends State<AppMainScreen> {
     }
 
     final tabs = _tabs(dashboardState, todoState);
-    final selectedIndex = _currentIndex.clamp(0, tabs.length - 1);
+    _visibleTabs = tabs;
+    final matched = tabs.indexWhere((tab) => tab.keyName == _selectedTabKey);
+    final selectedIndex = matched < 0 ? 0 : matched;
     if (_pendingOpenApprovalTodo &&
         tabs.any((tab) => tab.keyName == MobileModule.approvals)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _openApprovalTodoTabIfReady();
       });
     }
-    if (selectedIndex != _currentIndex) {
+    if (matched < 0 || selectedIndex != _currentIndex) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _currentIndex = selectedIndex);
+        if (!mounted) return;
+        setState(() {
+          _currentIndex = selectedIndex;
+          _selectedTabKey = tabs[selectedIndex].keyName;
+        });
       });
     }
     final selectedTab = tabs[selectedIndex];
@@ -309,7 +324,8 @@ class _AppMainScreenState extends State<AppMainScreen> {
                 actions: [
                   const ClearAppCacheButton(),
                   const SizedBox(width: 8),
-                  if (dashboardState.canUseApprovals)
+                  if (dashboardState.canUseApprovals &&
+                      _totalTodoCount(todoState) > 0)
                     _TopBarActionButton(
                       tooltip: _totalTodoCount(todoState) > 0
                           ? '${_totalTodoCount(todoState)} approval menunggu'
