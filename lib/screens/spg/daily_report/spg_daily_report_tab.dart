@@ -254,30 +254,44 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
                         ),
                       ],
                     ),
-                    if (isDraft && (_canWrite || _canSubmit)) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          if (_canWrite)
-                            TextButton.icon(
-                              onPressed: () => _openEdit(name),
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              label: const Text('Edit'),
-                            ),
-                          if (_canSubmit)
-                            TextButton.icon(
-                              onPressed: () => _submit(name),
-                              icon: const Icon(Icons.verified_outlined, size: 18),
-                              label: const Text('Submit'),
-                            ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.slate),
+              PopupMenuButton<String>(
+                tooltip: 'Aksi',
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.more_vert_rounded, color: AppColors.slate),
+                onSelected: (value) {
+                  if (value == 'detail') _showDetail(name);
+                  if (value == 'edit') _openEdit(name);
+                  if (value == 'submit') _submit(name);
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'detail',
+                    child: _ReportMenuLabel(
+                      icon: Icons.visibility_outlined,
+                      label: 'Lihat Detail',
+                    ),
+                  ),
+                  if (isDraft && _canWrite)
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: _ReportMenuLabel(
+                        icon: Icons.edit_outlined,
+                        label: 'Edit',
+                      ),
+                    ),
+                  if (isDraft && _canSubmit)
+                    const PopupMenuItem(
+                      value: 'submit',
+                      child: _ReportMenuLabel(
+                        icon: Icons.verified_outlined,
+                        label: 'Submit',
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -314,6 +328,30 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
         setState(() => _error = captureErpError(context, error));
       }
     }
+  }
+}
+
+class _ReportMenuLabel extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _ReportMenuLabel({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppColors.primary),
+        const SizedBox(width: 10),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.navy,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
   }
 }
 

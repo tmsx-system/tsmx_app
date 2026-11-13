@@ -3592,14 +3592,16 @@ class AppState with ChangeNotifier {
   }
 
   Future<List<SalesVisit>> fetchSpgVisits({bool forceRefresh = false}) async {
-    final filters = mobileAccess.isSpg
-        ? [
-            ['owner', '=', _currentUser ?? '__unmapped_spg_user__'],
-          ]
-        : null;
+    final allowed = await _salesAssignedEmployeeIds();
+    if (allowed != null && allowed.isEmpty) return const [];
+    final filters = <List<dynamic>>[
+      if (mobileAccess.isSpg)
+        ['owner', '=', _currentUser ?? '__unmapped_spg_user__'],
+      if (allowed != null) ['employee', 'in', allowed],
+    ];
     final rows = await _fetchVisitRows(
       doctype: 'SPG Visit',
-      filters: filters,
+      filters: filters.isEmpty ? null : filters,
       limit: 300,
       orderBy: 'modified desc, name desc',
       fieldSets: const [
@@ -3636,14 +3638,17 @@ class AppState with ChangeNotifier {
           )
           .toList(),
     );
+    final visible = allowed == null
+        ? visits
+        : visits.where((visit) => allowed.contains(visit.employee)).toList();
     _activeSpgVisit = null;
-    for (final visit in visits) {
+    for (final visit in visible) {
       if (visit.isActive) {
         _activeSpgVisit = visit;
         break;
       }
     }
-    return visits;
+    return visible;
   }
 
   Future<SalesVisit> checkInSpgCustomer({
@@ -3731,11 +3736,14 @@ class AppState with ChangeNotifier {
   Future<List<Map<String, dynamic>>> fetchSpgDailyActivities({
     bool forceRefresh = false,
   }) async {
+    final allowed = await _salesAssignedEmployeeIds();
+    if (allowed != null && allowed.isEmpty) return const [];
     final filters = <List<dynamic>>[
       if (mobileAccess.isSpg)
         ['owner', '=', _currentUser ?? '__unmapped_spg_user__'],
+      if (allowed != null) ['employee', 'in', allowed],
     ];
-    return _fetchVisitRows(
+    final rows = await _fetchVisitRows(
       doctype: 'SPG Daily Activity',
       fieldSets: const [
         ['name', 'employee', 'customer', 'activity_date', 'notes', 'modified'],
@@ -3747,6 +3755,7 @@ class AppState with ChangeNotifier {
       orderBy: 'activity_date desc, modified desc',
       limit: 100,
     );
+    return _keepAssignedRows(rows, employees: allowed);
   }
 
   Future<Map<String, dynamic>> fetchSpgDailyActivityDetail(String name) {
@@ -3805,122 +3814,320 @@ class AppState with ChangeNotifier {
         .toList();
   }
 
+  Future<SpgAssignmentScope> fetchSpgAssignmentScope({
+    DateTime? from,
+    DateTime? to,
+    bool ignoreDates = false,
+  }) async {
+    if (_isSampleMode) return const SpgAssignmentScope.unrestricted();
+    final rangeFrom = _dateOnly(from ?? DateTime.now());
+    final rangeTo = _dateOnly(to ?? rangeFrom);
+    if (mobileAccess.isSpg) {
+      await _ensureCurrentEmployee();
+      final employee = _currentEmployee?.trim() ?? '';
+      final employeeName =
+          _currentEmployeeProfile['employee_name']?.toString().trim() ?? '';
+      if (employee.isEmpty) {
+        return SpgAssignmentScope(
+          restricted: true,
+          lockEmployee: true,
+          lockedEmployeeName: employeeName,
+          error:
+              'User belum terhubung ke Employee melalui field User ID.',
+        );
+      }
+      final rows = await _loadSpgAssignmentRows();
+      return SpgAssignmentScope(
+        restricted: true,
+        lockEmployee: true,
+        lockedEmployee: employee,
+        lockedEmployeeName: employeeName.isEmpty ? employee : employeeName,
+        rows: rows
+            .where(
+              (row) =>
+                  _assignmentEmployeeMatches(row, employee, employeeName) &&
+                  (ignoreDates || row.overlaps(rangeFrom, rangeTo)),
+            )
+            .toList(),
+      );
+    }
+    if (mobileAccess.isSalesUser) {
+      final salesPerson = (await resolveCurrentSalesIdentity())?.trim() ?? '';
+      if (salesPerson.isEmpty) {
+        return SpgAssignmentScope(
+          restricted: true,
+          lockEmployee: false,
+          error:
+              _salesIdentityError ??
+              'Sales Person untuk user login tidak ditemukan.',
+        );
+      }
+      final rows = await _loadSpgAssignmentRows(salesPerson: salesPerson);
+      return SpgAssignmentScope(
+        restricted: true,
+        lockEmployee: false,
+        rows: rows
+            .where(
+              (row) =>
+                  (row.salesPerson.isEmpty || row.salesPerson == salesPerson) &&
+                  (ignoreDates || row.overlaps(rangeFrom, rangeTo)),
+            )
+            .toList(),
+      );
+    }
+    try {
+      final rows = await _loadSpgAssignmentRows();
+      return SpgAssignmentScope.unrestricted(
+        rows: rows
+            .where((row) => ignoreDates || row.overlaps(rangeFrom, rangeTo))
+            .toList(),
+      );
+    } catch (_) {
+      return const SpgAssignmentScope.unrestricted();
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSpgEmployeeChoices({
+    String query = '',
+    DateTime? onDate,
+  }) async {
+    if (!mobileAccess.isSalesUser) {
+      return fetchEmployeeOptions(query: query);
+    }
+    final day = onDate ?? DateTime.now();
+    final scope = await fetchSpgAssignmentScope(from: day, to: day);
+    final normalized = query.trim().toLowerCase();
+    final byId = <String, Map<String, dynamic>>{};
+    for (final row in scope.rows) {
+      final label = row.employeeName.trim().isEmpty
+          ? row.employee
+          : row.employeeName;
+      if (normalized.isNotEmpty &&
+          !row.employee.toLowerCase().contains(normalized) &&
+          !label.toLowerCase().contains(normalized)) {
+        continue;
+      }
+      byId[row.employee] = {'name': row.employee, 'employee_name': label};
+    }
+    final choices = byId.values.toList()
+      ..sort(
+        (a, b) => (a['employee_name']?.toString() ?? '').toLowerCase().compareTo(
+          (b['employee_name']?.toString() ?? '').toLowerCase(),
+        ),
+      );
+    return choices;
+  }
+
   Future<List<SpgCustomerOption>> fetchScheduledSpgCustomers({
     String query = '',
     String? employee,
+    DateTime? onDate,
   }) async {
     if (_isSampleMode) {
       return fetchSpgCustomers(query: query);
     }
-
+    final day = onDate ?? DateTime.now();
+    final scope = await fetchSpgAssignmentScope(from: day, to: day);
     var selectedEmployee = employee?.trim() ?? '';
-    if (selectedEmployee.isEmpty && !mobileAccess.canSelectAnyEmployee) {
-      await _ensureCurrentEmployee();
-      selectedEmployee = _currentEmployee?.trim() ?? '';
+    if (selectedEmployee.isEmpty && scope.lockEmployee) {
+      selectedEmployee = scope.lockedEmployee;
     }
-    if (selectedEmployee.isEmpty) return const [];
+    if (scope.restricted &&
+        selectedEmployee.isEmpty &&
+        mobileAccess.isSalesUser) {
+      return const [];
+    }
+    final normalized = query.trim().toLowerCase();
+    final options = <String, SpgCustomerOption>{};
+    for (final row in scope.rows) {
+      if (selectedEmployee.isNotEmpty && row.employee != selectedEmployee) {
+        continue;
+      }
+      if (!row.overlaps(day, day)) continue;
+      final label = row.customerName.trim().isEmpty
+          ? row.customer
+          : row.customerName;
+      if (normalized.isNotEmpty &&
+          !row.customer.toLowerCase().contains(normalized) &&
+          !label.toLowerCase().contains(normalized)) {
+        continue;
+      }
+      options[row.customer] = SpgCustomerOption(id: row.customer, name: label);
+    }
+    return options.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
 
-    final today = _formatFrappeDate(DateTime.now());
-    final docs = await _fetchActiveSpgScheduleDocuments(today);
-    if (docs.isEmpty) return const [];
-
-    final customerIds = <String>{};
-    for (final doc in docs) {
-      if (!_spgScheduleHasEmployee(doc, selectedEmployee)) continue;
-      for (final row in _spgScheduleCustomerRows(doc)) {
-        final customer = _firstString(row, const [
-          'customer',
-          'customer_name',
-          'customer_id',
-        ]);
-        if (customer.isNotEmpty) customerIds.add(customer);
+  Future<List<SpgAssignmentRow>> _loadSpgAssignmentRows({
+    String? salesPerson,
+  }) async {
+    Object? lastError;
+    for (final doctype in const [
+      'Field SPG Assignment',
+      'SPG Assignment',
+      'SPG Target',
+    ]) {
+      try {
+        final listed = await _fetchResourceWithFieldFallback(
+          doctype: doctype,
+          fields: const [
+            'name',
+            'sales_person',
+            'period',
+            'docstatus',
+            'modified',
+          ],
+          filters: [
+            ['docstatus', '=', 1],
+            if (salesPerson != null && salesPerson.trim().isNotEmpty)
+              ['sales_person', '=', salesPerson.trim()],
+          ],
+          orderBy: 'modified desc',
+          limit: 100,
+        );
+        final names = listed
+            .map((row) => row['name']?.toString().trim() ?? '')
+            .where((name) => name.isNotEmpty)
+            .toList();
+        if (names.isEmpty) return const [];
+        final docs = await Future.wait(
+          names.map((name) async {
+            try {
+              return await _frappeService.fetchDocument(doctype, name);
+            } catch (_) {
+              return const <String, dynamic>{};
+            }
+          }),
+        );
+        return _rowsFromAssignmentDocs(docs);
+      } catch (error) {
+        lastError = error;
       }
     }
-    if (customerIds.isEmpty) return const [];
-
-    final normalized = query.trim();
-    final rows = await _fetchResourceWithFieldFallback(
-      doctype: 'Customer',
-      fields: const ['name', 'customer_name', 'primary_address'],
-      filters: [
-        ['name', 'in', customerIds.toList()],
-      ],
-      orFilters: normalized.isEmpty
-          ? null
-          : [
-              ['name', 'like', '%$normalized%'],
-              ['customer_name', 'like', '%$normalized%'],
-            ],
-      orderBy: 'customer_name asc, name asc',
-      limit: customerIds.length,
-    );
-
-    final options =
-        rows
-            .map((row) => SpgCustomerOption.fromJson(row))
-            .where((customer) => customer.id.trim().isNotEmpty)
-            .toList()
-          ..sort(
-            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-          );
-    return options;
+    throw lastError ?? Exception('Field SPG Assignment tidak dapat dibaca.');
   }
 
-  Future<List<Map<String, dynamic>>> _fetchActiveSpgScheduleDocuments(
-    String today,
+  Future<List<SpgAssignmentRow>> _rowsFromAssignmentDocs(
+    List<Map<String, dynamic>> docs,
   ) async {
-    Future<List<Map<String, dynamic>>> fetchScheduleRows({
-      List<List<dynamic>>? filters,
-    }) {
-      return _fetchResourceWithFieldFallback(
-        doctype: 'SPG Schedule',
-        fields: const ['name', 'start_date', 'end_date', 'modified'],
-        filters: filters,
-        orderBy: 'modified desc',
-        limit: 100,
+    final parsed = <SpgAssignmentRow>[];
+    for (final doc in docs) {
+      if (doc.isEmpty) continue;
+      final status = int.tryParse(doc['docstatus']?.toString() ?? '') ?? 0;
+      if (status != 1) continue;
+      final salesPerson = _firstString(doc, const [
+        'sales_person',
+        'sales_person_name',
+      ]);
+      for (final row in _assignmentChildRows(doc)) {
+        final employee = _firstString(row, const [
+          'spg',
+          'employee',
+          'employee_id',
+        ]);
+        final customer = _firstString(row, const ['customer', 'customer_id']);
+        if (employee.isEmpty || customer.isEmpty) continue;
+        final customerName = _firstString(row, const ['customer_name']);
+        parsed.add(
+          SpgAssignmentRow(
+            salesPerson: salesPerson,
+            employee: employee,
+            employeeName: _firstString(row, const [
+              'spg_name',
+              'employee_name',
+            ]),
+            customer: customer,
+            customerName: customerName.isEmpty ? customer : customerName,
+            start: _parseLooseDate(
+              _firstString(row, const ['start_date', 'from_date']),
+            ),
+            end: _parseLooseDate(
+              _firstString(row, const ['end_date', 'to_date']),
+            ),
+          ),
+        );
+      }
+    }
+    final missing = parsed
+        .where((row) => row.employeeName.trim().isEmpty)
+        .map((row) => row.employee)
+        .toSet()
+        .toList();
+    if (missing.isEmpty) return parsed;
+    try {
+      final employees = await _fetchResourceWithFieldFallback(
+        doctype: 'Employee',
+        fields: const ['name', 'employee_name'],
+        filters: [
+          ['name', 'in', missing],
+        ],
+        orderBy: 'name asc',
+        limit: missing.length,
       );
+      final names = <String, String>{
+        for (final row in employees)
+          if ((row['name']?.toString().trim() ?? '').isNotEmpty)
+            row['name'].toString(): row['employee_name']?.toString().trim() ?? '',
+      };
+      return [
+        for (final row in parsed)
+          SpgAssignmentRow(
+            salesPerson: row.salesPerson,
+            employee: row.employee,
+            employeeName: row.employeeName.trim().isNotEmpty
+                ? row.employeeName
+                : (names[row.employee] ?? ''),
+            customer: row.customer,
+            customerName: row.customerName,
+            start: row.start,
+            end: row.end,
+          ),
+      ];
+    } catch (_) {
+      return parsed;
     }
-
-    var schedules = await fetchScheduleRows(
-      filters: [
-        ['start_date', '<=', today],
-        ['end_date', '>=', today],
-      ],
-    );
-    if (schedules.isEmpty) {
-      schedules = await fetchScheduleRows();
-    }
-
-    final scheduleNames = schedules
-        .where((row) => _spgScheduleDateMatches(row, today))
-        .map((row) => row['name']?.toString().trim() ?? '')
-        .where((name) => name.isNotEmpty)
-        .toList();
-    if (scheduleNames.isEmpty) return const [];
-
-    final docs = await Future.wait(
-      scheduleNames.map((name) async {
-        try {
-          return await _frappeService.fetchDocument('SPG Schedule', name);
-        } catch (_) {
-          return const <String, dynamic>{};
-        }
-      }),
-    );
-    return docs
-        .where((doc) => doc.isNotEmpty && _spgScheduleDateMatches(doc, today))
-        .toList();
   }
 
-  bool _spgScheduleDateMatches(Map<String, dynamic> doc, String today) {
-    final todayDate = _parseLooseDate(today);
-    final start = _parseLooseDate(doc['start_date']?.toString() ?? '');
-    final end = _parseLooseDate(doc['end_date']?.toString() ?? '');
-    if (todayDate == null) return true;
-    if (start != null && todayDate.isBefore(start)) return false;
-    if (end != null && todayDate.isAfter(end)) return false;
-    return true;
+  bool _assignmentEmployeeMatches(
+    SpgAssignmentRow row,
+    String employee,
+    String employeeName,
+  ) {
+    if (row.employee == employee) return true;
+    if (employeeName.isNotEmpty && row.employee == employeeName) return true;
+    if (employeeName.isNotEmpty && row.employeeName == employeeName) {
+      return true;
+    }
+    return false;
   }
+
+  List<Map<String, dynamic>> _assignmentChildRows(Map<String, dynamic> doc) {
+    final preferred = _firstTable(doc, const [
+      'spg_details',
+      'spg_detail',
+      'details',
+      'assignment_details',
+    ]);
+    if (preferred.any(_looksLikeAssignmentRow)) return preferred;
+    for (final value in doc.values) {
+      if (value is! List) continue;
+      final rows = value
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      if (rows.any(_looksLikeAssignmentRow)) return rows;
+    }
+    return const [];
+  }
+
+  bool _looksLikeAssignmentRow(Map<String, dynamic> row) {
+    final employee = _firstString(row, const ['spg', 'employee', 'employee_id']);
+    final customer = _firstString(row, const ['customer', 'customer_id']);
+    return employee.isNotEmpty && customer.isNotEmpty;
+  }
+
+  DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
 
   DateTime? _parseLooseDate(String value) {
     final trimmed = value.trim();
@@ -3947,59 +4154,64 @@ class AppState with ChangeNotifier {
   Future<void> _ensureSpgCustomerAssigned({
     required String customer,
     required String employee,
+    DateTime? onDate,
   }) async {
     final assignedCustomers = await fetchScheduledSpgCustomers(
       employee: employee,
+      onDate: onDate,
     );
     final exists = assignedCustomers.any((option) => option.id == customer);
     if (!exists) {
       throw Exception(
-        'Customer tidak ada di SPG Schedule aktif untuk employee ini.',
+        'Customer tidak ada di Field SPG Assignment untuk employee ini.',
       );
     }
   }
 
-  bool _spgScheduleHasEmployee(Map<String, dynamic> doc, String employee) {
-    for (final row in _spgScheduleEmployeeRows(doc)) {
-      final rowEmployee = _firstString(row, const [
-        'employee',
-        'employe',
-        'employe_name',
-        'employee_name',
-        'spg',
-        'employee_id',
-      ]);
-      if (rowEmployee == employee) return true;
-    }
-    return false;
+  Future<List<String>?> _salesAssignedEmployeeIds() async {
+    if (!mobileAccess.isSalesUser) return null;
+    final scope = await fetchSpgAssignmentScope(ignoreDates: true);
+    return scope.rows.map((row) => row.employee).toSet().toList();
   }
 
-  List<Map<String, dynamic>> _spgScheduleCustomerRows(
-    Map<String, dynamic> doc,
-  ) {
-    return _firstTable(doc, const [
-      'table_bffa',
-      'customer_detail',
-      'customer_details',
-      'customers',
-      'customer_list',
-      'customer_table',
-    ]);
-  }
-
-  List<Map<String, dynamic>> _spgScheduleEmployeeRows(
-    Map<String, dynamic> doc,
-  ) {
-    return _firstTable(doc, const [
-      'table_cylv',
-      'spg',
-      'employee',
-      'employees',
-      'employee_detail',
-      'employee_details',
-      'spg_detail',
-      'spg_details',
-    ]);
+  List<Map<String, dynamic>> _keepAssignedRows(
+    List<Map<String, dynamic>> rows, {
+    String? employee,
+    List<String>? employees,
+    String? customer,
+    int? docstatus,
+    String dateField = '',
+    DateTime? from,
+    DateTime? to,
+  }) {
+    final employeeFilter = employee?.trim() ?? '';
+    final customerFilter = customer?.trim() ?? '';
+    final fromKey = from == null ? '' : _formatFrappeDate(from);
+    final toKey = to == null ? '' : _formatFrappeDate(to);
+    return rows.where((row) {
+      final rowEmployee = row['employee']?.toString().trim() ?? '';
+      if (employeeFilter.isNotEmpty &&
+          rowEmployee.isNotEmpty &&
+          rowEmployee != employeeFilter) {
+        return false;
+      }
+      if (employees != null && !employees.contains(rowEmployee)) return false;
+      final rowCustomer = row['customer']?.toString().trim() ?? '';
+      if (customerFilter.isNotEmpty && rowCustomer != customerFilter) {
+        return false;
+      }
+      if (docstatus != null) {
+        final status = int.tryParse(row['docstatus']?.toString() ?? '');
+        if (status != docstatus) return false;
+      }
+      if (dateField.isNotEmpty && (fromKey.isNotEmpty || toKey.isNotEmpty)) {
+        final raw = row[dateField]?.toString() ?? '';
+        final dayText = raw.length >= 10 ? raw.substring(0, 10) : raw;
+        if (fromKey.isNotEmpty && dayText.compareTo(fromKey) < 0) return false;
+        if (toKey.isNotEmpty && dayText.compareTo(toKey) > 0) return false;
+      }
+      return true;
+    }).toList();
   }
 
   List<Map<String, dynamic>> _firstTable(
@@ -4030,18 +4242,19 @@ class AppState with ChangeNotifier {
     required String customer,
     required List<String> photoPaths,
     String? employee,
+    DateTime? activityDate,
     String notes = '',
   }) async {
-    var selectedEmployee = employee?.trim() ?? _currentEmployee?.trim() ?? '';
-    if (selectedEmployee.isEmpty && !mobileAccess.canSelectAnyEmployee) {
+    var selectedEmployee = employee?.trim() ?? '';
+    if (selectedEmployee.isEmpty && mobileAccess.isSpg) {
       await _ensureCurrentEmployee();
       selectedEmployee = _currentEmployee?.trim() ?? '';
     }
     if (selectedEmployee.isEmpty) {
       throw Exception(
-        mobileAccess.canSelectAnyEmployee
-            ? 'Employee wajib dipilih.'
-            : 'User belum terhubung ke Employee melalui field User ID.',
+        mobileAccess.isSpg
+            ? 'User belum terhubung ke Employee melalui field User ID.'
+            : 'Employee wajib dipilih.',
       );
     }
     if (customer.trim().isEmpty) {
@@ -4050,15 +4263,32 @@ class AppState with ChangeNotifier {
     if (photoPaths.isEmpty) {
       throw Exception('Minimal 1 foto aktivitas wajib diambil.');
     }
-    await _ensureSpgCustomerAssigned(
-      customer: customer.trim(),
-      employee: selectedEmployee,
+    final selectedDay = activityDate ?? DateTime.now();
+    final activityDay = DateTime(
+      selectedDay.year,
+      selectedDay.month,
+      selectedDay.day,
     );
-    final today = _formatFrappeDate(DateTime.now());
+    if (mobileAccess.isSpg || mobileAccess.isSalesUser) {
+      await _ensureSpgCustomerAssigned(
+        customer: customer.trim(),
+        employee: selectedEmployee,
+        onDate: activityDay,
+      );
+    }
+    final now = DateTime.now();
+    final photoStamp = DateTime(
+      activityDay.year,
+      activityDay.month,
+      activityDay.day,
+      now.hour,
+      now.minute,
+      now.second,
+    );
     final created = await _frappeService.createDocument('SPG Daily Activity', {
       'employee': selectedEmployee,
       'customer': customer.trim(),
-      'activity_date': today,
+      'activity_date': _formatFrappeDate(activityDay),
       if (notes.trim().isNotEmpty) 'notes': notes.trim(),
     });
     final name = created['name']?.toString() ?? '';
@@ -4076,7 +4306,7 @@ class AppState with ChangeNotifier {
       rows.add({
         'photo': fileUrl,
         'description': notes.trim(),
-        'photo_time': _formatFrappeDateTime(DateTime.now()),
+        'photo_time': _formatFrappeDateTime(photoStamp),
       });
     }
     if (rows.isNotEmpty) {
@@ -4087,12 +4317,40 @@ class AppState with ChangeNotifier {
     return _frappeService.fetchDocument('SPG Daily Activity', name);
   }
 
-  Future<List<Map<String, dynamic>>> fetchSpgDailyReports() {
+  Future<List<Map<String, dynamic>>> fetchSpgDailyReports({
+    DateTime? from,
+    DateTime? to,
+    String? employee,
+    String? customer,
+    int? docstatus,
+  }) async {
+    var employeeFilter = employee?.trim() ?? '';
+    List<String>? employeeIn;
+    if (mobileAccess.isSpg) {
+      await _ensureCurrentEmployee();
+      employeeFilter = _currentEmployee?.trim() ?? employeeFilter;
+    } else if (mobileAccess.isSalesUser) {
+      final allowed = await _salesAssignedEmployeeIds() ?? const <String>[];
+      if (employeeFilter.isNotEmpty) {
+        if (!allowed.contains(employeeFilter)) return const [];
+      } else if (allowed.isEmpty) {
+        return const [];
+      } else {
+        employeeIn = allowed;
+        employeeFilter = '';
+      }
+    }
     final filters = <List<dynamic>>[
       if (mobileAccess.isSpg)
         ['owner', '=', _currentUser ?? '__unmapped_spg_user__'],
+      if (from != null) ['report_date', '>=', _formatFrappeDate(from)],
+      if (to != null) ['report_date', '<=', _formatFrappeDate(to)],
+      if (employeeFilter.isNotEmpty) ['employee', '=', employeeFilter],
+      if (employeeIn != null) ['employee', 'in', employeeIn],
+      if ((customer?.trim() ?? '').isNotEmpty) ['customer', '=', customer!.trim()],
+      if (docstatus != null) ['docstatus', '=', docstatus],
     ];
-    return _fetchVisitRows(
+    final rows = await _fetchVisitRows(
       doctype: 'SPG Daily Report',
       fieldSets: const [
         ['name', 'employee', 'customer', 'report_date', 'notes', 'docstatus', 'modified'],
@@ -4103,6 +4361,16 @@ class AppState with ChangeNotifier {
       filters: filters.isEmpty ? null : filters,
       orderBy: 'report_date desc, modified desc',
       limit: 100,
+    );
+    return _keepAssignedRows(
+      rows,
+      employee: employeeFilter,
+      employees: employeeIn,
+      customer: customer,
+      docstatus: docstatus,
+      dateField: 'report_date',
+      from: from,
+      to: to,
     );
   }
 
@@ -4180,6 +4448,14 @@ class AppState with ChangeNotifier {
     }
     if (customer.trim().isEmpty) {
       throw Exception('Customer wajib dipilih.');
+    }
+    final reportDay = reportDate ?? DateTime.now();
+    if (mobileAccess.isSpg || mobileAccess.isSalesUser) {
+      await _ensureSpgCustomerAssigned(
+        customer: customer.trim(),
+        employee: selectedEmployee,
+        onDate: reportDay,
+      );
     }
     final rows = sellingItems
         .where((row) => row['item']?.toString().trim().isNotEmpty == true)

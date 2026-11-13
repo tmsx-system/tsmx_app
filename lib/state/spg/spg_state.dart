@@ -85,6 +85,25 @@ class SpgState extends AppStateProxyNotifier {
     return appState.fetchEmployeeOptions(query: query);
   }
 
+  Future<SpgAssignmentScope> fetchSpgAssignmentScope({
+    DateTime? from,
+    DateTime? to,
+    bool ignoreDates = false,
+  }) {
+    return appState.fetchSpgAssignmentScope(
+      from: from,
+      to: to,
+      ignoreDates: ignoreDates,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSpgEmployeeChoices({
+    String query = '',
+    DateTime? onDate,
+  }) {
+    return appState.fetchSpgEmployeeChoices(query: query, onDate: onDate);
+  }
+
   Future<List<SpgCustomerOption>> fetchSpgCustomers({String query = ''}) {
     return appState.fetchSpgCustomers(query: query);
   }
@@ -92,10 +111,12 @@ class SpgState extends AppStateProxyNotifier {
   Future<List<SpgCustomerOption>> fetchScheduledSpgCustomers({
     String query = '',
     String? employee,
+    DateTime? onDate,
   }) {
     return appState.fetchScheduledSpgCustomers(
       query: query,
       employee: employee,
+      onDate: onDate,
     );
   }
 
@@ -103,18 +124,32 @@ class SpgState extends AppStateProxyNotifier {
     required String customer,
     required List<String> photoPaths,
     String? employee,
+    DateTime? activityDate,
     String notes = '',
   }) {
     return appState.createSpgDailyActivity(
       customer: customer,
       photoPaths: photoPaths,
       employee: employee,
+      activityDate: activityDate,
       notes: notes,
     );
   }
 
-  Future<List<Map<String, dynamic>>> fetchSpgDailyReports() {
-    return appState.fetchSpgDailyReports();
+  Future<List<Map<String, dynamic>>> fetchSpgDailyReports({
+    DateTime? from,
+    DateTime? to,
+    String? employee,
+    String? customer,
+    int? docstatus,
+  }) {
+    return appState.fetchSpgDailyReports(
+      from: from,
+      to: to,
+      employee: employee,
+      customer: customer,
+      docstatus: docstatus,
+    );
   }
 
   Future<Map<String, dynamic>> fetchSpgDailyReportDetail(String name) {

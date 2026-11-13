@@ -62,7 +62,8 @@ class _CreateSpgDailyReportScreenState
             ? Future.value(const <SpgCustomerOption>[])
             : _customersFor(state, ''),
         state.fetchSpgSellingItems(''),
-        if (selectsEmployee) state.fetchEmployeeOptions(),
+        if (selectsEmployee)
+          state.fetchSpgEmployeeChoices(onDate: _reportDate),
       ]);
       if (!mounted) return;
       setState(() {
@@ -189,14 +190,15 @@ class _CreateSpgDailyReportScreenState
     String query, {
     String? employee,
   }) async {
-    List<SpgCustomerOption> scheduled = const [];
-    try {
-      scheduled = await state.fetchScheduledSpgCustomers(
-        query: query,
-        employee: employee,
-      );
-    } catch (_) {}
-    if (scheduled.isNotEmpty) return scheduled;
+    final access = state.mobileAccess;
+    final assigned = await state.fetchScheduledSpgCustomers(
+      query: query,
+      employee: employee,
+      onDate: _reportDate,
+    );
+    if (access.isSpg || access.isSalesUser || assigned.isNotEmpty) {
+      return assigned;
+    }
     return state.fetchSpgCustomers(query: query);
   }
 
@@ -210,6 +212,25 @@ class _CreateSpgDailyReportScreenState
     if (picked == null || !mounted) return;
     setState(() {
       _reportDate = DateTime(picked.year, picked.month, picked.day);
+    });
+    await _refreshCustomersForDate();
+  }
+
+  Future<void> _refreshCustomersForDate() async {
+    final state = context.read<SpgState>();
+    if (!state.mobileAccess.isSpg && _employee == null) return;
+    final customers = await _customersFor(
+      state,
+      '',
+      employee: _employee?['name']?.toString(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _customers = customers;
+      if (_customer != null &&
+          !customers.any((option) => option.id == _customer!.id)) {
+        _customer = null;
+      }
     });
   }
 
@@ -722,8 +743,9 @@ class _CreateSpgDailyReportScreenState
   }
 
   Future<List<ErpItemOption>> _searchEmployees(String query) async {
-    final rows = await context.read<SpgState>().fetchEmployeeOptions(
+    final rows = await context.read<SpgState>().fetchSpgEmployeeChoices(
       query: query,
+      onDate: _reportDate,
     );
     final merged = <String, Map<String, dynamic>>{
       for (final employee in _employees)
@@ -753,9 +775,11 @@ class _CreateSpgDailyReportScreenState
       scheduled = await state.fetchScheduledSpgCustomers(
         query: query,
         employee: _employee?['name']?.toString(),
+        onDate: _reportDate,
       );
     } catch (_) {}
-    final resolved = scheduled.isNotEmpty
+    final access = state.mobileAccess;
+    final resolved = scheduled.isNotEmpty || access.isSpg || access.isSalesUser
         ? scheduled
         : await state.fetchSpgCustomers(query: query);
     final merged = <String, SpgCustomerOption>{
