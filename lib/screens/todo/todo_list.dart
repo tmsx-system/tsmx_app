@@ -36,6 +36,218 @@ String _itemDiscountLabel(Map<String, dynamic> item) {
   return '$amountLabel (${percentage.toStringAsFixed(2)}%)';
 }
 
+List<Map<String, dynamic>> _childTableRows(dynamic value) {
+  if (value is! List) return const [];
+  return [
+    for (final row in value.whereType<Map>()) Map<String, dynamic>.from(row),
+  ];
+}
+
+List<Map<String, dynamic>> _firstNamedChildTable(
+  Map<String, dynamic> detail,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final rows = _childTableRows(detail[key]);
+    if (rows.isNotEmpty) return rows;
+  }
+  return const [];
+}
+
+bool _tukarRowExcluded(String key, Map<String, dynamic> sample) {
+  final doctype = (sample['doctype'] ?? '').toString().toLowerCase();
+  final normalized = key.toLowerCase();
+  return normalized.contains('sisa') ||
+      normalized.contains('source') ||
+      normalized.contains('saldo') ||
+      doctype.contains('sisa');
+}
+
+bool _rowLooksLikeTukarClaim(String key, Map<String, dynamic> sample) {
+  if (_tukarRowExcluded(key, sample)) return false;
+  final doctype = (sample['doctype'] ?? '').toString().toLowerCase();
+  final normalized = key.toLowerCase();
+  if (normalized.contains('klaim') ||
+      normalized.contains('claim') ||
+      doctype.contains('klaim') ||
+      doctype.contains('harian')) {
+    return true;
+  }
+  final keys = sample.keys.map((entry) => entry.toString().toLowerCase());
+  final hasQty = keys.any((entry) => entry.contains('qty'));
+  final hasItem = keys.any((entry) => entry.contains('item'));
+  final isBox = keys.any(
+    (entry) => entry.contains('warehouse') || entry == 'uom',
+  );
+  return hasQty && hasItem && !isBox;
+}
+
+bool _rowLooksLikeTukarItem(String key, Map<String, dynamic> sample) {
+  if (_tukarRowExcluded(key, sample) || _rowLooksLikeTukarClaim(key, sample)) {
+    return false;
+  }
+  final doctype = (sample['doctype'] ?? '').toString().toLowerCase();
+  return key.toLowerCase().contains('item') ||
+      doctype.contains('tukar guling item');
+}
+
+List<Map<String, dynamic>> tukarGulingDocumentRows(Map<String, dynamic> detail) {
+  var claims = _firstNamedChildTable(detail, const [
+    'custom_claim_details',
+    'klaim_harian',
+    'tukar_guling_harian',
+    'claim_details',
+  ]);
+  var items = _firstNamedChildTable(detail, const [
+    'tukar_guling_item',
+    'tukar_guling_items',
+    'items',
+  ]);
+  if (claims.isEmpty || items.isEmpty) {
+    for (final entry in detail.entries) {
+      final rows = _childTableRows(entry.value);
+      if (rows.isEmpty) continue;
+      final key = entry.key.toString();
+      if (claims.isEmpty && _rowLooksLikeTukarClaim(key, rows.first)) {
+        claims = rows;
+      } else if (items.isEmpty && _rowLooksLikeTukarItem(key, rows.first)) {
+        items = rows;
+      }
+    }
+  }
+  return [...claims, ...items];
+}
+
+bool tukarGulingRowIsClaim(Map<String, dynamic> item) {
+  final doctype = (item['doctype'] ?? '').toString().toLowerCase();
+  if (doctype.contains('harian') || doctype.contains('klaim')) return true;
+  if (doctype.contains('tukar guling item')) return false;
+  final keys = item.keys.map((key) => key.toString().toLowerCase()).toList();
+  final hasKg = keys.any((key) => key.contains('qty') && key.contains('kg'));
+  final hasWarehouse = keys.any((key) => key.contains('warehouse'));
+  final uom = (item['uom'] ?? '').toString().trim();
+  if (hasWarehouse || uom.isNotEmpty) return false;
+  final itemCode = (item['item_code'] ?? '').toString().trim();
+  final itemRef = (item['item'] ?? '').toString().trim();
+  return hasKg || (itemCode.isEmpty && itemRef.isNotEmpty);
+}
+
+String tukarGulingRowText(Map<String, dynamic> row, List<String> keys) {
+  for (final key in keys) {
+    final value = row[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+  }
+  return '';
+}
+
+String tukarGulingItemSectionTitle(List<Map<String, dynamic>> rows) {
+  if (rows.isNotEmpty && rows.every(tukarGulingRowIsClaim)) {
+    return 'Klaim Harian (${rows.length})';
+  }
+  return 'Item (${rows.length})';
+}
+
+Widget tukarGulingTodoItemCard(Map<String, dynamic> item) {
+  final claim = tukarGulingRowIsClaim(item);
+  final title = tukarGulingRowText(item, ['item_name', 'item', 'item_code']);
+  final code = tukarGulingRowText(item, ['item_code', 'item']);
+  final qtyRaw = claim
+      ? tukarGulingRowText(item, ['qty_kg', 'qty'])
+      : tukarGulingRowText(item, ['qty', 'qty_kg']);
+  final qtyNumber = NumParse.asDouble(qtyRaw);
+  final qty = qtyNumber == qtyNumber.roundToDouble()
+      ? qtyNumber.toInt().toString()
+      : qtyNumber.toStringAsFixed(2);
+  final uom = claim ? 'kg' : tukarGulingRowText(item, ['uom']);
+  final date = tukarGulingRowText(item, [
+    'tanggal_klaim',
+    'claim_date',
+    'posting_date',
+  ]);
+  final dateLabel = date.length >= 10 ? date.substring(0, 10) : date;
+  final note = tukarGulingRowText(item, ['keterangan']);
+  final warehouse = tukarGulingRowText(item, [
+    'source_warehouse',
+    's_warehouse',
+    'warehouse',
+  ]);
+
+  Widget pill(IconData icon, String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    decoration: BoxDecoration(
+      color: AppColors.primary.withValues(alpha: 0.09),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: AppColors.primary),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.navy,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.isEmpty ? '-' : title,
+            style: const TextStyle(
+              color: AppColors.navy,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (code.isNotEmpty && code != title) ...[
+            const SizedBox(height: 4),
+            Text(
+              code,
+              style: const TextStyle(
+                color: AppColors.slate,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (claim && dateLabel.isNotEmpty)
+                pill(Icons.event_rounded, dateLabel),
+              pill(
+                Icons.inventory_2_outlined,
+                uom.isEmpty ? qty : '$qty $uom',
+              ),
+              if (!claim && warehouse.isNotEmpty)
+                pill(Icons.warehouse_outlined, warehouse),
+              if (claim && note.isNotEmpty) pill(Icons.notes_rounded, note),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class SalesOrderApprovalScreen extends StatefulWidget {
   final bool embedded;
   final String title;
@@ -1887,9 +2099,13 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                 const SizedBox(height: 12),
 
                 _sectionCard(
-                  title: 'Item (${items.length})',
+                  title: widget.approval.doctype == 'Tukar Guling'
+                      ? tukarGulingItemSectionTitle(items)
+                      : 'Item (${items.length})',
                   children: items.isEmpty
                       ? [const Text('Tidak ada item.')]
+                      : widget.approval.doctype == 'Tukar Guling'
+                      ? items.map(tukarGulingTodoItemCard).toList()
                       : items.map(_itemRow).toList(),
                 ),
 
@@ -2812,6 +3028,9 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
 
   List<Map<String, dynamic>> _documentItemRows(Map<String, dynamic>? detail) {
     if (detail == null) return const [];
+    if (widget.approval.doctype == 'Tukar Guling') {
+      return tukarGulingDocumentRows(detail);
+    }
     for (final key in const [
       'items',
       'tukar_guling_item',
@@ -2937,7 +3156,9 @@ class _SalesOrderApprovalHistoryDetailPageState
     final state = _text(detail?['workflow_state']).isEmpty
         ? _text(detail?['status'])
         : _text(detail?['workflow_state']);
-    final items = _mapRows(detail?['items']);
+    final items = widget.group.doctype == 'Tukar Guling'
+        ? tukarGulingDocumentRows(detail ?? const {})
+        : _mapRows(detail?['items']);
     final salesTeam = _mapRows(detail?['sales_team']);
 
     return Scaffold(
@@ -2998,9 +3219,13 @@ class _SalesOrderApprovalHistoryDetailPageState
                 ),
                 const SizedBox(height: 12),
                 _sectionCard(
-                  title: 'Item (${items.length})',
+                  title: widget.group.doctype == 'Tukar Guling'
+                      ? tukarGulingItemSectionTitle(items)
+                      : 'Item (${items.length})',
                   children: items.isEmpty
                       ? [const Text('Tidak ada item.')]
+                      : widget.group.doctype == 'Tukar Guling'
+                      ? items.map(tukarGulingTodoItemCard).toList()
                       : items.map(_itemRow).toList(),
                 ),
                 if (salesTeam.isNotEmpty) ...[

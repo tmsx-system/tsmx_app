@@ -317,7 +317,7 @@ class MobileRoleRegistry {
     ),
     MobileModuleAccessRule(
       module: MobileModule.stock,
-      readDoctypes: ['Bin', 'Item', 'Stock Ledger Entry'],
+      readDoctypes: ['Bin', 'Stock Ledger Entry'],
     ),
     MobileModuleAccessRule(
       module: MobileModule.warehouse,

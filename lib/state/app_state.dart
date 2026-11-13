@@ -455,6 +455,24 @@ class AppState with ChangeNotifier {
         }
       }
     }
+    if (_normalizeRoleProfile(_userRole) == MobileRole.spg) {
+      enabledModules.remove(MobileModule.sales);
+      const warehouseWork = {
+        'Warehouse',
+        'Stock Entry',
+        'Stock Reconciliation',
+        'Reject',
+        'Bin',
+        'Stock Ledger Entry',
+        'Quality Inspection',
+      };
+      if (!readable.any(warehouseWork.contains)) {
+        enabledModules
+          ..remove(MobileModule.warehouse)
+          ..remove(MobileModule.stock)
+          ..remove(MobileModule.qualityControl);
+      }
+    }
     _permissionEnabledModules = enabledModules;
     if (!kReleaseMode) {
       developer.log(

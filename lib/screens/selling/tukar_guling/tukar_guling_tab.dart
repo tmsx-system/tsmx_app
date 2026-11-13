@@ -293,8 +293,9 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
 
       final canEdit = _canWrite && _isDraftLike(row);
 
-      await showSellingDocumentDetailSheet(
+      await showSellingDocumentDetailPage(
         context: context,
+        appBarTitle: 'Detail Tukar Guling',
         title: row.id,
         subtitle: customer.isEmpty ? company : customer,
         statusText: workflowState.isEmpty ? 'Draft' : workflowState,

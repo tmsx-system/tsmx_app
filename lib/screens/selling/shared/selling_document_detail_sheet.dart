@@ -130,6 +130,7 @@ Future<void> showSellingDocumentDetailPage({
   List<SellingDetailInfo> infos = const [],
   List<SellingDetailItem> items = const [],
   String itemsTitle = 'Detail Item',
+  String? appBarTitle,
   Widget? footer,
 }) {
   return Navigator.of(context).push<void>(
@@ -137,11 +138,12 @@ Future<void> showSellingDocumentDetailPage({
       builder: (pageContext) => Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
-          backgroundColor: AppColors.background,
+          backgroundColor: AppColors.white,
           foregroundColor: AppColors.navy,
+          surfaceTintColor: Colors.transparent,
           elevation: 0,
           title: Text(
-            title,
+            appBarTitle ?? title,
             style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
           ),
         ),
