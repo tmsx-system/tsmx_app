@@ -198,9 +198,9 @@ class SpgState extends AppStateProxyNotifier {
     return appState.submitSpgDailyReport(name);
   }
 
-  Future<bool> canWriteSpgDailyReport() =>
-      appState.canWriteDoctype('SPG Daily Report');
+  Future<bool> canWriteSpgDailyReport({String docname = ''}) =>
+      appState.canWriteDoctype('SPG Daily Report', docname: docname);
 
-  Future<bool> canSubmitSpgDailyReport() =>
-      appState.canSubmitDoctype('SPG Daily Report');
+  Future<bool> canSubmitSpgDailyReport({String docname = ''}) =>
+      appState.canSubmitDoctype('SPG Daily Report', docname: docname);
 }

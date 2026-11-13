@@ -264,11 +264,11 @@ class AppState with ChangeNotifier {
   Future<bool> canCreateDoctype(String doctype) =>
       _hasDoctypePermission(doctype, 'create');
 
-  Future<bool> canWriteDoctype(String doctype) =>
-      _hasDoctypePermission(doctype, 'write');
+  Future<bool> canWriteDoctype(String doctype, {String docname = ''}) =>
+      _hasDoctypePermission(doctype, 'write', docname: docname);
 
-  Future<bool> canSubmitDoctype(String doctype) =>
-      _hasDoctypePermission(doctype, 'submit');
+  Future<bool> canSubmitDoctype(String doctype, {String docname = ''}) =>
+      _hasDoctypePermission(doctype, 'submit', docname: docname);
 
   Future<bool> canPrintDoctype(String doctype) =>
       _hasDoctypePermission(doctype, 'print');

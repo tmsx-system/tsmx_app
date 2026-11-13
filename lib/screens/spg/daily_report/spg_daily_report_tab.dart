@@ -37,16 +37,17 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
     });
     try {
       final state = context.read<SpgState>();
-      final results = await Future.wait<Object>([
-        state.fetchSpgDailyReports(),
-        state.canWriteSpgDailyReport(),
-        state.canSubmitSpgDailyReport(),
+      final records = await state.fetchSpgDailyReports();
+      final draftName = _firstDraftName(records);
+      final permissions = await Future.wait<bool>([
+        state.canWriteSpgDailyReport(docname: draftName),
+        state.canSubmitSpgDailyReport(docname: draftName),
       ]);
       if (!mounted) return;
       setState(() {
-        _records = results[0] as List<Map<String, dynamic>>;
-        _canWrite = results[1] as bool;
-        _canSubmit = results[2] as bool;
+        _records = records;
+        _canWrite = permissions[0];
+        _canSubmit = permissions[1];
       });
     } catch (error) {
       if (mounted) {
@@ -104,6 +105,15 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
 
   int _docStatus(Map<String, dynamic> row) =>
       int.tryParse(row['docstatus']?.toString() ?? '') ?? 0;
+
+  String _firstDraftName(List<Map<String, dynamic>> records) {
+    for (final row in records) {
+      if (_docStatus(row) != 0) continue;
+      final name = row['name']?.toString().trim() ?? '';
+      if (name.isNotEmpty) return name;
+    }
+    return '';
+  }
 
   String _statusLabel(int docstatus) {
     if (docstatus == 1) return 'Submitted';
@@ -301,9 +311,14 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
 
   Future<void> _showDetail(String name) async {
     try {
-      final detail = await context.read<SpgState>().fetchSpgDailyReportDetail(
-        name,
-      );
+      final state = context.read<SpgState>();
+      final detail = await state.fetchSpgDailyReportDetail(name);
+      if (!mounted) return;
+      final isDraft = _docStatus(detail) == 0;
+      final canEdit = isDraft &&
+          (_canWrite || await state.canWriteSpgDailyReport(docname: name));
+      final canSubmit = isDraft &&
+          (_canSubmit || await state.canSubmitSpgDailyReport(docname: name));
       if (!mounted) return;
       showModalBottomSheet<void>(
         context: context,
@@ -311,8 +326,8 @@ class _SpgDailyReportTabState extends State<SpgDailyReportTab> {
         backgroundColor: Colors.transparent,
         builder: (sheetContext) => _SpgDailyReportDetailSheet(
           detail: detail,
-          canEdit: _canWrite && _docStatus(detail) == 0,
-          canSubmit: _canSubmit && _docStatus(detail) == 0,
+          canEdit: canEdit,
+          canSubmit: canSubmit,
           onEdit: () {
             Navigator.pop(sheetContext);
             _openEdit(name);
