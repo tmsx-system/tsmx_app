@@ -11,8 +11,8 @@ class SpgMainScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RoleMainScreen(
-      title: 'SPG',
-      fallbackUsername: 'SPG',
+      title: 'SPG & SPM',
+      fallbackUsername: 'SPG & SPM',
       destinations: const [
         NavigationDestination(
           icon: Icon(Icons.home_outlined),

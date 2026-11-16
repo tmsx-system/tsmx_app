@@ -168,7 +168,7 @@ class _SpgOverviewTabState extends State<SpgOverviewTab> {
     final user = context.watch<SpgState>().appState.currentUser?.trim() ?? '';
     final name = employeeName.isNotEmpty
         ? employeeName
-        : (user.isNotEmpty ? user : 'SPG');
+        : (user.isNotEmpty ? user : 'SPG & SPM');
     final site = context.watch<SpgState>().appState.selectedSiteName.trim();
     final place = _summary.place.isNotEmpty ? _summary.place : site;
 
