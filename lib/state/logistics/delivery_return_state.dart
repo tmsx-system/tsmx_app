@@ -109,7 +109,6 @@ class DeliveryReturnState extends AppStateProxyNotifier {
           'company',
           'customer',
           'workflow_state',
-          'keterangan',
           'modified',
           'docstatus',
         ],
@@ -135,12 +134,7 @@ class DeliveryReturnState extends AppStateProxyNotifier {
       } catch (_) {
         return await _loadDeliveryReturnsWithCoreFields(
           filters
-              .where(
-                (f) =>
-                    f.isNotEmpty &&
-                    f.first != 'workflow_state' &&
-                    f.first != 'keterangan',
-              )
+              .where((f) => f.isNotEmpty && f.first != 'workflow_state')
               .toList(),
           limit: limit,
         );

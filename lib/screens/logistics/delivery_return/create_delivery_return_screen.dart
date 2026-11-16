@@ -23,7 +23,6 @@ class CreateDeliveryReturnScreen extends StatefulWidget {
 
 class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _keteranganCtrl = TextEditingController();
   final _rows = <_ItemRow>[];
   final _imagePicker = ImagePicker();
   final _photos = <XFile>[];
@@ -38,6 +37,27 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
   String _customerName = '';
   String? _deliveryNote;
   String _workflowState = 'Draft';
+  String? _alasan;
+  static const _alasanOptions = [
+    'Understep',
+    'Overstep',
+    'Bonyok',
+    'Hitam',
+    'Undersize',
+    'Oversize',
+    'Karat',
+    'Kualitas',
+    'Tidak Pesan',
+    'Patah',
+    'Memar',
+    'Grenn Soft',
+    'Jamur',
+    'Under Gramasi',
+    'bintik',
+    'Pucat',
+    'Luka',
+    'Stok masih ada',
+  ];
   int _docstatus = 0;
   DateTime _postingDate = DateTime.now();
   String? _savedName;
@@ -72,7 +92,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
 
   @override
   void dispose() {
-    _keteranganCtrl.dispose();
     for (final row in _rows) {
       row.dispose();
     }
@@ -124,7 +143,8 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
     _deliveryNote = doc['delivery_asal']?.toString().trim() ??
         doc['delivery_note']?.toString().trim() ??
         _deliveryNote;
-    _keteranganCtrl.text = doc['keterangan']?.toString() ?? '';
+    final alasan = doc['alasan']?.toString().trim() ?? '';
+    _alasan = alasan.isEmpty ? null : alasan;
     _workflowState = (doc['workflow_state']?.toString().trim().isNotEmpty == true)
         ? doc['workflow_state'].toString().trim()
         : 'Draft';
@@ -468,7 +488,7 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
         customer: _customer!.trim(),
         customerName: _customerName,
         deliveryNote: _deliveryNote?.trim() ?? '',
-        keterangan: _keteranganCtrl.text,
+        alasan: _alasan ?? '',
         items: [
           for (final row in (_canCorrect ? kept : filled))
             DeliveryReturnItemDraft(
@@ -703,6 +723,23 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
                                 ? 'Delivery Asal wajib'
                                 : null,
                       ),
+                      const SizedBox(height: 14),
+                      ErpItemAutocompleteField(
+                        label: 'Alasan',
+                        selectedId: (_alasan ?? '').isEmpty ? null : _alasan,
+                        decoration: _decoration(
+                          'Alasan',
+                          hint: 'Cari alasan',
+                        ),
+                        options: [
+                          for (final option in {
+                            ..._alasanOptions,
+                            if ((_alasan ?? '').isNotEmpty) _alasan!,
+                          })
+                            ErpItemOption(id: option, label: option),
+                        ],
+                        onSelected: (value) => setState(() => _alasan = value),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -728,21 +765,6 @@ class _CreateDeliveryReturnScreenState extends State<CreateDeliveryReturnScreen>
                     onCamera: _saving ? null : _pickCamera,
                     onGallery: _saving ? null : _pickGallery,
                     onRemove: (index) => setState(() => _photos.removeAt(index)),
-                  ),
-                  const SizedBox(height: 12),
-                  _section(
-                    title: 'Keterangan',
-                    children: [
-                      TextFormField(
-                        controller: _keteranganCtrl,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: _decoration(
-                          'Keterangan',
-                          hint: 'Catatan (opsional)',
-                        ),
-                      ),
-                    ],
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),

@@ -261,7 +261,7 @@ class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
       }
       final postingDate =
           detail['posting_date']?.toString() ?? row.postingDate;
-      final keterangan = detail['keterangan']?.toString() ?? row.keterangan;
+      final alasan = detail['alasan']?.toString().trim() ?? '';
       final workflowState =
           detail['workflow_state']?.toString() ?? row.statusLabel;
       final rawItems = detail[meta.childTableField] ??
@@ -350,8 +350,8 @@ class _DeliveryReturnTabState extends State<DeliveryReturnTab> {
           SellingDetailInfo(label: 'Company', value: company),
           SellingDetailInfo(label: 'Posting Date', value: postingDate),
           SellingDetailInfo(label: 'Workflow', value: workflowState),
-          if (keterangan.isNotEmpty)
-            SellingDetailInfo(label: 'Keterangan', value: keterangan),
+          if (alasan.isNotEmpty)
+            SellingDetailInfo(label: 'Alasan', value: alasan),
         ],
         items: items,
         footer: Column(

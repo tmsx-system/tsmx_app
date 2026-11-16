@@ -4,7 +4,6 @@ class DeliveryReturnSummary {
   final String company;
   final String customer;
   final String workflowState;
-  final String keterangan;
   final int docstatus;
 
   const DeliveryReturnSummary({
@@ -13,7 +12,6 @@ class DeliveryReturnSummary {
     this.company = '',
     this.customer = '',
     this.workflowState = '',
-    this.keterangan = '',
     this.docstatus = 0,
   });
 
@@ -27,7 +25,6 @@ class DeliveryReturnSummary {
           json['workflow_state']?.toString() ??
           json['status']?.toString() ??
           '',
-      keterangan: json['keterangan']?.toString() ?? '',
       docstatus: int.tryParse(json['docstatus']?.toString() ?? '') ?? 0,
     );
   }
@@ -79,7 +76,7 @@ class DeliveryReturnDraft {
   final String customer;
   final String customerName;
   final String deliveryNote;
-  final String keterangan;
+  final String alasan;
   final List<DeliveryReturnItemDraft> items;
 
   const DeliveryReturnDraft({
@@ -89,7 +86,7 @@ class DeliveryReturnDraft {
     required this.customer,
     this.customerName = '',
     this.deliveryNote = '',
-    this.keterangan = '',
+    this.alasan = '',
     required this.items,
   });
 
@@ -118,7 +115,7 @@ class DeliveryReturnDraft {
         customerNameField: customerName.trim(),
       if (deliveryNote.trim().isNotEmpty)
         deliveryNoteField: deliveryNote.trim(),
-      if (keterangan.trim().isNotEmpty) 'keterangan': keterangan.trim(),
+      if (alasan.trim().isNotEmpty) 'alasan': alasan.trim(),
       childTableField: [
         for (final item in items)
           item.toFrappeJson(
