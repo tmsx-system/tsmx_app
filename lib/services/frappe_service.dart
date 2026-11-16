@@ -1015,6 +1015,11 @@ class FrappeService {
     });
   }
 
+  String? get sessionCookieHeader {
+    if (_cookies.isEmpty) return null;
+    return _cookieHeader();
+  }
+
   String _cookieHeader() {
     return _cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
   }

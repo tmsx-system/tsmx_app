@@ -64,6 +64,7 @@ Future<void> showSellingDocumentDetailSheet({
   List<SellingDetailInfo> infos = const [],
   List<SellingDetailItem> items = const [],
   String itemsTitle = 'Detail Item',
+  Widget? extra,
   Widget? footer,
 }) async {
   if (_sellingDetailSheetOpen) return;
@@ -104,6 +105,7 @@ Future<void> showSellingDocumentDetailSheet({
                   infos: infos,
                   items: items,
                   itemsTitle: itemsTitle,
+                  extra: extra,
                   footer: footer,
                   showHandle: true,
                   onClose: () => Navigator.pop(sheetContext),
@@ -131,6 +133,7 @@ Future<void> showSellingDocumentDetailPage({
   List<SellingDetailItem> items = const [],
   String itemsTitle = 'Detail Item',
   String? appBarTitle,
+  Widget? extra,
   Widget? footer,
 }) {
   return Navigator.of(context).push<void>(
@@ -160,6 +163,7 @@ Future<void> showSellingDocumentDetailPage({
                 infos: infos,
                 items: items,
                 itemsTitle: itemsTitle,
+                extra: extra,
                 footer: footer,
               ),
             ],
@@ -179,6 +183,7 @@ class _SellingDetailBody extends StatelessWidget {
   final List<SellingDetailInfo> infos;
   final List<SellingDetailItem> items;
   final String itemsTitle;
+  final Widget? extra;
   final Widget? footer;
   final bool showHandle;
   final VoidCallback? onClose;
@@ -193,6 +198,7 @@ class _SellingDetailBody extends StatelessWidget {
     required this.items,
     required this.itemsTitle,
     required this.footer,
+    this.extra,
     this.showHandle = false,
     this.onClose,
   });
@@ -230,6 +236,7 @@ class _SellingDetailBody extends StatelessWidget {
           const SizedBox(height: 12),
           _SellingInfoCard(infos: infos),
         ],
+        if (extra != null) ...[const SizedBox(height: 12), extra!],
         const SizedBox(height: 14),
         _SellingItemsSection(items: items, title: itemsTitle),
         if (footer != null) ...[const SizedBox(height: 16), footer!],
