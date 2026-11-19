@@ -1110,6 +1110,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
   bool _processing = false;
   bool _addingApprover = false;
   bool _additionalApprovalProcessing = false;
+  List<Map<String, dynamic>> _photos = const [];
 
   @override
   void initState() {
@@ -1167,6 +1168,17 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
               );
         _loading = false;
       });
+      if (widget.approval.doctype == 'Tukar Guling') {
+        try {
+          final files = await appState.appState.fetchDocumentAttachments(
+            doctype: widget.approval.doctype,
+            documentName: widget.approval.name,
+          );
+          if (mounted) setState(() => _photos = files);
+        } catch (_) {
+          if (mounted) setState(() => _photos = const []);
+        }
+      }
       if (detail != null) {
         try {
           final loaded = await appState.fetchDocumentWorkflowActions(detail);
@@ -1485,6 +1497,23 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                       : 'Nilai Dokumen',
                   children: _amountRows(detail),
                 ),
+
+                if (widget.approval.doctype == 'Tukar Guling') ...[
+                  const SizedBox(height: 12),
+                  _ApprovalPhotoGrid(
+                    files: _photos,
+                    baseUrl: context
+                        .read<TodoState>()
+                        .appState
+                        .frappeService
+                        .baseUrl,
+                    cookie: context
+                        .read<TodoState>()
+                        .appState
+                        .frappeService
+                        .sessionCookieHeader,
+                  ),
+                ],
 
                 const SizedBox(height: 12),
 
@@ -2480,6 +2509,187 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         normalized.contains('tolak') ||
         normalized.contains('decline') ||
         normalized.contains('return');
+  }
+}
+
+class _ApprovalPhotoGrid extends StatelessWidget {
+  final List<Map<String, dynamic>> files;
+  final String baseUrl;
+  final String? cookie;
+
+  const _ApprovalPhotoGrid({
+    required this.files,
+    required this.baseUrl,
+    required this.cookie,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final images = [
+      for (final file in files)
+        if (_isImage(file) && _url(file).isNotEmpty) file,
+    ];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Foto',
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '${images.length}',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (images.isEmpty)
+            const Text(
+              'Belum ada foto pada dokumen ini.',
+              style: TextStyle(
+                color: AppColors.slate,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: images.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+              ),
+              itemBuilder: (context, index) {
+                final file = images[index];
+                final url = _url(file);
+                final name =
+                    file['file_name']?.toString().trim().isNotEmpty == true
+                    ? file['file_name'].toString()
+                    : 'Foto ${index + 1}';
+                return InkWell(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => _ApprovalPhotoPage(
+                        title: name,
+                        imageUrl: url,
+                        cookie: cookie,
+                      ),
+                    ),
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.network(
+                      url,
+                      headers: cookie == null ? null : {'cookie': cookie!},
+                      fit: BoxFit.cover,
+                      cacheWidth: 480,
+                      filterQuality: FilterQuality.medium,
+                      errorBuilder: (_, _, _) => const ColoredBox(
+                        color: AppColors.background,
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: AppColors.slate,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  bool _isImage(Map<String, dynamic> file) {
+    final name = (file['file_name'] ?? file['file_url'] ?? '')
+        .toString()
+        .toLowerCase();
+    return name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.png') ||
+        name.endsWith('.webp') ||
+        name.endsWith('.gif');
+  }
+
+  String _url(Map<String, dynamic> file) {
+    final raw = file['file_url']?.toString().trim() ?? '';
+    if (raw.isEmpty) return '';
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    final root = baseUrl.replaceAll(RegExp(r'/+$'), '');
+    if (raw.startsWith('/')) return '$root$raw';
+    return '$root/$raw';
+  }
+}
+
+class _ApprovalPhotoPage extends StatelessWidget {
+  final String title;
+  final String imageUrl;
+  final String? cookie;
+
+  const _ApprovalPhotoPage({
+    required this.title,
+    required this.imageUrl,
+    required this.cookie,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        title: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.8,
+          maxScale: 4,
+          child: Image.network(
+            imageUrl,
+            headers: cookie == null ? null : {'cookie': cookie!},
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'Foto tidak bisa ditampilkan.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
