@@ -98,6 +98,7 @@ class TukarGulingState extends AppStateProxyNotifier {
           'posting_date',
           'company',
           'customer',
+          'customer_name',
           'stock_entry',
           'workflow_state',
           'keterangan',

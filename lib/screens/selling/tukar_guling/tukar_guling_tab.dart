@@ -627,6 +627,12 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
     );
   }
 
+  String _customerLine(TukarGulingSummary row) {
+    final name = row.customerName.trim();
+    if (name.isNotEmpty) return name;
+    return row.customer.trim();
+  }
+
   Widget _card(TukarGulingSummary row) {
     final workflowActions = _actionsByName[row.id] ?? const <String>[];
     final canEdit = _canWrite && _isDraftLike(row);
@@ -661,7 +667,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
                       const SizedBox(height: 4),
                       Text(
                         [
-                          if (row.customer.isNotEmpty) row.customer,
+                          if (_customerLine(row).isNotEmpty) _customerLine(row),
                           if (row.company.isNotEmpty) row.company,
                           if (row.postingDate.isNotEmpty) row.postingDate,
                           if (row.stockEntry.isNotEmpty)

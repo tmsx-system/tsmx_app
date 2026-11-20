@@ -3,6 +3,7 @@ class TukarGulingSummary {
   final String postingDate;
   final String company;
   final String customer;
+  final String customerName;
   final String stockEntry;
   final String workflowState;
   final String keterangan;
@@ -13,6 +14,7 @@ class TukarGulingSummary {
     this.postingDate = '',
     this.company = '',
     this.customer = '',
+    this.customerName = '',
     this.stockEntry = '',
     this.workflowState = '',
     this.keterangan = '',
@@ -25,6 +27,7 @@ class TukarGulingSummary {
       postingDate: json['posting_date']?.toString() ?? '',
       company: json['company']?.toString() ?? '',
       customer: json['customer']?.toString() ?? '',
+      customerName: json['customer_name']?.toString() ?? '',
       stockEntry: json['stock_entry']?.toString() ?? '',
       workflowState:
           json['workflow_state']?.toString() ??
