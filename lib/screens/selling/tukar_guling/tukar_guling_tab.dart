@@ -229,6 +229,12 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
           detail['workflow_state']?.toString() ?? row.statusLabel;
       final rawClaims = state.claimRowsOf(detail);
       final rawItems = state.itemRowsOf(detail);
+      final sourceDates = isFinal
+          ? await state.postingDatesByName([
+              for (final map in rawClaims)
+                if (_detailDate(map).isEmpty) _claimSourceName(map),
+            ])
+          : const <String, String>{};
       final items = <SellingDetailItem>[];
       if (!isFinal) {
         for (final map in rawClaims) {
@@ -250,11 +256,16 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         }
       } else {
         for (final map in rawClaims) {
+          final date = _detailDate(map);
+          final sourceDate = sourceDates[_claimSourceName(map)] ?? '';
+          final claimDate = date.isNotEmpty ? date : sourceDate;
           items.add(
             SellingDetailItem(
               title: _detailItemTitle(map),
               subtitle: 'Klaim kg',
               stats: [
+                if (claimDate.isNotEmpty)
+                  SellingDetailStat(label: 'Tanggal', value: claimDate),
                 SellingDetailStat(label: 'Qty (kg)', value: _detailQty(map)),
               ],
             ),
@@ -783,12 +794,33 @@ String _detailNote(Map map) {
 
 String _detailDate(Map map) {
   for (final key in ['tanggal_klaim', 'claim_date', 'posting_date']) {
-    final text = map[key]?.toString().trim() ?? '';
-    if (text.isNotEmpty && text != 'null') {
-      return text.length >= 10 ? text.substring(0, 10) : text;
+    final text = _shortDate(map[key]);
+    if (text.isNotEmpty) return text;
+  }
+  for (final entry in map.entries) {
+    final key = entry.key.toString().toLowerCase();
+    if (key == 'creation' || key == 'modified' || key.contains('modified')) {
+      continue;
     }
+    if (!key.contains('tanggal') && !key.endsWith('_date')) continue;
+    final text = _shortDate(entry.value);
+    if (text.isNotEmpty) return text;
   }
   return '';
+}
+
+String _claimSourceName(Map map) {
+  for (final key in ['notg', 'no_tg', 'source_name']) {
+    final text = map[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && text != 'null') return text;
+  }
+  return '';
+}
+
+String _shortDate(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty || text.toLowerCase() == 'null') return '';
+  return text.length >= 10 ? text.substring(0, 10) : text;
 }
 
 class _TukarGulingPhotos extends StatelessWidget {

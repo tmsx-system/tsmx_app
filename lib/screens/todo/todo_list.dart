@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/erp_approval_todo.dart';
 import '../../models/sales_order_approval.dart';
+import '../../state/selling/tukar_guling_state.dart';
 import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/erp_doc_utils.dart';
@@ -135,7 +136,36 @@ String tukarGulingItemSectionTitle(List<Map<String, dynamic>> rows) {
   return 'Item (${rows.length})';
 }
 
-Widget tukarGulingTodoItemCard(Map<String, dynamic> item) {
+String tukarGulingClaimDate(Map<String, dynamic> item) {
+  final direct = tukarGulingRowText(item, [
+    'tanggal_klaim',
+    'claim_date',
+    'posting_date',
+  ]);
+  if (direct.isNotEmpty) {
+    return direct.length >= 10 ? direct.substring(0, 10) : direct;
+  }
+  for (final entry in item.entries) {
+    final key = entry.key.toString().toLowerCase();
+    if (key == 'creation' || key == 'modified' || key.contains('modified')) {
+      continue;
+    }
+    if (!key.contains('tanggal') && !key.endsWith('_date')) continue;
+    final text = entry.value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') continue;
+    return text.length >= 10 ? text.substring(0, 10) : text;
+  }
+  return '';
+}
+
+String tukarGulingClaimSource(Map<String, dynamic> item) {
+  return tukarGulingRowText(item, ['notg', 'no_tg', 'source_name']);
+}
+
+Widget tukarGulingTodoItemCard(
+  Map<String, dynamic> item, {
+  Map<String, String> sourceDates = const {},
+}) {
   final claim = tukarGulingRowIsClaim(item);
   final title = tukarGulingRowText(item, ['item_name', 'item', 'item_code']);
   final code = tukarGulingRowText(item, ['item_code', 'item']);
@@ -147,12 +177,9 @@ Widget tukarGulingTodoItemCard(Map<String, dynamic> item) {
       ? qtyNumber.toInt().toString()
       : qtyNumber.toStringAsFixed(2);
   final uom = claim ? 'kg' : tukarGulingRowText(item, ['uom']);
-  final date = tukarGulingRowText(item, [
-    'tanggal_klaim',
-    'claim_date',
-    'posting_date',
-  ]);
-  final dateLabel = date.length >= 10 ? date.substring(0, 10) : date;
+  final ownDate = tukarGulingClaimDate(item);
+  final sourceDate = sourceDates[tukarGulingClaimSource(item)] ?? '';
+  final dateLabel = ownDate.isNotEmpty ? ownDate : sourceDate;
   final note = tukarGulingRowText(item, ['keterangan']);
   final warehouse = tukarGulingRowText(item, [
     'source_warehouse',
@@ -1111,6 +1138,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
   bool _addingApprover = false;
   bool _additionalApprovalProcessing = false;
   List<Map<String, dynamic>> _photos = const [];
+  Map<String, String> _harianDates = const {};
 
   @override
   void initState() {
@@ -1168,6 +1196,23 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
               );
         _loading = false;
       });
+      if (widget.approval.doctype == 'Tukar Guling' && detail != null) {
+        final claims = tukarGulingDocumentRows(detail).where(tukarGulingRowIsClaim);
+        final missing = [
+          for (final claim in claims)
+            if (tukarGulingClaimDate(claim).isEmpty) tukarGulingClaimSource(claim),
+        ];
+        if (missing.isNotEmpty) {
+          try {
+            final dates = await context
+                .read<TukarGulingState>()
+                .postingDatesByName(missing);
+            if (mounted) setState(() => _harianDates = dates);
+          } catch (_) {}
+        } else if (mounted && _harianDates.isNotEmpty) {
+          setState(() => _harianDates = const {});
+        }
+      }
       if (widget.approval.doctype == 'Tukar Guling') {
         try {
           final files = await appState.appState.fetchDocumentAttachments(
@@ -1524,7 +1569,14 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                   children: items.isEmpty
                       ? [const Text('Tidak ada item.')]
                       : widget.approval.doctype == 'Tukar Guling'
-                      ? items.map(tukarGulingTodoItemCard).toList()
+                      ? items
+                            .map(
+                              (item) => tukarGulingTodoItemCard(
+                                item,
+                                sourceDates: _harianDates,
+                              ),
+                            )
+                            .toList()
                       : items.map(_itemRow).toList(),
                 ),
 

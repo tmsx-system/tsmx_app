@@ -210,6 +210,33 @@ class TukarGulingState extends AppStateProxyNotifier {
     return frappeService.fetchDocument(doctype, name.trim());
   }
 
+  /// Posting dates of source Harian documents, keyed by document name.
+  Future<Map<String, String>> postingDatesByName(Iterable<String> names) async {
+    final ids = {
+      for (final name in names)
+        if (name.trim().isNotEmpty) name.trim(),
+    };
+    if (ids.isEmpty) return const {};
+    await frappeService.ensureLoggedIn();
+    try {
+      final rows = await frappeService.fetchResource(
+        doctype,
+        fields: const ['name', 'posting_date'],
+        filters: [
+          ['name', 'in', ids.toList()],
+        ],
+        limit: ids.length,
+      );
+      return {
+        for (final row in rows)
+          if ((row['name']?.toString().trim() ?? '').isNotEmpty)
+            row['name'].toString().trim(): _dateLabel(row['posting_date']),
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
   Future<List<String>> fetchNamingSeries() {
     return appState.fetchNamingSeries(doctype);
   }
@@ -648,6 +675,12 @@ class TukarGulingState extends AppStateProxyNotifier {
       company: company,
       excludeName: excludeName,
     );
+  }
+
+  String _dateLabel(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty || text.toLowerCase() == 'null') return '';
+    return text.length >= 10 ? text.substring(0, 10) : text;
   }
 
   String _sourceFinalRef(Map row) {
