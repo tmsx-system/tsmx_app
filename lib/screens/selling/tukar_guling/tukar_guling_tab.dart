@@ -33,6 +33,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
   List<TukarGulingSummary> _rows = const [];
   Map<String, List<String>> _actionsByName = const {};
   String _company = '';
+  String _jenis = '';
   DateTime? _postingFrom;
   DateTime? _postingTo;
   Map<String, dynamic>? _detailCache;
@@ -68,6 +69,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
       final state = context.read<TukarGulingState>();
       final rows = await state.fetchList(
         company: _company,
+        jenis: _jenis,
         postingDateFrom: _postingFrom,
         postingDateTo: _postingTo,
       );
@@ -531,6 +533,27 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
                 ? (_) {}
                 : (value) {
                     setState(() => _company = value ?? '');
+                    unawaited(_load());
+                  },
+          ),
+          const SizedBox(height: 10),
+          ErpSearchableFilterField(
+            label: 'Jenis',
+            selectedId: _jenis.isEmpty ? null : _jenis,
+            decoration: const InputDecoration(
+              labelText: 'Jenis transaksi',
+              prefixIcon: Icon(Icons.swap_horiz_rounded, size: 18),
+              isDense: true,
+            ),
+            allLabel: 'Semua jenis',
+            options: const [
+              ErpItemOption(id: 'Harian', label: 'Harian'),
+              ErpItemOption(id: 'Final', label: 'Finalisasi'),
+            ],
+            onSelected: _loading
+                ? (_) {}
+                : (value) {
+                    setState(() => _jenis = value ?? '');
                     unawaited(_load());
                   },
           ),

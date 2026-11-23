@@ -36,6 +36,7 @@ class TukarGulingState extends AppStateProxyNotifier {
     String? company,
     String? customer,
     String? workflowState,
+    String? jenis,
     DateTime? postingDateFrom,
     DateTime? postingDateTo,
     int limit = 50,
@@ -53,6 +54,10 @@ class TukarGulingState extends AppStateProxyNotifier {
     final state = workflowState?.trim() ?? '';
     if (state.isNotEmpty) {
       filters.add(['workflow_state', '=', state]);
+    }
+    final selectedJenis = jenis?.trim() ?? '';
+    if (selectedJenis.isNotEmpty) {
+      filters.add(['custom_jenis_input', '=', selectedJenis]);
     }
     final from = postingDateFrom == null
         ? null
