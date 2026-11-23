@@ -969,23 +969,11 @@ class TukarGulingState extends AppStateProxyNotifier {
     String query = '',
     int limit = 40,
   }) async {
-    await frappeService.ensureLoggedIn();
-    final q = query.trim();
-    return frappeService.fetchResource(
-      'Customer',
-      fields: const ['name', 'customer_name'],
-      filters: const [
-        ['disabled', '=', 0],
-      ],
-      orFilters: q.isEmpty
-          ? null
-          : [
-              ['name', 'like', '%$q%'],
-              ['customer_name', 'like', '%$q%'],
-            ],
-      orderBy: 'customer_name asc',
-      limit: limit,
-    );
+    final rows = await appState.searchSalesCustomers(query);
+    return [
+      for (final row in rows.take(limit))
+        {'name': row.id, 'customer_name': row.name},
+    ];
   }
 
   Future<List<Map<String, dynamic>>> searchItems({

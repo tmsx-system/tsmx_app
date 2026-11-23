@@ -121,6 +121,11 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         state.contains('revise');
   }
 
+  bool _isCancelWorkflowAction(String action) {
+    final value = action.trim().toLowerCase();
+    return value == 'cancel' || value == 'cancelled' || value == 'batal';
+  }
+
   bool _isRejectWorkflowAction(String action) {
     final value = action.toLowerCase();
     return value.contains('reject') ||
@@ -273,37 +278,6 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
             ),
           );
         }
-        for (final map in rawItems) {
-          final qty = map['qty']?.toString() ?? '';
-          final uom = map['uom']?.toString() ?? '';
-          if ((map['item_code']?.toString().trim() ?? '').isEmpty &&
-              qty.isEmpty) {
-            continue;
-          }
-          items.add(
-            SellingDetailItem(
-              title: map['item_name']?.toString().trim().isNotEmpty == true
-                  ? map['item_name'].toString()
-                  : (map['item_code']?.toString() ?? '-'),
-              subtitle: map['item_code']?.toString() ?? '',
-              stats: [
-                SellingDetailStat(
-                  label: 'Qty',
-                  value: uom.isEmpty ? qty : '$qty $uom',
-                ),
-                SellingDetailStat(
-                  label: 'Gudang',
-                  value: map['source_warehouse']?.toString().trim().isNotEmpty ==
-                          true
-                      ? map['source_warehouse'].toString()
-                      : (map['s_warehouse']?.toString() ??
-                          map['warehouse']?.toString() ??
-                          '-'),
-                ),
-              ],
-            ),
-          );
-        }
       }
 
       final canEdit = _canWrite && _isDraftLike(row);
@@ -322,6 +296,11 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         gottenBox > 0 ? gottenBox : storedBox,
       );
       final processKg = isFinal ? tukarGulingProcessKg(detail) : null;
+      final claimKg = _claimKgTotal(isFinal ? rawClaims : const []);
+      final visibleActions = [
+        for (final action in workflowActions)
+          if (!_isCancelWorkflowAction(action)) action,
+      ];
 
       await showSellingDocumentDetailPage(
         context: context,
@@ -331,18 +310,27 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
             ? customerName
             : (customer.isEmpty ? company : customer),
         statusText: workflowState.isEmpty ? 'Draft' : workflowState,
+        headerMeta: postingDate.isEmpty ? null : _shortDate(postingDate),
         icon: Icons.swap_horiz_rounded,
         metrics: [
-          SellingDetailMetric(
-            label: isFinal ? 'Box' : 'Klaim',
-            value: isFinal ? boxLabel : '${items.length}',
-            icon: Icons.inventory_2_outlined,
-          ),
-          SellingDetailMetric(
-            label: 'Tanggal',
-            value: postingDate.isEmpty ? '-' : postingDate,
-            icon: Icons.event_rounded,
-          ),
+          if (isFinal)
+            SellingDetailMetric(
+              label: 'Total box',
+              value: boxLabel,
+              icon: Icons.inventory_2_outlined,
+            )
+          else
+            SellingDetailMetric(
+              label: 'Klaim',
+              value: '${items.length}',
+              icon: Icons.inventory_2_outlined,
+            ),
+          if (isFinal)
+            SellingDetailMetric(
+              label: 'Total kg',
+              value: '${formatTukarGulingQty(claimKg)} kg',
+              icon: Icons.scale_outlined,
+            ),
           if (processKg != null) ...[
             SellingDetailMetric(
               label: 'Kg diproses',
@@ -369,10 +357,14 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
           if (!isFinal && keterangan.isNotEmpty)
             SellingDetailInfo(label: 'Keterangan', value: keterangan),
         ],
-        itemsTitle: isFinal ? 'Final' : 'Klaim Harian',
-        itemsBadge: isFinal ? '$boxLabel box' : null,
+        itemsTitle: isFinal ? 'Final Items' : 'Klaim Harian',
         items: items,
-        extra: _TukarGulingPhotos(
+        itemsFooter: isFinal
+            ? _TukarGulingKgTotal(
+                value: '${formatTukarGulingQty(claimKg)} kg',
+              )
+            : null,
+        afterItems: _TukarGulingPhotos(
           files: photos,
           baseUrl: state.frappeService.baseUrl,
           cookie: state.frappeService.sessionCookieHeader,
@@ -389,7 +381,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
                   unawaited(_openCreate(existingName: row.id));
                 },
               ),
-            ...workflowActions.map(
+            ...visibleActions.map(
               (action) => erpActionButton(
                 label: action,
                 icon: _workflowActionIcon(action),
@@ -792,6 +784,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
                               ),
                             ),
                           for (final action in workflowActions)
+                            if (!_isCancelWorkflowAction(action))
                             PopupMenuItem(
                               value: 'wf:$action',
                               child: Row(
@@ -1043,6 +1036,66 @@ class _TukarGulingPhotoPage extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+double _claimKgTotal(List<Map> rows) {
+  var total = 0.0;
+  for (final map in rows) {
+    Object? fallback;
+    for (final entry in map.entries) {
+      final key = entry.key.toString().toLowerCase();
+      if (!key.contains('qty')) continue;
+      if (key.contains('kg')) {
+        fallback = entry.value;
+        break;
+      }
+      fallback ??= entry.value;
+    }
+    total +=
+        double.tryParse(fallback?.toString().replaceAll(',', '.') ?? '') ?? 0;
+  }
+  return total;
+}
+
+class _TukarGulingKgTotal extends StatelessWidget {
+  final String value;
+
+  const _TukarGulingKgTotal({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              'Total kg',
+              style: TextStyle(
+                color: AppColors.navy,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }

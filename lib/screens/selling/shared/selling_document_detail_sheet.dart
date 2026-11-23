@@ -65,7 +65,10 @@ Future<void> showSellingDocumentDetailSheet({
   List<SellingDetailItem> items = const [],
   String itemsTitle = 'Detail Item',
   String? itemsBadge,
+  String? headerMeta,
+  Widget? itemsFooter,
   Widget? extra,
+  Widget? afterItems,
   Widget? footer,
 }) async {
   if (_sellingDetailSheetOpen) return;
@@ -107,7 +110,10 @@ Future<void> showSellingDocumentDetailSheet({
                   items: items,
                   itemsTitle: itemsTitle,
                   itemsBadge: itemsBadge,
+                  headerMeta: headerMeta,
+                  itemsFooter: itemsFooter,
                   extra: extra,
+                  afterItems: afterItems,
                   footer: footer,
                   showHandle: true,
                   onClose: () => Navigator.pop(sheetContext),
@@ -136,7 +142,10 @@ Future<void> showSellingDocumentDetailPage({
   String itemsTitle = 'Detail Item',
   String? itemsBadge,
   String? appBarTitle,
+  String? headerMeta,
+  Widget? itemsFooter,
   Widget? extra,
+  Widget? afterItems,
   Widget? footer,
 }) {
   return Navigator.of(context).push<void>(
@@ -167,7 +176,10 @@ Future<void> showSellingDocumentDetailPage({
                 items: items,
                 itemsTitle: itemsTitle,
                 itemsBadge: itemsBadge,
+                headerMeta: headerMeta,
+                itemsFooter: itemsFooter,
                 extra: extra,
+                afterItems: afterItems,
                 footer: footer,
               ),
             ],
@@ -188,7 +200,10 @@ class _SellingDetailBody extends StatelessWidget {
   final List<SellingDetailItem> items;
   final String itemsTitle;
   final String? itemsBadge;
+  final String? headerMeta;
+  final Widget? itemsFooter;
   final Widget? extra;
+  final Widget? afterItems;
   final Widget? footer;
   final bool showHandle;
   final VoidCallback? onClose;
@@ -204,7 +219,10 @@ class _SellingDetailBody extends StatelessWidget {
     required this.itemsTitle,
     required this.footer,
     this.itemsBadge,
+    this.headerMeta,
+    this.itemsFooter,
     this.extra,
+    this.afterItems,
     this.showHandle = false,
     this.onClose,
   });
@@ -232,6 +250,7 @@ class _SellingDetailBody extends StatelessWidget {
           subtitle: subtitle,
           statusText: statusText,
           icon: icon,
+          headerMeta: headerMeta,
           onClose: onClose,
         ),
         if (metrics.isNotEmpty) ...[
@@ -248,7 +267,9 @@ class _SellingDetailBody extends StatelessWidget {
           items: items,
           title: itemsTitle,
           badge: itemsBadge,
+          footer: itemsFooter,
         ),
+        if (afterItems != null) ...[const SizedBox(height: 12), afterItems!],
         if (footer != null) ...[const SizedBox(height: 16), footer!],
       ],
     );
@@ -260,6 +281,7 @@ class _SellingDetailHeader extends StatelessWidget {
   final String subtitle;
   final String statusText;
   final IconData icon;
+  final String? headerMeta;
   final VoidCallback? onClose;
 
   const _SellingDetailHeader({
@@ -267,6 +289,7 @@ class _SellingDetailHeader extends StatelessWidget {
     required this.subtitle,
     required this.statusText,
     required this.icon,
+    this.headerMeta,
     this.onClose,
   });
 
@@ -325,7 +348,23 @@ class _SellingDetailHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                ErpStatusBadge(statusText: statusText),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    ErpStatusBadge(statusText: statusText),
+                    if (headerMeta != null && headerMeta!.trim().isNotEmpty)
+                      Text(
+                        headerMeta!.trim(),
+                        style: const TextStyle(
+                          color: AppColors.slate,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -489,11 +528,13 @@ class _SellingItemsSection extends StatelessWidget {
   final List<SellingDetailItem> items;
   final String title;
   final String? badge;
+  final Widget? footer;
 
   const _SellingItemsSection({
     required this.items,
     required this.title,
     this.badge,
+    this.footer,
   });
 
   @override
@@ -559,6 +600,7 @@ class _SellingItemsSection extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         ...items.map(_SellingItemCard.new),
+        ?footer,
       ],
     );
   }

@@ -1546,8 +1546,19 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                 _sectionCard(
                   title: widget.approval.doctype == 'Material Request'
                       ? 'Kebutuhan'
+                      : widget.approval.doctype == 'Tukar Guling'
+                      ? 'Ringkasan'
                       : 'Nilai Dokumen',
                   children: _amountRows(detail),
+                ),
+
+                const SizedBox(height: 12),
+
+                _sectionCard(
+                  title: widget.approval.doctype == 'Tukar Guling'
+                      ? _tukarItemsTitle(detail, items)
+                      : 'Item (${items.length})',
+                  children: _todoItemChildren(detail, items),
                 ),
 
                 if (widget.approval.doctype == 'Tukar Guling') ...[
@@ -1568,32 +1579,6 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                 ],
 
                 const SizedBox(height: 12),
-
-                _sectionCard(
-                  title: widget.approval.doctype == 'Tukar Guling'
-                      ? tukarGulingItemSectionTitle(
-                          items,
-                          storedBox: double.tryParse(
-                                detail['custom_total_box']?.toString() ?? '',
-                              ) ??
-                              0,
-                        )
-                      : 'Item (${items.length})',
-                  children: items.isEmpty
-                      ? [const Text('Tidak ada item.')]
-                      : widget.approval.doctype == 'Tukar Guling'
-                      ? items
-                            .map(
-                              (item) => tukarGulingTodoItemCard(
-                                item,
-                                sourceDates: _harianDates,
-                              ),
-                            )
-                            .toList()
-                      : items.map(_itemRow).toList(),
-                ),
-
-                const SizedBox(height: 12),
                 _decisionCard(detail),
 
                 if (widget.approval.doctype == 'Sales Order') ...[
@@ -1611,7 +1596,82 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     );
   }
 
-  Widget _detailHeader() => Container(
+  Widget _detailHeader() {
+    if (widget.approval.doctype == 'Tukar Guling') {
+      return _tukarDetailHeader();
+    }
+    return _standardDetailHeader();
+  }
+
+  Widget _tukarDetailHeader() {
+    final detail = _detail;
+    final customer = detail == null
+        ? widget.approval.partyLabel
+        : (_text(detail['customer_name']).isNotEmpty
+              ? _text(detail['customer_name'])
+              : _text(detail['customer']));
+    final date = detail == null
+        ? widget.approval.date
+        : (_text(detail['posting_date']).isNotEmpty
+              ? _text(detail['posting_date'])
+              : widget.approval.date);
+    final shortDate = date.length >= 10 ? date.substring(0, 10) : date;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(accent: AppColors.primary),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ErpStatusBadge(
+                statusText: widget.approval.workflowState.isEmpty
+                    ? widget.approval.status
+                    : widget.approval.workflowState,
+              ),
+              if (shortDate.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  shortDate,
+                  style: const TextStyle(
+                    color: AppColors.slate,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            widget.approval.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.navy,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (customer.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              customer,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.slate,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _standardDetailHeader() => Container(
     padding: const EdgeInsets.all(18),
     decoration: _cardDecoration(accent: _detailAccent(widget.approval.doctype)),
     child: Column(
@@ -1799,7 +1859,110 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     ),
   );
 
+  bool _isCancelAction(String action) {
+    final value = action.trim().toLowerCase();
+    return value == 'cancel' || value == 'cancelled' || value == 'batal';
+  }
+
+  bool _tukarIsFinal(Map<String, dynamic> detail, List<Map<String, dynamic>> rows) {
+    final jenis = _text(detail['custom_jenis_input']).isNotEmpty
+        ? _text(detail['custom_jenis_input'])
+        : _text(detail['jenis_input']);
+    return jenis.toLowerCase() == 'final' ||
+        rows.any((row) => !tukarGulingRowIsClaim(row));
+  }
+
+  String _tukarItemsTitle(
+    Map<String, dynamic> detail,
+    List<Map<String, dynamic>> items,
+  ) {
+    return _tukarIsFinal(detail, items) ? 'Final Items' : 'Klaim Harian';
+  }
+
+  List<Widget> _todoItemChildren(
+    Map<String, dynamic> detail,
+    List<Map<String, dynamic>> items,
+  ) {
+    if (widget.approval.doctype != 'Tukar Guling') {
+      if (items.isEmpty) return [const Text('Tidak ada item.')];
+      return items.map(_itemRow).toList();
+    }
+    final claims = items.where(tukarGulingRowIsClaim).toList();
+    final shown = claims.isNotEmpty ? claims : items;
+    if (shown.isEmpty) return [const Text('Tidak ada item.')];
+    final claimKg = claims.fold<double>(0, (sum, row) {
+      final text = tukarGulingRowText(row, ['qty_kg', 'allocated_kg', 'qty']);
+      return sum + (double.tryParse(text.replaceAll(',', '.')) ?? 0);
+    });
+    return [
+      for (final item in shown)
+        tukarGulingTodoItemCard(item, sourceDates: _harianDates),
+      if (claims.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Total kg',
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '${formatTukarGulingQty(claimKg)} kg',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
   List<Widget> _amountRows(Map<String, dynamic> detail) {
+    if (widget.approval.doctype == 'Tukar Guling') {
+      final tukarRows = tukarGulingDocumentRows(detail);
+      final claims = tukarRows.where(tukarGulingRowIsClaim);
+      final isFinalTukar = _tukarIsFinal(detail, tukarRows);
+      final gottenBox = tukarGulingGottenBoxQty(
+        tukarRows.where((row) => !tukarGulingRowIsClaim(row)),
+      );
+      final storedBox =
+          double.tryParse(detail['custom_total_box']?.toString() ?? '') ?? 0;
+      final boxLabel = formatTukarGulingQty(
+        gottenBox > 0 ? gottenBox : storedBox,
+      );
+      final claimKg = claims.fold<double>(0, (sum, row) {
+        final text = tukarGulingRowText(row, ['qty_kg', 'allocated_kg', 'qty']);
+        return sum + (double.tryParse(text.replaceAll(',', '.')) ?? 0);
+      });
+      final jenis = _text(detail['custom_jenis_input']).isNotEmpty
+          ? _text(detail['custom_jenis_input'])
+          : _text(detail['jenis_input']);
+      final metode = _text(detail['custom_metode_final']);
+      final process = tukarGulingProcessKg(detail);
+      return [
+        if (isFinalTukar) _detailRow('Total box', boxLabel),
+        if (isFinalTukar)
+          _detailRow('Total kg', '${formatTukarGulingQty(claimKg)} kg'),
+        if (isFinalTukar)
+          _detailRow(
+            'Kg diproses',
+            '${formatTukarGulingQty(process.processedKg)} kg',
+          ),
+        if (isFinalTukar)
+          _detailRow('Sisa kg', '${formatTukarGulingQty(process.remainingKg)} kg'),
+        if (jenis.isNotEmpty) _detailRow('Jenis', jenis),
+        if (metode.isNotEmpty) _detailRow('Metode', metode),
+        _detailRow('Company', _text(detail['company'])),
+        _detailRow('Dibuat oleh', _text(detail['owner'])),
+      ];
+    }
     if (widget.approval.doctype == 'Material Request') {
       return [
         _detailRow('Total Qty', formatErpCurrency(detail['total_qty'])),
@@ -2010,11 +2173,14 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
 
   Widget _decisionCard(Map<String, dynamic> detail) {
     final hasPendingAdditional = _hasPendingAdditionalApprovals(detail);
-    final actions = hasPendingAdditional
+    final source = hasPendingAdditional
         ? const <String>[]
         : (_workflowActions.isNotEmpty
               ? _workflowActions
               : widget.approval.actions);
+    final actions = widget.approval.doctype == 'Tukar Guling'
+        ? source.where((action) => !_isCancelAction(action)).toList()
+        : source;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: _cardDecoration(),
