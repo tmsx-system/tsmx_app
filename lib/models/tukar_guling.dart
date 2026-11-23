@@ -403,6 +403,59 @@ double tukarGulingGottenBoxQty(Iterable<Map> rows) {
   return total;
 }
 
+class TukarGulingProcessKg {
+  final double processedKg;
+  final double remainingKg;
+
+  const TukarGulingProcessKg({
+    required this.processedKg,
+    required this.remainingKg,
+  });
+}
+
+double _tukarKg(Object? value) {
+  return double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 0;
+}
+
+double _sumTukarKg(Object? raw, List<String> keys) {
+  if (raw is! List) return 0;
+  var total = 0.0;
+  for (final row in raw.whereType<Map>()) {
+    for (final key in keys) {
+      final text = row[key]?.toString().trim() ?? '';
+      if (text.isEmpty) continue;
+      total += _tukarKg(row[key]);
+      break;
+    }
+  }
+  return total;
+}
+
+/// Kg already converted into the replacement, and kg still left over.
+TukarGulingProcessKg tukarGulingProcessKg(Map doc) {
+  final totalText = doc['custom_total_kg']?.toString().trim() ?? '';
+  final sisaText = doc['custom_sisa_kg']?.toString().trim() ?? '';
+  var total = _tukarKg(doc['custom_total_kg']);
+  var remaining = sisaText.isEmpty
+      ? _sumTukarKg(doc['saldo_sisa_per_sku'], const ['sisa_kg'])
+      : _tukarKg(doc['custom_sisa_kg']);
+  if (totalText.isEmpty || total <= 0) {
+    total = _sumTukarKg(doc['custom_claim_details'], const [
+      'allocated_kg',
+      'qty_kg',
+      'qty',
+    ]);
+    total += _sumTukarKg(doc['custom_sisa_sources'], const ['qty_kg', 'qty']);
+  }
+  var processed = total - remaining;
+  if (processed < 0) processed = 0;
+  if (remaining < 0) remaining = 0;
+  return TukarGulingProcessKg(
+    processedKg: processed,
+    remainingKg: remaining,
+  );
+}
+
 String formatTukarGulingQty(double value) {
   if (value == value.roundToDouble()) return value.round().toString();
   var text = value.toStringAsFixed(3);

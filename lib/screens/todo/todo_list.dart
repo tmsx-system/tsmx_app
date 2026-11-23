@@ -1847,6 +1847,16 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
               : _text(detail['transaction_date']),
         ),
         if (isFinalTukar) _detailRow('Box', boxLabel),
+        if (isFinalTukar)
+          _detailRow(
+            'Kg diproses',
+            '${formatTukarGulingQty(tukarGulingProcessKg(detail).processedKg)} kg',
+          ),
+        if (isFinalTukar)
+          _detailRow(
+            'Sisa belum diganti',
+            '${formatTukarGulingQty(tukarGulingProcessKg(detail).remainingKg)} kg',
+          ),
         _detailRow('Keterangan', _text(detail['keterangan'])),
         _detailRow(
           'Workflow',

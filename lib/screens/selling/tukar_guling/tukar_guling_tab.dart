@@ -321,6 +321,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
       final boxLabel = formatTukarGulingQty(
         gottenBox > 0 ? gottenBox : storedBox,
       );
+      final processKg = isFinal ? tukarGulingProcessKg(detail) : null;
 
       await showSellingDocumentDetailPage(
         context: context,
@@ -342,6 +343,18 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
             value: postingDate.isEmpty ? '-' : postingDate,
             icon: Icons.event_rounded,
           ),
+          if (processKg != null) ...[
+            SellingDetailMetric(
+              label: 'Kg diproses',
+              value: '${formatTukarGulingQty(processKg.processedKg)} kg',
+              icon: Icons.scale_rounded,
+            ),
+            SellingDetailMetric(
+              label: 'Sisa kg',
+              value: '${formatTukarGulingQty(processKg.remainingKg)} kg',
+              icon: Icons.hourglass_bottom_rounded,
+            ),
+          ],
         ],
         infos: [
           if (jenis.isNotEmpty)
