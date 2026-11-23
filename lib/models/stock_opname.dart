@@ -71,7 +71,7 @@ class StockOpnameLine {
       stockFisik: _asDouble(json['stock_fisik']),
       uom: json['uom']?.toString() ?? '',
       sudahDicek: json['sudah_dicek'] == 1 || json['sudah_dicek'] == true,
-      keterangan: json['keterangan']?.toString() ?? '',
+      keterangan: _note(json),
     );
   }
 
@@ -151,20 +151,16 @@ class StockOpnameItemChoice {
   });
 }
 
-class StockOpnameSettlement {
-  final String id;
-  final int docstatus;
-  final String postingDate;
-
-  const StockOpnameSettlement({
-    required this.id,
-    this.docstatus = 0,
-    this.postingDate = '',
-  });
-}
-
 double _asDouble(Object? value) {
   return double.tryParse(value?.toString().replaceAll(',', '.') ?? '') ?? 0;
+}
+
+String _note(Map<String, dynamic> json) {
+  for (final key in ['remarks', 'keterangan']) {
+    final text = json[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
+  }
+  return '';
 }
 
 String formatStockQty(double value) {

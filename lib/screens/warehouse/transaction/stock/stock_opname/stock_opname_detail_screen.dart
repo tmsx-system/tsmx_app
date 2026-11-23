@@ -9,7 +9,6 @@ import '../../../../../utils/erp_error_message.dart';
 import '../../../../../widgets/erp/erp_status_badge.dart';
 import '../../../../../widgets/erp/erp_workflow_helper.dart';
 import 'create_stock_opname_screen.dart';
-import 'stock_opname_widgets.dart';
 
 class StockOpnameDetailScreen extends StatefulWidget {
   final String name;
@@ -23,7 +22,6 @@ class StockOpnameDetailScreen extends StatefulWidget {
 
 class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
   Map<String, dynamic>? _doc;
-  StockOpnameSettlement? _settlement;
   bool _loading = true;
   bool _busy = false;
   bool _canWrite = false;
@@ -48,21 +46,11 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
       final doc = await _api.fetchDetail(widget.name);
       final canWrite = await _api.canWrite();
       final canSubmit = await _api.canSubmit();
-      StockOpnameSettlement? settlement;
-      final status = int.tryParse(doc['docstatus']?.toString() ?? '') ?? 0;
-      if (status == 1) {
-        try {
-          settlement = await _api.findSettlement(widget.name);
-        } catch (_) {
-          settlement = null;
-        }
-      }
       if (!mounted) return;
       setState(() {
         _doc = doc;
         _canWrite = canWrite;
         _canSubmit = canSubmit;
-        _settlement = settlement;
       });
     } catch (error) {
       if (!mounted) return;
@@ -112,46 +100,6 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
     }
   }
 
-  Future<void> _openSettlement() async {
-    final doc = _doc;
-    if (doc == null || _busy) return;
-    final status = int.tryParse(doc['docstatus']?.toString() ?? '') ?? 0;
-    if (status != 1) {
-      setState(
-        () => _error = 'Stock Opname harus Submitted terlebih dahulu.',
-      );
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      var settlement = _settlement ?? await _api.findSettlement(widget.name);
-      if (settlement == null) {
-        final lines = _api.linesOf(doc);
-        if (lines.isEmpty) {
-          throw Exception('Stock Opname tidak memiliki detail SKU.');
-        }
-        final created = await _api.createSettlement(doc);
-        settlement = StockOpnameSettlement(id: created);
-      }
-      if (!mounted) return;
-      await Navigator.push<void>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => StockOpnameSettlementScreen(name: settlement!.id),
-        ),
-      );
-      if (mounted) await _load();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = captureErpError(context, error));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final doc = _doc;
@@ -163,12 +111,6 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
         : docstatus == 2
         ? 'Cancelled'
         : 'Draft';
-    final settlement = _settlement;
-    final settlementLabel = settlement == null
-        ? 'Penyelesaian Stock Opname'
-        : settlement.docstatus == 1
-        ? 'Lihat Penyelesaian'
-        : 'Lanjutkan Penyelesaian';
     final company = doc?['company']?.toString() ?? '';
     final warehouse = doc?['warehouse']?.toString() ?? '';
     final group = doc?['item_group']?.toString() ?? '';
@@ -199,66 +141,90 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: AppColors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: AppColors.border),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                    ),
                   ),
-                  child: Column(
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: AppColors.softGreen,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Icons.fact_check_outlined,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
                               widget.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: AppColors.navy,
-                                fontSize: 18,
+                                fontSize: 17,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
-                          ),
-                          ErpStatusBadge(statusText: statusText),
-                        ],
-                      ),
-                      if (company.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          company,
-                          style: const TextStyle(
-                            color: AppColors.slate,
-                            fontWeight: FontWeight.w700,
-                          ),
+                            if (company.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                company,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.slate,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            ErpStatusBadge(statusText: statusText),
+                          ],
                         ),
-                      ],
-                      const SizedBox(height: 12),
-                      StockOpnameMetric(
-                        label: 'Tanggal',
-                        value: when,
-                        icon: Icons.event_rounded,
                       ),
-                      const SizedBox(height: 8),
-                      StockOpnameMetric(
-                        label: 'Warehouse',
-                        value: warehouse,
-                        icon: Icons.warehouse_outlined,
-                      ),
-                      const SizedBox(height: 8),
-                      StockOpnameMetric(
-                        label: 'Item Group',
-                        value: group,
-                        icon: Icons.category_outlined,
-                      ),
-                      if (penyelesaian.trim().isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        StockOpnameMetric(
-                          label: 'Status',
-                          value: penyelesaian,
-                          icon: Icons.flag_outlined,
-                        ),
-                      ],
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _metric(
+                        'Items',
+                        '${lines.length}',
+                        Icons.inventory_2_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _metric(
+                        'Tanggal',
+                        when.isEmpty ? '-' : when,
+                        Icons.event_rounded,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _infoCard([
+                  ('Doc Status', statusText),
+                  if (warehouse.isNotEmpty) ('Warehouse', warehouse),
+                  if (group.isNotEmpty) ('Item Group', group),
+                  if (company.isNotEmpty) ('Company', company),
+                  if (penyelesaian.trim().isNotEmpty) ('Status', penyelesaian),
+                ]),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -270,14 +236,39 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
                   ),
                 ],
                 const SizedBox(height: 14),
-                Text(
-                  'Detail (${lines.length})',
-                  style: const TextStyle(
-                    color: AppColors.navy,
-                    fontWeight: FontWeight.w900,
-                  ),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Detail Item',
+                        style: TextStyle(
+                          color: AppColors.navy,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.softGreen,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${lines.length} item',
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 for (final line in lines) _line(line),
                 const SizedBox(height: 8),
                 if (draft && _canWrite)
@@ -292,13 +283,6 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
                     icon: Icons.verified_outlined,
                     filled: true,
                     onPressed: _busy ? null : _submit,
-                  ),
-                if (docstatus == 1)
-                  erpActionButton(
-                    label: settlementLabel,
-                    icon: Icons.assignment_turned_in_outlined,
-                    filled: true,
-                    onPressed: _busy ? null : _openSettlement,
                   ),
               ],
             ),
@@ -334,47 +318,152 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          StockAwalHighlight(qty: line.stockAwal, uom: line.uom),
-          const SizedBox(height: 10),
           Row(
             children: [
+              Expanded(
+                child: _miniStat(
+                  'Stock Awal',
+                  '${formatStockQty(line.stockAwal)} ${line.uom}',
+                  valueColor: const Color(0xFF15803D),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: _miniStat(
                   'Stock Fisik',
                   '${formatStockQty(line.stockFisik)} ${line.uom}',
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _miniStat('Selisih', formatStockQty(line.selisih))),
               const SizedBox(width: 8),
               Expanded(
-                child: _miniStat('Selisih', formatStockQty(line.selisih)),
+                child: _miniStat(
+                  'Cek',
+                  line.sudahDicek ? 'Sudah dicek' : 'Belum',
+                ),
               ),
             ],
           ),
-          if (line.sudahDicek || line.keterangan.trim().isNotEmpty) ...[
+          if (line.keterangan.trim().isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
-              [
-                if (line.sudahDicek) 'Sudah dicek',
-                if (line.keterangan.trim().isNotEmpty) line.keterangan,
-              ].join(' · '),
-              style: const TextStyle(
-                color: AppColors.slate,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            _miniStat('Keterangan', line.keterangan),
           ],
         ],
       ),
     );
   }
 
-  Widget _miniStat(String label, String value) {
+  Widget _metric(String label, String value, IconData icon) {
     return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.softGreen,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.slate,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoCard(List<(String, String)> rows) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        children: [
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 110,
+                    child: Text(
+                      row.$1,
+                      style: const TextStyle(
+                        color: AppColors.slate,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      row.$2,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, {Color? valueColor}) {
+    return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.background,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,9 +478,10 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
           ),
           Text(
             value,
-            style: const TextStyle(
-              color: AppColors.navy,
-              fontWeight: FontWeight.w900,
+            style: TextStyle(
+              color: valueColor ?? AppColors.navy,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -399,148 +489,3 @@ class _StockOpnameDetailScreenState extends State<StockOpnameDetailScreen> {
     );
   }
 }
-
-class StockOpnameSettlementScreen extends StatefulWidget {
-  final String name;
-
-  const StockOpnameSettlementScreen({super.key, required this.name});
-
-  @override
-  State<StockOpnameSettlementScreen> createState() =>
-      _StockOpnameSettlementScreenState();
-}
-
-class _StockOpnameSettlementScreenState
-    extends State<StockOpnameSettlementScreen> {
-  Map<String, dynamic>? _doc;
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final api = StockOpnameState(
-        context.read<WarehouseStockState>().appState,
-      );
-      final doc = await api.fetchSettlement(widget.name);
-      if (!mounted) return;
-      setState(() => _doc = doc);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _error = captureErpError(context, error));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final doc = _doc;
-    final raw = doc?['detail_penyelesaian'];
-    final lines = raw is List
-        ? [
-            for (final row in raw.whereType<Map>())
-              if ((row['item_code']?.toString().trim() ?? '').isNotEmpty)
-                StockOpnameLine.fromJson(Map<String, dynamic>.from(row)),
-          ]
-        : const <StockOpnameLine>[];
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Penyelesaian',
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-              children: [
-                Text(
-                  widget.name,
-                  style: const TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  doc?['tanggal_penyelesaian']?.toString() ?? '',
-                  style: const TextStyle(
-                    color: AppColors.slate,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: const TextStyle(
-                      color: AppColors.danger,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                for (final line in lines)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          line.itemName.isEmpty ? line.itemCode : line.itemName,
-                          style: const TextStyle(
-                            color: AppColors.navy,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        StockAwalHighlight(qty: line.stockAwal, uom: line.uom),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Fisik ${formatStockQty(line.stockFisik)} · Selisih ${formatStockQty(line.selisih)} ${line.uom}',
-                          style: const TextStyle(
-                            color: AppColors.slate,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (line.keterangan.trim().isNotEmpty)
-                          Text(
-                            line.keterangan,
-                            style: const TextStyle(
-                              color: AppColors.slate,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-    );
-  }
-}
-

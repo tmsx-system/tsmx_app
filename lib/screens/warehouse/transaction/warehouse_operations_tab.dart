@@ -106,7 +106,7 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
           ),
           icon: Icons.fact_check_outlined,
           title: 'Stock Opname',
-          subtitle: 'Hitung fisik, stock awal, dan penyelesaian',
+          subtitle: 'Hitung fisik dan stock awal',
           color: warehouseCyan,
         ),
     ];

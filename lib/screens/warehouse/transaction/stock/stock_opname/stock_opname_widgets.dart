@@ -12,15 +12,20 @@ class StockAwalHighlight extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final unit = uom.trim();
-    final amount = unit.isEmpty
-        ? formatStockQty(qty)
-        : '${formatStockQty(qty)} $unit';
-    return Text(
-      'Stock awal $amount',
-      style: const TextStyle(
-        color: Color(0xFF15803D),
-        fontSize: 14,
-        fontWeight: FontWeight.w800,
+    final amount = formatStockQty(qty);
+    final base = Theme.of(context).textTheme.bodyLarge;
+    return TextFormField(
+      key: ValueKey('$amount|$unit'),
+      initialValue: amount,
+      readOnly: true,
+      style: (base ?? const TextStyle(fontSize: 16)).copyWith(
+        color: const Color(0xFF15803D),
+        fontWeight: FontWeight.w400,
+        fontSize: base?.fontSize ?? 16,
+      ),
+      decoration: InputDecoration(
+        labelText: unit.isEmpty ? 'Stock Awal' : 'Stock Awal ($unit)',
+        fillColor: const Color(0xFFDCFCE7),
       ),
     );
   }

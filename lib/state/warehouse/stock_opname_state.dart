@@ -8,9 +8,7 @@ class StockOpnameState {
   final AppState appState;
 
   static const doctype = 'Stock Opname';
-  static const settlementDoctype = 'Penyelesaian Stock Opname';
   static const tableField = 'stock_opname_detail';
-  static const settlementTable = 'detail_penyelesaian';
 
   FrappeService get _frappe => appState.frappeService;
 
@@ -234,112 +232,10 @@ class StockOpnameState {
     await _frappe.submitDocument(doctype, name.trim());
   }
 
-  Future<StockOpnameSettlement?> findSettlement(String opnameName) async {
-    final name = opnameName.trim();
-    if (name.isEmpty) return null;
-    await _frappe.ensureLoggedIn();
-    final rows = await _frappe.fetchResource(
-      settlementDoctype,
-      fields: const ['name', 'docstatus', 'tanggal_penyelesaian', 'creation'],
-      filters: [
-        ['stock_opname', '=', name],
-        ['docstatus', '!=', 2],
-      ],
-      orderBy: 'docstatus desc, creation desc',
-      limit: 100,
-    );
-    if (rows.isEmpty) return null;
-    Map<String, dynamic>? chosen;
-    for (final row in rows) {
-      final status = int.tryParse(row['docstatus']?.toString() ?? '') ?? 0;
-      if (status == 1) {
-        chosen = row;
-        break;
-      }
-      chosen ??= row;
-    }
-    final picked = chosen ?? rows.first;
-    final id = picked['name']?.toString().trim() ?? '';
-    if (id.isEmpty) return null;
-    return StockOpnameSettlement(
-      id: id,
-      docstatus: int.tryParse(picked['docstatus']?.toString() ?? '') ?? 0,
-      postingDate: picked['tanggal_penyelesaian']?.toString() ?? '',
-    );
-  }
-
-  Future<Map<String, dynamic>> fetchSettlement(String name) async {
-    await _frappe.ensureLoggedIn();
-    return _frappe.fetchDocument(settlementDoctype, name.trim());
-  }
-
-  Future<String> createSettlement(Map<String, dynamic> opname) async {
-    await _frappe.ensureLoggedIn();
-    final parent = opname['name']?.toString().trim() ?? '';
-    if (parent.isEmpty) {
-      throw Exception('Stock Opname belum punya nomor.');
-    }
-    final childDoctype = await _childDoctype(
-      settlementDoctype,
-      settlementTable,
-      'Penyelesaian Stock Opname Detail',
-    );
-    final today = DateTime.now();
-    final date =
-        '${today.year.toString().padLeft(4, '0')}-'
-        '${today.month.toString().padLeft(2, '0')}-'
-        '${today.day.toString().padLeft(2, '0')}';
-    final lines = _linesOf(opname);
-    final created = await _frappe.createDocument(settlementDoctype, {
-      'doctype': settlementDoctype,
-      'stock_opname': parent,
-      'tanggal_penyelesaian': date,
-      settlementTable: [
-        for (final line in lines)
-          {
-            'doctype': childDoctype,
-            'parenttype': settlementDoctype,
-            'parentfield': settlementTable,
-            'item_code': line.itemCode,
-            if (line.itemName.trim().isNotEmpty) 'item_name': line.itemName,
-            'stock_awal': line.stockAwal,
-            'stock_fisik': line.stockFisik,
-            if (line.uom.trim().isNotEmpty) 'uom': line.uom,
-            'selisih': line.selisih,
-            if (line.keterangan.trim().isNotEmpty)
-              'keterangan': line.keterangan,
-          },
-      ],
-    });
-    final name = created['name']?.toString().trim() ?? '';
-    if (name.isEmpty) {
-      throw Exception('ERP tidak mengembalikan nomor penyelesaian.');
-    }
-    return name;
-  }
-
-  Future<String> _childDoctype(
-    String parent,
-    String fieldname,
-    String fallback,
-  ) async {
-    try {
-      final meta = await _frappe.fetchDocument('DocType', parent);
-      final fields = meta['fields'];
-      if (fields is! List) return fallback;
-      for (final row in fields.whereType<Map>()) {
-        if (row['fieldname']?.toString() != fieldname) continue;
-        final options = row['options']?.toString().trim() ?? '';
-        if (options.isNotEmpty) return options;
-      }
-    } catch (_) {}
-    return fallback;
-  }
-
   List<StockOpnameLine> linesOf(Map<String, dynamic> doc) => _linesOf(doc);
 
   List<StockOpnameLine> _linesOf(Map<String, dynamic> doc) {
-    final raw = doc[tableField] ?? doc[settlementTable];
+    final raw = doc[tableField];
     if (raw is! List) return const [];
     return [
       for (final row in raw.whereType<Map>())

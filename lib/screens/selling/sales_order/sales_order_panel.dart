@@ -336,8 +336,9 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       final canEdit = isDocDraft(detail.docStatus) && _canWriteSalesOrder;
       if (!mounted) return;
 
-      showSellingDocumentDetailSheet(
+      await showSellingDocumentDetailPage(
         context: context,
+        appBarTitle: 'Detail Sales Order',
         title: detail.id,
         subtitle: detail.customer,
         statusText: detail.effectiveStatusText,
