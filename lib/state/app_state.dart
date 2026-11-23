@@ -461,6 +461,7 @@ class AppState with ChangeNotifier {
         'Warehouse',
         'Stock Entry',
         'Stock Reconciliation',
+        'Stock Opname',
         'Reject',
         'Bin',
         'Stock Ledger Entry',

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/erp_approval_todo.dart';
 import '../../models/sales_order_approval.dart';
+import '../../models/tukar_guling.dart';
 import '../../state/selling/tukar_guling_state.dart';
 import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
@@ -129,11 +130,17 @@ String tukarGulingRowText(Map<String, dynamic> row, List<String> keys) {
   return '';
 }
 
-String tukarGulingItemSectionTitle(List<Map<String, dynamic>> rows) {
+String tukarGulingItemSectionTitle(
+  List<Map<String, dynamic>> rows, {
+  double storedBox = 0,
+}) {
   if (rows.isNotEmpty && rows.every(tukarGulingRowIsClaim)) {
     return 'Klaim Harian (${rows.length})';
   }
-  return 'Item (${rows.length})';
+  final gotten = tukarGulingGottenBoxQty(
+    rows.where((row) => !tukarGulingRowIsClaim(row)),
+  );
+  return 'Item (${formatTukarGulingQty(gotten > 0 ? gotten : storedBox)} box)';
 }
 
 String tukarGulingClaimDate(Map<String, dynamic> item) {
@@ -1564,7 +1571,13 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
 
                 _sectionCard(
                   title: widget.approval.doctype == 'Tukar Guling'
-                      ? tukarGulingItemSectionTitle(items)
+                      ? tukarGulingItemSectionTitle(
+                          items,
+                          storedBox: double.tryParse(
+                                detail['custom_total_box']?.toString() ?? '',
+                              ) ??
+                              0,
+                        )
                       : 'Item (${items.length})',
                   children: items.isEmpty
                       ? [const Text('Tidak ada item.')]
@@ -1805,6 +1818,23 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         ) >
         0;
     if (!hasMoney) {
+      final tukarRows = widget.approval.doctype == 'Tukar Guling'
+          ? tukarGulingDocumentRows(detail)
+          : const <Map<String, dynamic>>[];
+      final jenis = _text(detail['custom_jenis_input']).isNotEmpty
+          ? _text(detail['custom_jenis_input'])
+          : _text(detail['jenis_input']);
+      final isFinalTukar = widget.approval.doctype == 'Tukar Guling' &&
+          (jenis.toLowerCase() == 'final' ||
+              tukarRows.any((row) => !tukarGulingRowIsClaim(row)));
+      final gottenBox = tukarGulingGottenBoxQty(
+        tukarRows.where((row) => !tukarGulingRowIsClaim(row)),
+      );
+      final storedBox =
+          double.tryParse(detail['custom_total_box']?.toString() ?? '') ?? 0;
+      final boxLabel = formatTukarGulingQty(
+        gottenBox > 0 ? gottenBox : storedBox,
+      );
       return [
         _detailRow('Customer', _text(detail['customer_name']).isNotEmpty
             ? _text(detail['customer_name'])
@@ -1816,6 +1846,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
               ? _text(detail['posting_date'])
               : _text(detail['transaction_date']),
         ),
+        if (isFinalTukar) _detailRow('Box', boxLabel),
         _detailRow('Keterangan', _text(detail['keterangan'])),
         _detailRow(
           'Workflow',

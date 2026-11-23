@@ -313,6 +313,13 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
       }
       if (!mounted) return;
 
+      final gottenBox = tukarGulingGottenBoxQty(rawItems);
+      final storedBox =
+          double.tryParse(detail['custom_total_box']?.toString() ?? '') ?? 0;
+      final boxLabel = formatTukarGulingQty(
+        gottenBox > 0 ? gottenBox : storedBox,
+      );
+
       await showSellingDocumentDetailPage(
         context: context,
         appBarTitle: 'Detail Tukar Guling',
@@ -325,7 +332,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         metrics: [
           SellingDetailMetric(
             label: isFinal ? 'Box' : 'Klaim',
-            value: '${items.length}',
+            value: isFinal ? boxLabel : '${items.length}',
             icon: Icons.inventory_2_outlined,
           ),
           SellingDetailMetric(
@@ -348,6 +355,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
             SellingDetailInfo(label: 'Keterangan', value: keterangan),
         ],
         itemsTitle: isFinal ? 'Final' : 'Klaim Harian',
+        itemsBadge: isFinal ? '$boxLabel box' : null,
         items: items,
         extra: _TukarGulingPhotos(
           files: photos,

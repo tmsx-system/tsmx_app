@@ -8,6 +8,7 @@ import 'material_request/material_request_purpose.dart';
 import 'material_request/material_transfer_request_panel.dart';
 import 'stock/stock_entry/stock_entry_kind.dart';
 import 'stock/stock_entry/stock_entry_panel.dart';
+import 'stock/stock_opname/stock_opname_panel.dart';
 import 'stock/stock_reconciliation/stock_reconciliation_panel.dart';
 
 class WarehouseOperationsTab extends StatefulWidget {
@@ -20,6 +21,7 @@ class WarehouseOperationsTab extends StatefulWidget {
 class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
   bool _loading = true;
   bool _stockReconciliation = false;
+  bool _stockOpname = false;
   bool _materialRequest = false;
   List<StockEntryKind> _entryTypes = const [];
 
@@ -39,6 +41,8 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
       state.canCreateDoctype('Stock Reconciliation'),
       state.canReadDoctype('Material Request'),
       state.canCreateDoctype('Material Request'),
+      state.canReadDoctype('Stock Opname'),
+      state.canCreateDoctype('Stock Opname'),
     ]);
     final canUseStockEntry = results[0] || results[1];
     var types = const <StockEntryKind>[];
@@ -58,6 +62,7 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
       _entryTypes = types;
       _stockReconciliation = results[2] || results[3];
       _materialRequest = results[4] || results[5];
+      _stockOpname = results[6] || results[7];
       _loading = false;
     });
   }
@@ -90,6 +95,19 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
           title: 'Stock Reconciliation',
           subtitle: 'Penyesuaian stok ERPNext 15',
           color: warehousePurple,
+        ),
+    ];
+    final opnameActions = <_WarehouseTransactionAction>[
+      if (_stockOpname)
+        _WarehouseTransactionAction(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const StockOpnamePanel()),
+          ),
+          icon: Icons.fact_check_outlined,
+          title: 'Stock Opname',
+          subtitle: 'Hitung fisik, stock awal, dan penyelesaian',
+          color: warehouseCyan,
         ),
     ];
     final requestActions = <_WarehouseTransactionAction>[
@@ -127,7 +145,9 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
               padding: EdgeInsets.only(top: 24),
               child: Center(child: CircularProgressIndicator()),
             )
-          else if (stockActions.isEmpty && requestActions.isEmpty)
+          else if (stockActions.isEmpty &&
+              opnameActions.isEmpty &&
+              requestActions.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 16),
               child: Text(
@@ -146,6 +166,15 @@ class _WarehouseOperationsTabState extends State<WarehouseOperationsTab> {
               ),
               const SizedBox(height: 12),
               _TransactionGrid(actions: stockActions),
+            ],
+            if (opnameActions.isNotEmpty) ...[
+              const SizedBox(height: 22),
+              const _TransactionGroupLabel(
+                title: 'Stock Opname',
+                subtitle: 'Hitung stock fisik per item group',
+              ),
+              const SizedBox(height: 12),
+              _TransactionGrid(actions: opnameActions),
             ],
             if (requestActions.isNotEmpty) ...[
               const SizedBox(height: 22),

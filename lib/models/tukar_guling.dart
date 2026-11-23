@@ -388,3 +388,25 @@ class TukarGulingMeta {
     );
   }
 }
+
+/// Qty of boxes actually issued on a Final document.
+/// Claim rows stay out of this total; they are source kg, not boxes.
+double tukarGulingGottenBoxQty(Iterable<Map> rows) {
+  var total = 0.0;
+  for (final row in rows) {
+    final raw = row['qty'];
+    final qty = raw is num
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString().trim() ?? '') ?? 0;
+    if (qty > 0) total += qty;
+  }
+  return total;
+}
+
+String formatTukarGulingQty(double value) {
+  if (value == value.roundToDouble()) return value.round().toString();
+  var text = value.toStringAsFixed(3);
+  text = text.replaceFirst(RegExp(r'0+$'), '');
+  if (text.endsWith('.')) text = text.substring(0, text.length - 1);
+  return text;
+}

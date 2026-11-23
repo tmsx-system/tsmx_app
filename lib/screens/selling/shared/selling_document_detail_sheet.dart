@@ -64,6 +64,7 @@ Future<void> showSellingDocumentDetailSheet({
   List<SellingDetailInfo> infos = const [],
   List<SellingDetailItem> items = const [],
   String itemsTitle = 'Detail Item',
+  String? itemsBadge,
   Widget? extra,
   Widget? footer,
 }) async {
@@ -105,6 +106,7 @@ Future<void> showSellingDocumentDetailSheet({
                   infos: infos,
                   items: items,
                   itemsTitle: itemsTitle,
+                  itemsBadge: itemsBadge,
                   extra: extra,
                   footer: footer,
                   showHandle: true,
@@ -132,6 +134,7 @@ Future<void> showSellingDocumentDetailPage({
   List<SellingDetailInfo> infos = const [],
   List<SellingDetailItem> items = const [],
   String itemsTitle = 'Detail Item',
+  String? itemsBadge,
   String? appBarTitle,
   Widget? extra,
   Widget? footer,
@@ -163,6 +166,7 @@ Future<void> showSellingDocumentDetailPage({
                 infos: infos,
                 items: items,
                 itemsTitle: itemsTitle,
+                itemsBadge: itemsBadge,
                 extra: extra,
                 footer: footer,
               ),
@@ -183,6 +187,7 @@ class _SellingDetailBody extends StatelessWidget {
   final List<SellingDetailInfo> infos;
   final List<SellingDetailItem> items;
   final String itemsTitle;
+  final String? itemsBadge;
   final Widget? extra;
   final Widget? footer;
   final bool showHandle;
@@ -198,6 +203,7 @@ class _SellingDetailBody extends StatelessWidget {
     required this.items,
     required this.itemsTitle,
     required this.footer,
+    this.itemsBadge,
     this.extra,
     this.showHandle = false,
     this.onClose,
@@ -238,7 +244,11 @@ class _SellingDetailBody extends StatelessWidget {
         ],
         if (extra != null) ...[const SizedBox(height: 12), extra!],
         const SizedBox(height: 14),
-        _SellingItemsSection(items: items, title: itemsTitle),
+        _SellingItemsSection(
+          items: items,
+          title: itemsTitle,
+          badge: itemsBadge,
+        ),
         if (footer != null) ...[const SizedBox(height: 16), footer!],
       ],
     );
@@ -478,8 +488,13 @@ class _SellingInfoCard extends StatelessWidget {
 class _SellingItemsSection extends StatelessWidget {
   final List<SellingDetailItem> items;
   final String title;
+  final String? badge;
 
-  const _SellingItemsSection({required this.items, required this.title});
+  const _SellingItemsSection({
+    required this.items,
+    required this.title,
+    this.badge,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -532,7 +547,7 @@ class _SellingItemsSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                '${items.length} item',
+                badge ?? '${items.length} item',
                 style: const TextStyle(
                   color: AppColors.primary,
                   fontSize: 11,

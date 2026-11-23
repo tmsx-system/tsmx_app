@@ -325,6 +325,7 @@ class MobileRoleRegistry {
         'Warehouse',
         'Stock Entry',
         'Stock Reconciliation',
+        'Stock Opname',
         'Reject',
       ],
     ),
