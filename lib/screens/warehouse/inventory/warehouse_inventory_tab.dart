@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../../state/warehouse/warehouse_aging_state.dart';
 import '../../../state/warehouse/warehouse_dead_stock_state.dart';
 import '../../../state/warehouse/warehouse_valuation_state.dart';
 import '../../../theme/app_colors.dart';
@@ -53,10 +52,6 @@ class _WarehouseInventoryTabState extends State<WarehouseInventoryTab>
         }
         break;
       case 2:
-        final state = context.read<WarehouseAgingState>();
-        if (!state.hasLoaded) {
-          state.fetchStockAging();
-        }
         break;
       case 3:
         final state = context.read<WarehouseDeadStockState>();

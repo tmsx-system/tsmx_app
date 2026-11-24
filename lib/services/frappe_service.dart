@@ -461,6 +461,27 @@ class FrappeService {
     }
   }
 
+  Future<dynamic> getMethod(
+    String method, {
+    Map<String, String>? query,
+  }) async {
+    await ensureLoggedIn();
+    final uri = Uri.parse(
+      '$baseUrl/api/method/$method',
+    ).replace(queryParameters: query);
+    final result = await _sendJsonWithRelogin(() => _get(uri), uri: uri);
+    final response = result.response;
+    final decoded = result.decoded;
+    if (response.statusCode != 200) {
+      throw Exception(_extractFrappeError(decoded, response.statusCode));
+    }
+    if (decoded is Map && decoded['exc'] != null) {
+      throw Exception(_extractFrappeError(decoded, response.statusCode));
+    }
+    if (decoded is Map) return decoded['message'];
+    return decoded;
+  }
+
   Future<dynamic> callMethod(
     String method, {
     Map<String, dynamic>? args,
