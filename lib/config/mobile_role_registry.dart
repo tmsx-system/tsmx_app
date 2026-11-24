@@ -285,7 +285,12 @@ class MobileRoleRegistry {
     ),
     MobileModuleAccessRule(
       module: MobileModule.spg,
-      readDoctypes: ['SPG Visit', 'SPG Daily Activity', 'SPG Daily Report'],
+      readDoctypes: [
+        'SPG Visit',
+        'SPG Daily Activity',
+        'SPG Daily Report',
+        'Tukar Guling',
+      ],
     ),
     MobileModuleAccessRule(
       module: MobileModule.purchase,
@@ -322,7 +327,6 @@ class MobileRoleRegistry {
     MobileModuleAccessRule(
       module: MobileModule.warehouse,
       readDoctypes: [
-        'Warehouse',
         'Stock Entry',
         'Stock Reconciliation',
         'Stock Opname',

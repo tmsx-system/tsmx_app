@@ -32,6 +32,11 @@ class TukarGulingState extends AppStateProxyNotifier {
     return appState.preferredCompany(options);
   }
 
+  Future<void> ensureCompanies() async {
+    if (sellingCompanies.isNotEmpty) return;
+    await appState.loadSellingFilterOptions();
+  }
+
   Future<List<TukarGulingSummary>> fetchList({
     String? company,
     String? customer,
@@ -57,7 +62,16 @@ class TukarGulingState extends AppStateProxyNotifier {
     }
     final selectedJenis = jenis?.trim() ?? '';
     if (selectedJenis.isNotEmpty) {
-      filters.add(['custom_jenis_input', '=', selectedJenis]);
+      final normalized = selectedJenis.toLowerCase();
+      if (normalized == 'pengajuan' || normalized == 'harian') {
+        filters.add([
+          'custom_jenis_input',
+          'in',
+          ['Harian', 'Pengajuan'],
+        ]);
+      } else {
+        filters.add(['custom_jenis_input', '=', selectedJenis]);
+      }
     }
     final from = postingDateFrom == null
         ? null
@@ -68,34 +82,27 @@ class TukarGulingState extends AppStateProxyNotifier {
           );
     final to = postingDateTo == null
         ? null
-        : DateTime(
-            postingDateTo.year,
-            postingDateTo.month,
-            postingDateTo.day,
-          );
+        : DateTime(postingDateTo.year, postingDateTo.month, postingDateTo.day);
     if (from != null && to != null) {
       final start = from.isBefore(to) ? from : to;
       final end = from.isBefore(to) ? to : from;
       filters.add([
         'posting_date',
         'between',
-        [DateRangePresets.toFrappeDate(start), DateRangePresets.toFrappeDate(end)],
+        [
+          DateRangePresets.toFrappeDate(start),
+          DateRangePresets.toFrappeDate(end),
+        ],
       ]);
     } else if (from != null) {
-      filters.add([
-        'posting_date',
-        '>=',
-        DateRangePresets.toFrappeDate(from),
-      ]);
+      filters.add(['posting_date', '>=', DateRangePresets.toFrappeDate(from)]);
     } else if (to != null) {
-      filters.add([
-        'posting_date',
-        '<=',
-        DateRangePresets.toFrappeDate(to),
-      ]);
+      filters.add(['posting_date', '<=', DateRangePresets.toFrappeDate(to)]);
     }
 
-    Future<List<TukarGulingSummary>> load(List<List<dynamic>>? useFilters) async {
+    Future<List<TukarGulingSummary>> load(
+      List<List<dynamic>>? useFilters,
+    ) async {
       final rows = await frappeService.fetchResource(
         doctype,
         fields: const [
@@ -106,6 +113,8 @@ class TukarGulingState extends AppStateProxyNotifier {
           'customer_name',
           'stock_entry',
           'workflow_state',
+          'custom_jenis_input',
+          'custom_metode_final',
           'keterangan',
           'modified',
           'docstatus',
@@ -131,7 +140,9 @@ class TukarGulingState extends AppStateProxyNotifier {
                 (f) =>
                     f.isNotEmpty &&
                     f.first != 'workflow_state' &&
-                    !(f.first == 'posting_date' && f.length > 1 && f[1] == 'between'),
+                    !(f.first == 'posting_date' &&
+                        f.length > 1 &&
+                        f[1] == 'between'),
               )
               .toList(),
         );
@@ -176,6 +187,10 @@ class TukarGulingState extends AppStateProxyNotifier {
               'customer': row.customer,
               'posting_date': row.postingDate,
               'docstatus': row.docstatus,
+              if (row.jenisInput.trim().isNotEmpty)
+                'custom_jenis_input': row.jenisInput.trim(),
+              if (row.metodeFinal.trim().isNotEmpty)
+                'custom_metode_final': row.metodeFinal.trim(),
             };
             final raw = await frappeService.callMethod(
               'frappe.model.workflow.get_transitions',
@@ -280,11 +295,13 @@ class TukarGulingState extends AppStateProxyNotifier {
         if (fieldname.isEmpty) continue;
         if (fieldtype == 'Table') {
           final optionName = options.toLowerCase();
-          final isClaim = fieldname == 'custom_claim_details' ||
+          final isClaim =
+              fieldname == 'custom_claim_details' ||
               label.contains('klaim') ||
               label.contains('claim') ||
               optionName.contains('harian');
-          final isItem = !isClaim &&
+          final isItem =
+              !isClaim &&
               fieldname != 'custom_sisa_sources' &&
               fieldname != 'saldo_sisa_per_sku' &&
               (optionName.contains('item') || label.contains('item'));
@@ -311,7 +328,8 @@ class TukarGulingState extends AppStateProxyNotifier {
             if (options.isNotEmpty) childDoctype = options;
           }
         } else if (fieldtype == 'Select' &&
-            options.toLowerCase().contains('harian') &&
+            (options.toLowerCase().contains('harian') ||
+                options.toLowerCase().contains('pengajuan')) &&
             options.toLowerCase().contains('final') &&
             !options.toLowerCase().contains('langsung')) {
           jenisField = fieldname;
@@ -467,18 +485,28 @@ class TukarGulingState extends AppStateProxyNotifier {
     final date = postingDate == null
         ? ''
         : '${postingDate.year.toString().padLeft(4, '0')}-'
-            '${postingDate.month.toString().padLeft(2, '0')}-'
-            '${postingDate.day.toString().padLeft(2, '0')}';
+              '${postingDate.month.toString().padLeft(2, '0')}-'
+              '${postingDate.day.toString().padLeft(2, '0')}';
     final filters = <List<dynamic>>[
       ['customer', '=', selectedCustomer],
       ['docstatus', '=', 0],
       if ((company ?? '').trim().isNotEmpty) ['company', '=', company!.trim()],
-      [meta.jenisField, '=', 'Harian'],
+      [
+        meta.jenisField,
+        'in',
+        ['Harian', 'Pengajuan'],
+      ],
       ['workflow_state', '=', 'Draft'],
       if (date.isNotEmpty) ['posting_date', '<=', date],
     ];
     final rows = await _fetchListDroppingBlockedFields(
-      fields: const ['name', 'posting_date', 'customer', 'company', 'docstatus'],
+      fields: const [
+        'name',
+        'posting_date',
+        'customer',
+        'company',
+        'docstatus',
+      ],
       filters: filters,
     );
     final claims = <TukarGulingDailyClaim>[];
@@ -487,11 +515,14 @@ class TukarGulingState extends AppStateProxyNotifier {
       if (name.isEmpty || name == excludeName?.trim()) continue;
       final doc = await frappeService.fetchDocument(doctype, name);
       final jenis = doc[meta.jenisField]?.toString().trim().toLowerCase() ?? '';
-      if (jenis != 'harian') continue;
-      final workflow = doc['workflow_state']?.toString().trim().toLowerCase() ?? '';
+      if (jenis != 'harian' && jenis != 'pengajuan') continue;
+      final workflow =
+          doc['workflow_state']?.toString().trim().toLowerCase() ?? '';
       if (workflow.isNotEmpty && workflow != 'draft') continue;
       if (postingDate != null) {
-        final docDate = DateTime.tryParse(doc['posting_date']?.toString() ?? '');
+        final docDate = DateTime.tryParse(
+          doc['posting_date']?.toString() ?? '',
+        );
         if (docDate != null &&
             DateTime(docDate.year, docDate.month, docDate.day).isAfter(
               DateTime(postingDate.year, postingDate.month, postingDate.day),
@@ -551,10 +582,12 @@ class TukarGulingState extends AppStateProxyNotifier {
   }
 
   Future<
-      ({
-        List<TukarGulingDailyClaim> claims,
-        List<TukarGulingRemainder> remainders,
-      })> fetchGetFromSources({
+    ({
+      List<TukarGulingDailyClaim> claims,
+      List<TukarGulingRemainder> remainders,
+    })
+  >
+  fetchGetFromSources({
     required String customer,
     String? company,
     String? excludeName,
@@ -571,7 +604,9 @@ class TukarGulingState extends AppStateProxyNotifier {
       );
       final message = raw is Map && raw['message'] is Map
           ? Map<String, dynamic>.from(raw['message'] as Map)
-          : (raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{});
+          : (raw is Map
+                ? Map<String, dynamic>.from(raw)
+                : const <String, dynamic>{});
       _rememberChildDoctypes(
         sourceDoctype: message['source_child_doctype']?.toString() ?? '',
         balanceDoctype: message['saldo_child_doctype']?.toString() ?? '',
@@ -581,15 +616,20 @@ class TukarGulingState extends AppStateProxyNotifier {
       final saldo = message['saldo'];
       return (
         claims: [
-          for (final row in (harian is List ? harian : const []).whereType<Map>())
+          for (final row
+              in (harian is List ? harian : const []).whereType<Map>())
             if ((row['item_code']?.toString().trim() ?? '').isNotEmpty)
               TukarGulingDailyClaim(
                 sourceName: row['no_tg']?.toString() ?? '',
-                claimDate: DateTime.tryParse(row['posting_date']?.toString() ?? '') ??
+                claimDate:
+                    DateTime.tryParse(row['posting_date']?.toString() ?? '') ??
                     DateTime.now(),
                 itemCode: row['item_code'].toString().trim(),
                 itemName: row['item_name']?.toString() ?? '',
                 qtyKg: double.tryParse(row['qty_kg']?.toString() ?? '') ?? 0,
+                stockUom: tukarGulingStockUom(
+                  row['stock_uom']?.toString() ?? '',
+                ),
               ),
         ].where((row) => row.qtyKg > 0 && row.sourceName.isNotEmpty).toList(),
         remainders: [
@@ -601,6 +641,9 @@ class TukarGulingState extends AppStateProxyNotifier {
                 itemName: row['item_name']?.toString() ?? '',
                 qtyKg: double.tryParse(row['qty_kg']?.toString() ?? '') ?? 0,
                 postingDate: row['posting_date']?.toString() ?? '',
+                stockUom: tukarGulingStockUom(
+                  row['stock_uom']?.toString() ?? '',
+                ),
               ),
         ].where((row) => row.qtyKg > 0 && row.sourceFinal.isNotEmpty).toList(),
       );
@@ -698,7 +741,9 @@ class TukarGulingState extends AppStateProxyNotifier {
     final message = raw is Map && raw['message'] != null ? raw['message'] : raw;
     final rows = message is List
         ? message
-        : (message is Map && message['rows'] is List ? message['rows'] as List : const []);
+        : (message is Map && message['rows'] is List
+              ? message['rows'] as List
+              : const []);
     return [
       for (final row in rows.whereType<Map>())
         if (_sourceFinalRef(row).isNotEmpty &&
@@ -757,7 +802,8 @@ class TukarGulingState extends AppStateProxyNotifier {
     final available = <TukarGulingRemainder>[];
     for (final doc in docs) {
       final name = doc['name']?.toString().trim() ?? '';
-      final jenis = doc['custom_jenis_input']?.toString().trim().toLowerCase() ??
+      final jenis =
+          doc['custom_jenis_input']?.toString().trim().toLowerCase() ??
           doc['jenis_input']?.toString().trim().toLowerCase() ??
           '';
       if (jenis != 'final') continue;
@@ -788,12 +834,14 @@ class TukarGulingState extends AppStateProxyNotifier {
     Map line,
     TukarGulingMeta meta,
   ) {
-    final item = line[meta.claimItemField]?.toString().trim() ??
+    final item =
+        line[meta.claimItemField]?.toString().trim() ??
         line['item_code']?.toString().trim() ??
         line['item']?.toString().trim() ??
         '';
     if (item.isEmpty) return null;
-    final qty = double.tryParse(
+    final qty =
+        double.tryParse(
           (line[meta.claimQtyField] ?? line['qty'] ?? line['qty_kg'])
                   ?.toString()
                   .replaceAll(',', '.') ??
@@ -812,7 +860,8 @@ class TukarGulingState extends AppStateProxyNotifier {
       itemCode: item,
       itemName: line['item_name']?.toString() ?? '',
       qtyKg: qty,
-      keterangan: line[meta.claimNoteField]?.toString() ??
+      keterangan:
+          line[meta.claimNoteField]?.toString() ??
           line['keterangan']?.toString() ??
           '',
     );
@@ -905,7 +954,9 @@ class TukarGulingState extends AppStateProxyNotifier {
     required List<String> fields,
     required List<List<dynamic>> filters,
   }) async {
-    var remaining = [for (final filter in filters) [...filter]];
+    var remaining = [
+      for (final filter in filters) [...filter],
+    ];
     while (true) {
       try {
         return await frappeService.fetchResource(
@@ -920,7 +971,9 @@ class TukarGulingState extends AppStateProxyNotifier {
           r'Field not permitted in query:\s*([A-Za-z0-9_]+)',
         ).firstMatch(error.toString())?.group(1);
         if (blocked == null) rethrow;
-        final next = remaining.where((filter) => filter.first != blocked).toList();
+        final next = remaining
+            .where((filter) => filter.first != blocked)
+            .toList();
         if (next.length == remaining.length) rethrow;
         remaining = next;
       }
@@ -928,10 +981,7 @@ class TukarGulingState extends AppStateProxyNotifier {
   }
 
   Future<List<String>> fetchDocumentWorkflowActions(String name) {
-    return appState.fetchDocumentWorkflowActions(
-      doctype: doctype,
-      name: name,
-    );
+    return appState.fetchDocumentWorkflowActions(doctype: doctype, name: name);
   }
 
   Future<void> applyDocumentWorkflow({
@@ -1135,11 +1185,7 @@ class TukarGulingState extends AppStateProxyNotifier {
     }
     final meta = _metaCache;
     final preferred = claims
-        ? [
-            meta?.claimTableField,
-            'custom_claim_details',
-            'klaim_harian',
-          ]
+        ? [meta?.claimTableField, 'custom_claim_details', 'klaim_harian']
         : [meta?.childTableField, 'tukar_guling_item', 'items'];
     for (final key in preferred) {
       if (key == null || key.isEmpty) continue;
@@ -1151,7 +1197,8 @@ class TukarGulingState extends AppStateProxyNotifier {
       final doctype =
           entry.value.first['doctype']?.toString().toLowerCase() ?? '';
       final isClaim = key.contains('klaim') || doctype.contains('klaim');
-      final isItem = !isClaim &&
+      final isItem =
+          !isClaim &&
           (key.contains('item') || doctype.contains('tukar guling item'));
       if (claims && isClaim) return entry.value;
       if (!claims && isItem) return entry.value;

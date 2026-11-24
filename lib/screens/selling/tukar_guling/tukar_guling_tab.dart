@@ -33,7 +33,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
   List<TukarGulingSummary> _rows = const [];
   Map<String, List<String>> _actionsByName = const {};
   String _company = '';
-  String _jenis = '';
+  String _jenis = 'Pengajuan';
   DateTime? _postingFrom;
   DateTime? _postingTo;
   Map<String, dynamic>? _detailCache;
@@ -44,8 +44,15 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
+  bool get _pengajuanActive {
+    final value = _jenis.trim().toLowerCase();
+    return value.isEmpty || value == 'pengajuan' || value == 'harian';
+  }
+
   Future<void> _bootstrap() async {
     final state = context.read<TukarGulingState>();
+    await state.ensureCompanies();
+    if (!mounted) return;
     final preferred = state.preferredCompany(state.sellingCompanies) ?? '';
     final permissions = await Future.wait([
       state.canCreate(),
@@ -56,11 +63,18 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
       _canCreate = permissions[0];
       _canWrite = permissions[1];
       if (_company.isEmpty && preferred.isNotEmpty) _company = preferred;
+      if (_pengajuanActive) _jenis = 'Pengajuan';
     });
     await _load();
   }
 
+  bool get _spgPengajuanOnly =>
+      context.read<TukarGulingState>().appState.mobileAccess.isSpg;
+
   Future<void> _load() async {
+    if (_spgPengajuanOnly && _jenis != 'Pengajuan') {
+      _jenis = 'Pengajuan';
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -106,6 +120,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         builder: (_) => CreateTukarGulingScreen(
           existingName: existingName,
           initialCompany: _company.trim().isEmpty ? null : _company,
+          initialJenis: _jenis,
         ),
       ),
     );
@@ -171,11 +186,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         picked.start.month,
         picked.start.day,
       );
-      _postingTo = DateTime(
-        picked.end.year,
-        picked.end.month,
-        picked.end.day,
-      );
+      _postingTo = DateTime(picked.end.year, picked.end.month, picked.end.day);
     });
     await _load();
   }
@@ -206,10 +217,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         workflowActions = await state.fetchWorkflowActionsForDocument(detail);
         if (mounted && workflowActions.isNotEmpty) {
           setState(() {
-            _actionsByName = {
-              ..._actionsByName,
-              row.id: workflowActions,
-            };
+            _actionsByName = {..._actionsByName, row.id: workflowActions};
           });
         }
       } catch (_) {
@@ -221,8 +229,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
       final customerName = detail['customer_name']?.toString().trim() ?? '';
       final createdBy = detail['owner']?.toString().trim() ?? '';
       final company = detail['company']?.toString() ?? row.company;
-      final postingDate =
-          detail['posting_date']?.toString() ?? row.postingDate;
+      final postingDate = detail['posting_date']?.toString() ?? row.postingDate;
       final keterangan = detail['keterangan']?.toString() ?? row.keterangan;
       final stockEntry = detail['stock_entry']?.toString() ?? row.stockEntry;
       final jenis = () {
@@ -346,7 +353,10 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         ],
         infos: [
           if (jenis.isNotEmpty)
-            SellingDetailInfo(label: 'Jenis', value: jenis),
+            SellingDetailInfo(
+              label: 'Jenis',
+              value: tukarGulingJenisLabel(jenis),
+            ),
           if (metode.isNotEmpty)
             SellingDetailInfo(label: 'Metode', value: metode),
           SellingDetailInfo(label: 'Company', value: company),
@@ -357,12 +367,10 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
           if (!isFinal && keterangan.isNotEmpty)
             SellingDetailInfo(label: 'Keterangan', value: keterangan),
         ],
-        itemsTitle: isFinal ? 'Final Items' : 'Klaim Harian',
+        itemsTitle: isFinal ? 'Final Items' : 'Klaim Pengajuan',
         items: items,
         itemsFooter: isFinal
-            ? _TukarGulingKgTotal(
-                value: '${formatTukarGulingQty(claimKg)} kg',
-              )
+            ? _TukarGulingKgTotal(value: '${formatTukarGulingQty(claimKg)} kg')
             : null,
         afterItems: _TukarGulingPhotos(
           files: photos,
@@ -406,9 +414,9 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(captureErpError(context, error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(captureErpError(context, error))));
     } finally {
       if (mounted) setState(() => _isOpeningDetail = false);
     }
@@ -468,18 +476,19 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
 
     setState(() => _actionBusy = true);
     final tukarState = context.read<TukarGulingState>();
-    final doc = currentDocument ??
+    final doc =
+        currentDocument ??
         (_detailCache != null && _detailCache!['name']?.toString() == id
             ? _detailCache
             : null);
     final ok = await runErpWorkflowAction(
       context,
       action: () => tukarState.applyDocumentWorkflow(
-            name: id,
-            action: action,
-            reason: reason,
-            currentDocument: doc,
-          ),
+        name: id,
+        action: action,
+        reason: reason,
+        currentDocument: doc,
+      ),
       successMessage: 'Tukar Guling: $action berhasil',
     );
     if (!mounted) return;
@@ -503,19 +512,68 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
     }
   }
 
+  Widget _jenisTabs() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _jenisTab('Pengajuan', 'Pengajuan')),
+          if (!_spgPengajuanOnly) ...[
+            const SizedBox(width: 6),
+            Expanded(child: _jenisTab('Final', 'Final')),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _jenisTab(String label, String value) {
+    final selected = value == 'Final' ? !_pengajuanActive : _pengajuanActive;
+    return Material(
+      color: selected ? AppColors.primary : const Color(0xFFF3F6F4),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _loading || selected
+            ? null
+            : () {
+                setState(() => _jenis = value);
+                unawaited(_load());
+              },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected ? AppColors.white : AppColors.slate,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _filterBar(List<String> companies) {
-    final selectedCompany =
-        _company.isEmpty || companies.contains(_company) ? _company : '';
+    final selectedCompany = _company.isEmpty || companies.contains(_company)
+        ? _company
+        : '';
     final hasDate = _postingFrom != null || _postingTo != null;
     final dateLabel = !hasDate
         ? 'Semua tanggal'
         : (_postingFrom != null && _postingTo != null)
-            ? DateRangePresets.formatRangeLabel(
-                DateRangePreset(from: _postingFrom!, to: _postingTo!),
-              )
-            : _postingFrom != null
-                ? '≥ ${DateRangePresets.formatDisplay(_postingFrom!)}'
-                : '≤ ${DateRangePresets.formatDisplay(_postingTo!)}';
+        ? DateRangePresets.formatRangeLabel(
+            DateRangePreset(from: _postingFrom!, to: _postingTo!),
+          )
+        : _postingFrom != null
+        ? '≥ ${DateRangePresets.formatDisplay(_postingFrom!)}'
+        : '≤ ${DateRangePresets.formatDisplay(_postingTo!)}';
 
     return SalesInfoCard(
       child: Column(
@@ -538,27 +596,6 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
                 ? (_) {}
                 : (value) {
                     setState(() => _company = value ?? '');
-                    unawaited(_load());
-                  },
-          ),
-          const SizedBox(height: 10),
-          ErpSearchableFilterField(
-            label: 'Jenis',
-            selectedId: _jenis.isEmpty ? null : _jenis,
-            decoration: const InputDecoration(
-              labelText: 'Jenis transaksi',
-              prefixIcon: Icon(Icons.swap_horiz_rounded, size: 18),
-              isDense: true,
-            ),
-            allLabel: 'Semua jenis',
-            options: const [
-              ErpItemOption(id: 'Harian', label: 'Harian'),
-              ErpItemOption(id: 'Final', label: 'Finalisasi'),
-            ],
-            onSelected: _loading
-                ? (_) {}
-                : (value) {
-                    setState(() => _jenis = value ?? '');
                     unawaited(_load());
                   },
           ),
@@ -622,6 +659,8 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: SalesUi.compactScreenPaddingOf(context),
             children: [
+              _jenisTabs(),
+              SalesUi.gap(),
               _filterBar(companies),
               SalesUi.gap(),
               if (_loading && _rows.isEmpty)
@@ -785,16 +824,16 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
                             ),
                           for (final action in workflowActions)
                             if (!_isCancelWorkflowAction(action))
-                            PopupMenuItem(
-                              value: 'wf:$action',
-                              child: Row(
-                                children: [
-                                  Icon(_workflowActionIcon(action), size: 18),
-                                  const SizedBox(width: 8),
-                                  Flexible(child: Text(action)),
-                                ],
+                              PopupMenuItem(
+                                value: 'wf:$action',
+                                child: Row(
+                                  children: [
+                                    Icon(_workflowActionIcon(action), size: 18),
+                                    const SizedBox(width: 8),
+                                    Flexible(child: Text(action)),
+                                  ],
+                                ),
                               ),
-                            ),
                         ],
                       ),
                     ),
@@ -931,8 +970,8 @@ class _TukarGulingPhotos extends StatelessWidget {
               itemBuilder: (context, index) {
                 final file = images[index];
                 final url = _url(file);
-                final name = file['file_name']?.toString().trim().isNotEmpty ==
-                        true
+                final name =
+                    file['file_name']?.toString().trim().isNotEmpty == true
                     ? file['file_name'].toString()
                     : 'Foto ${index + 1}';
                 return InkWell(

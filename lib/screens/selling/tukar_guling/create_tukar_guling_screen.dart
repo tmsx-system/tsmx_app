@@ -14,11 +14,13 @@ import '../shared/sales_ui.dart';
 class CreateTukarGulingScreen extends StatefulWidget {
   final String? existingName;
   final String? initialCompany;
+  final String? initialJenis;
 
   const CreateTukarGulingScreen({
     super.key,
     this.existingName,
     this.initialCompany,
+    this.initialJenis,
   });
 
   @override
@@ -65,7 +67,16 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       (_savedName ?? '').trim().isNotEmpty;
 
   bool get _isFinal => _jenis.toLowerCase() == 'final';
-  bool get _isHarian => _jenis.toLowerCase() == 'harian';
+
+  String get _sumberInput {
+    final access = context.read<TukarGulingState>().appState.mobileAccess;
+    return access.isSpg ? 'SPG' : 'Sales';
+  }
+
+  bool get _isHarian {
+    final value = _jenis.toLowerCase();
+    return value == 'pengajuan' || value == 'harian';
+  }
   bool get _isGetFrom => _isFinal && _metode == 'Get From Harian';
   bool get _isManual => _isFinal && _metode == 'Input Langsung';
 
@@ -101,18 +112,24 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     });
     try {
       final state = context.read<TukarGulingState>();
+      await state.ensureCompanies();
+      if (!mounted) return;
       final companies = state.sellingCompanies;
       final fromList = widget.initialCompany?.trim() ?? '';
-      _company ??= fromList.isNotEmpty &&
+      _company ??=
+          fromList.isNotEmpty &&
               (companies.isEmpty || companies.contains(fromList))
           ? fromList
           : state.preferredCompany(companies) ??
-              (companies.isNotEmpty ? companies.first : null);
+                (companies.isNotEmpty ? companies.first : null);
 
       // Meta + naming series in parallel (create/edit bootstrap).
       final boot = await Future.wait<Object?>([
         state.resolveMeta().then<Object?>((_) => null).catchError((_) => null),
-        state.fetchNamingSeries().then<Object?>((v) => v).catchError((_) => null),
+        state
+            .fetchNamingSeries()
+            .then<Object?>((v) => v)
+            .catchError((_) => null),
       ]);
       final series = boot[1];
       if (series is List<String>) {
@@ -124,6 +141,11 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
 
       if (_documentName != null) {
         await _applyExisting(state, _documentName!);
+      } else {
+        final jenis = widget.initialJenis?.trim() ?? '';
+        final spg = state.appState.mobileAccess.isSpg;
+        _jenis = spg || jenis != 'Final' ? 'Harian' : 'Final';
+        _jenisLocked = true;
       }
     } catch (error) {
       if (mounted) {
@@ -140,15 +162,18 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     _series = doc['naming_series']?.toString().trim() ?? _series;
     _company = doc['company']?.toString().trim() ?? _company;
     _customer = doc['customer']?.toString().trim() ?? _customer;
-    _customerName = doc[meta.customerNameField]?.toString().trim() ??
+    _customerName =
+        doc[meta.customerNameField]?.toString().trim() ??
         doc['customer_name']?.toString().trim() ??
         '';
-    final jenis = doc[meta.jenisField]?.toString().trim() ??
+    final jenis =
+        doc[meta.jenisField]?.toString().trim() ??
         doc['jenis_input']?.toString().trim() ??
         '';
-    _jenis = jenis;
+    _jenis = jenis.toLowerCase() == 'pengajuan' ? 'Harian' : jenis;
     _jenisLocked = true;
-    _metode = doc[meta.metodeField]?.toString().trim() ??
+    _metode =
+        doc[meta.metodeField]?.toString().trim() ??
         doc['custom_metode_final']?.toString().trim() ??
         '';
     _stockEntry = doc['stock_entry']?.toString().trim();
@@ -170,13 +195,17 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     if (parsed != null) {
       _postingDate = DateTime(parsed.year, parsed.month, parsed.day);
     }
-    final delivered = DateTime.tryParse(doc['tanggal_pengiriman']?.toString() ?? '');
+    final delivered = DateTime.tryParse(
+      doc['tanggal_pengiriman']?.toString() ?? '',
+    );
     _deliveryDate = delivered == null
         ? null
         : DateTime(delivered.year, delivered.month, delivered.day);
     _deliveryNote = doc['no_delivery_note']?.toString().trim();
     _totalKg = double.tryParse(doc['custom_total_kg']?.toString() ?? '') ?? 0;
-    _totalBox = (double.tryParse(doc['custom_total_box']?.toString() ?? '') ?? 0).round();
+    _totalBox =
+        (double.tryParse(doc['custom_total_box']?.toString() ?? '') ?? 0)
+            .round();
     _sisaKg = double.tryParse(doc['custom_sisa_kg']?.toString() ?? '') ?? 0;
     _usedRemainders
       ..clear()
@@ -192,16 +221,16 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       ..clear()
       ..addAll([
         for (final raw in rawClaims)
-            _ClaimRow(
-              claimDate: DateTime.tryParse(_claimDateText(raw)) ?? _postingDate,
-              itemCode: _claimItemCode(raw),
-              itemName: _claimItemName(raw),
-              keterangan: _claimNote(raw),
-              sourceName: meta.claimSourceField.isEmpty
-                  ? ''
-                  : raw[meta.claimSourceField]?.toString() ?? '',
-              qtyText: _qtyText(_claimQty(raw)),
-            ),
+          _ClaimRow(
+            claimDate: DateTime.tryParse(_claimDateText(raw)) ?? _postingDate,
+            itemCode: _claimItemCode(raw),
+            itemName: _claimItemName(raw),
+            keterangan: _claimNote(raw),
+            sourceName: meta.claimSourceField.isEmpty
+                ? ''
+                : raw[meta.claimSourceField]?.toString() ?? '',
+            qtyText: _qtyText(_claimQty(raw)),
+          ),
       ]);
     final rawItems = state.itemRowsOf(doc);
     for (final row in _rows) {
@@ -212,19 +241,20 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       ..addAll([
         for (final raw in rawItems)
           _ItemRow(
-              itemCode: raw['item_code']?.toString(),
-              itemName: raw['item_name']?.toString() ?? '',
-              sourceWarehouse: raw['source_warehouse']?.toString() ??
-                  raw['s_warehouse']?.toString() ??
-                  raw['warehouse']?.toString(),
-              uom: raw['uom']?.toString() ?? '',
-              qtyText: () {
-                final qty = double.tryParse(raw['qty']?.toString() ?? '') ?? 1;
-                return qty == qty.roundToDouble()
-                    ? qty.toInt().toString()
-                    : qty.toString();
-              }(),
-            ),
+            itemCode: raw['item_code']?.toString(),
+            itemName: raw['item_name']?.toString() ?? '',
+            sourceWarehouse:
+                raw['source_warehouse']?.toString() ??
+                raw['s_warehouse']?.toString() ??
+                raw['warehouse']?.toString(),
+            uom: raw['uom']?.toString() ?? '',
+            qtyText: () {
+              final qty = double.tryParse(raw['qty']?.toString() ?? '') ?? 1;
+              return qty == qty.roundToDouble()
+                  ? qty.toInt().toString()
+                  : qty.toString();
+            }(),
+          ),
       ]);
     final hasItems = _rows.any((row) => (row.itemCode ?? '').isNotEmpty);
     final hasClaims = _claims.any((row) => (row.itemCode ?? '').isNotEmpty);
@@ -275,8 +305,9 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   }
 
   Future<List<ErpItemOption>> _searchItems(String query) async {
-    final rows =
-        await context.read<TukarGulingState>().searchItems(query: query);
+    final rows = await context.read<TukarGulingState>().searchItems(
+      query: query,
+    );
     for (final row in rows) {
       final id = row['name']?.toString().trim() ?? '';
       if (id.isEmpty) continue;
@@ -348,7 +379,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_jenisLocked) {
-      setState(() => _error = 'Pilih Harian atau Final.');
+      setState(() => _error = 'Pilih Pengajuan atau Final.');
       return;
     }
     if (!_formKey.currentState!.validate()) return;
@@ -389,19 +420,19 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         return;
       }
       if (_isGetFrom && filledClaims.isEmpty) {
-        setState(() => _error = 'Tarik klaim Harian dulu.');
+        setState(() => _error = 'Tarik klaim Pengajuan dulu.');
         return;
       }
       if (_isManual && filledClaims.isNotEmpty) {
         setState(
-          () => _error = 'Input Langsung tidak boleh memiliki Klaim Harian.',
+          () => _error = 'Input Langsung tidak boleh memiliki Klaim Pengajuan.',
         );
         return;
       }
       if (filled.isEmpty) {
         setState(
           () => _error = _isManual
-              ? 'Tambahkan minimal satu item box.'
+              ? 'Tambahkan minimal satu item.'
               : 'Kg yang ditarik belum cukup untuk 1 box.',
         );
         return;
@@ -413,7 +444,14 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
           return;
         }
         if (row.qty <= 0) {
-          setState(() => _error = 'Item ${i + 1}: Qty box harus lebih dari 0.');
+          setState(() => _error = 'Item ${i + 1}: Qty harus lebih dari 0.');
+          return;
+        }
+        if (_isManual && tukarGulingStockUom(row.uom).isEmpty) {
+          setState(
+            () => _error =
+                'Item ${i + 1}: UOM harus Box atau KG dari Item Master.',
+          );
           return;
         }
       }
@@ -434,6 +472,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         customer: _customer!.trim(),
         customerName: _customerName,
         jenisInput: _isFinal ? 'Final' : 'Harian',
+        sumberInput: _sumberInput,
         metodeFinal: _isFinal ? _metode : '',
         keterangan: _isFinal ? '' : _keteranganCtrl.text,
         deliveryDate: _isHarian ? _deliveryDate : null,
@@ -449,15 +488,15 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         balances: _isGetFrom ? [..._balances] : const [],
         claims: [
           if (!_isManual)
-          for (final claim in filledClaims)
-            TukarGulingClaimDraft(
-              claimDate: claim.claimDate,
-              itemCode: claim.itemCode!,
-              itemName: claim.itemName,
-              qtyKg: claim.qtyKg,
-              keterangan: claim.keteranganCtrl.text,
-              sourceName: claim.sourceName,
-            ),
+            for (final claim in filledClaims)
+              TukarGulingClaimDraft(
+                claimDate: claim.claimDate,
+                itemCode: claim.itemCode!,
+                itemName: claim.itemName,
+                qtyKg: claim.qtyKg,
+                keterangan: claim.keteranganCtrl.text,
+                sourceName: claim.sourceName,
+              ),
         ],
         items: [
           for (final row in filled)
@@ -513,7 +552,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     }
   }
 
-
   InputDecoration _decoration(String label, {String? hint, Widget? suffix}) {
     return InputDecoration(
       labelText: label,
@@ -560,36 +598,13 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
           : Form(
               key: _formKey,
               child: ListView(
-                padding: SalesUi.compactScreenPaddingOf(context).copyWith(
-                  bottom: 24 + bottomInset,
-                ),
+                padding: SalesUi.compactScreenPaddingOf(
+                  context,
+                ).copyWith(bottom: 24 + bottomInset),
                 children: [
                   _section(
                     title: 'Informasi Dokumen',
                     children: [
-                      if (_seriesOptions.isNotEmpty) ...[
-                        DropdownButtonFormField<String>(
-                          key: ValueKey('series-${_series ?? 'none'}'),
-                          initialValue: _seriesOptions.contains(_series)
-                              ? _series
-                              : null,
-                          isExpanded: true,
-                          decoration: _decoration('Series'),
-                          items: [
-                            for (final series in _seriesOptions)
-                              DropdownMenuItem(
-                                value: series,
-                                child: Text(
-                                  series,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                          ],
-                          onChanged: (value) =>
-                              setState(() => _series = value),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
                       InkWell(
                         onTap: _pickDate,
                         borderRadius: BorderRadius.circular(14),
@@ -630,8 +645,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                         }),
                         validator: (value) =>
                             value == null || value.trim().isEmpty
-                                ? 'Company wajib'
-                                : null,
+                            ? 'Company wajib'
+                            : null,
                       ),
                       const SizedBox(height: 14),
                       ErpItemAutocompleteField(
@@ -641,10 +656,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                         decoration: _decoration('Customer *'),
                         options: [
                           if ((_customer ?? '').isNotEmpty)
-                            ErpItemOption(
-                              id: _customer!,
-                              label: _customer!,
-                            ),
+                            ErpItemOption(id: _customer!, label: _customer!),
                         ],
                         onSearch: _searchCustomers,
                         onSelected: (value) => setState(() {
@@ -673,8 +685,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                         }),
                         validator: (value) =>
                             value == null || value.trim().isEmpty
-                                ? 'Customer wajib'
-                                : null,
+                            ? 'Customer wajib'
+                            : null,
                       ),
                       if (_customerName.isNotEmpty) ...[
                         const SizedBox(height: 14),
@@ -686,33 +698,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 14),
-                      if (_jenisLocked)
-                        InputDecorator(
-                          decoration: _decoration('Jenis'),
-                          child: Text(
-                            _isFinal ? 'Final' : 'Harian',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        )
-                      else
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => _chooseJenis('Harian'),
-                                child: const Text('Harian'),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => _chooseJenis('Final'),
-                                child: const Text('Final'),
-                              ),
-                            ),
-                          ],
-                        ),
                       if (_isFinal) ...[
                         const SizedBox(height: 14),
                         _methodPicker(),
@@ -730,225 +715,230 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                     ],
                   ),
                   if (_jenisLocked) ...[
-                  const SizedBox(height: 12),
-                  if (_isGetFrom) ...[
-                    _section(
-                      title: 'Klaim Harian',
-                      children: [
-                        const Text(
-                          'Tarik beberapa transaksi Harian. Qty tetap kg, lalu dikonversi ke box.',
-                          style: TextStyle(
-                            color: AppColors.slate,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                    const SizedBox(height: 12),
+                    if (_isGetFrom) ...[
+                      _section(
+                        title: 'Klaim Pengajuan',
+                        children: [
+                          const Text(
+                            'Tarik Pengajuan dan sisa Final. Qty kg dikonversi ke box, atau langsung kg bila UOM item adalah KG.',
+                            style: TextStyle(
+                              color: AppColors.slate,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        OutlinedButton.icon(
-                          onPressed: _saving ? null : _openDailyClaims,
-                          icon: const Icon(Icons.download_rounded),
-                          label: const Text('Tarik Tukar Guling Harian'),
-                        ),
-                        if (_pullSummary.isNotEmpty) ...[
                           const SizedBox(height: 10),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
+                          OutlinedButton.icon(
+                            onPressed: _saving ? null : _openDailyClaims,
+                            icon: const Icon(Icons.download_rounded),
+                            label: const Text('Get From Pengajuan + Sisa'),
+                          ),
+                          if (_pullSummary.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F6EE),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                _pullSummary,
+                                style: const TextStyle(
+                                  color: AppColors.navy,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                             ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE8F6EE),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              _pullSummary,
-                              style: const TextStyle(
+                          ],
+                          for (var i = 0; i < _claims.length; i++) ...[
+                            const SizedBox(height: 8),
+                            _pulledClaimTile(i),
+                          ],
+                          if (_usedRemainders.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Sisa Final yang dipakai',
+                              style: TextStyle(
                                 color: AppColors.navy,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                          ),
-                        ],
-                        for (var i = 0; i < _claims.length; i++) ...[
-                          const SizedBox(height: 8),
-                          _pulledClaimTile(i),
-                        ],
-                        if (_usedRemainders.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Sisa Final yang dipakai',
-                            style: TextStyle(
-                              color: AppColors.navy,
-                              fontWeight: FontWeight.w800,
+                            for (final row in _usedRemainders) ...[
+                              const SizedBox(height: 8),
+                              _kgLine(
+                                title: row.sourceFinal,
+                                subtitle: row.itemName.isEmpty
+                                    ? row.itemCode
+                                    : row.itemName,
+                                qty: '${_qtyText(row.qtyKg)} kg',
+                              ),
+                            ],
+                          ],
+                          if (_balances.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Sisa kg untuk Final berikutnya',
+                              style: TextStyle(
+                                color: AppColors.navy,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                          ),
-                          for (final row in _usedRemainders) ...[
-                            const SizedBox(height: 8),
-                            _kgLine(
-                              title: row.sourceFinal,
-                              subtitle: row.itemName.isEmpty
-                                  ? row.itemCode
-                                  : row.itemName,
-                              qty: '${_qtyText(row.qtyKg)} kg',
-                            ),
+                            for (final row in _balances) ...[
+                              const SizedBox(height: 8),
+                              _kgLine(
+                                title: row.itemName.isEmpty
+                                    ? row.itemCode
+                                    : row.itemName,
+                                subtitle: row.itemCode,
+                                qty: 'Sisa ${_qtyText(row.qtyKg)} kg',
+                              ),
+                            ],
                           ],
                         ],
-                        if (_balances.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Sisa kg untuk Final berikutnya',
-                            style: TextStyle(
-                              color: AppColors.navy,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          for (final row in _balances) ...[
-                            const SizedBox(height: 8),
-                            _kgLine(
-                              title: row.itemName.isEmpty
-                                  ? row.itemCode
-                                  : row.itemName,
-                              subtitle: row.itemCode,
-                              qty: 'Sisa ${_qtyText(row.qtyKg)} kg',
-                            ),
+                      ),
+                      if (_rows.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _section(
+                          title: 'Tukar Guling Item',
+                          children: [
+                            for (var i = 0; i < _rows.length; i++) ...[
+                              _itemCard(i),
+                              if (i != _rows.length - 1)
+                                const SizedBox(height: 12),
+                            ],
                           ],
-                        ],
+                        ),
                       ],
-                    ),
-                    if (_rows.isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                    ] else if (_isManual)
                       _section(
                         title: 'Tukar Guling Item',
                         children: [
+                          const Text(
+                            'Isi item dan qty sesuai UOM Item Master.',
+                            style: TextStyle(
+                              color: AppColors.slate,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           for (var i = 0; i < _rows.length; i++) ...[
+                            const SizedBox(height: 12),
                             _itemCard(i),
-                            if (i != _rows.length - 1) const SizedBox(height: 12),
+                          ],
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                setState(() => _rows.add(_manualRow())),
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Add Row'),
+                          ),
+                        ],
+                      )
+                    else if (_isHarian)
+                      _section(
+                        title: 'Klaim Pengajuan',
+                        children: [
+                          const Text(
+                            'Pilih customer, tanggal pengiriman, lalu No Delivery Note. SKU yang dicentang masuk sebagai klaim kg.',
+                            style: TextStyle(
+                              color: AppColors.slate,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          InkWell(
+                            onTap: _pickDeliveryDate,
+                            borderRadius: BorderRadius.circular(14),
+                            child: InputDecorator(
+                              decoration: _decoration(
+                                'Tanggal Pengiriman *',
+                                suffix: const Icon(
+                                  Icons.local_shipping_outlined,
+                                  size: 18,
+                                  color: AppColors.slate,
+                                ),
+                              ),
+                              child: Text(
+                                _deliveryDate == null
+                                    ? 'Pilih tanggal'
+                                    : DateFormat(
+                                        'dd-MM-yyyy',
+                                      ).format(_deliveryDate!),
+                                style: const TextStyle(
+                                  color: AppColors.navy,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ErpItemAutocompleteField(
+                            key: ValueKey(
+                              'dn-${_customer ?? ''}-${_deliveryDate?.toIso8601String()}-${_deliveryNote ?? ''}',
+                            ),
+                            label: 'No Delivery Note *',
+                            selectedId: _deliveryNote,
+                            decoration: _decoration('No Delivery Note *'),
+                            options: [
+                              if ((_deliveryNote ?? '').isNotEmpty)
+                                ErpItemOption(
+                                  id: _deliveryNote!,
+                                  label: _deliveryNote!,
+                                ),
+                            ],
+                            onSearch: _searchDeliveryNotes,
+                            onSelected: (value) {
+                              setState(() => _deliveryNote = value);
+                              if ((value ?? '').isNotEmpty) _openDnSkus();
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: _saving ? null : _openDnSkus,
+                            icon: const Icon(Icons.checklist_rounded),
+                            label: const Text('Pilih SKU dari DN'),
+                          ),
+                          for (var i = 0; i < _claims.length; i++) ...[
+                            const SizedBox(height: 12),
+                            _claimCard(i, readOnly: true),
                           ],
                         ],
                       ),
-                    ],
-                  ] else if (_isManual)
-                    _section(
-                      title: 'Tukar Guling Item',
-                      children: [
-                        const Text(
-                          'Isi item dan qty box.',
-                          style: TextStyle(
-                            color: AppColors.slate,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        for (var i = 0; i < _rows.length; i++) ...[
-                          const SizedBox(height: 12),
-                          _itemCard(i),
-                        ],
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => setState(() => _rows.add(_manualRow())),
-                          icon: const Icon(Icons.add_rounded),
-                          label: const Text('Add Row'),
-                        ),
-                      ],
-                    )
-                  else if (_isHarian)
-                    _section(
-                      title: 'Klaim Harian',
-                      children: [
-                        const Text(
-                          'Pilih customer, tanggal pengiriman, lalu No Delivery Note. SKU yang dicentang masuk sebagai klaim kg.',
-                          style: TextStyle(
-                            color: AppColors.slate,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        InkWell(
-                          onTap: _pickDeliveryDate,
-                          borderRadius: BorderRadius.circular(14),
-                          child: InputDecorator(
-                            decoration: _decoration(
-                              'Tanggal Pengiriman *',
-                              suffix: const Icon(
-                                Icons.local_shipping_outlined,
-                                size: 18,
-                                color: AppColors.slate,
-                              ),
-                            ),
-                            child: Text(
-                              _deliveryDate == null
-                                  ? 'Pilih tanggal'
-                                  : DateFormat('dd-MM-yyyy').format(_deliveryDate!),
-                              style: const TextStyle(
-                                color: AppColors.navy,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ErpItemAutocompleteField(
-                          key: ValueKey(
-                            'dn-${_customer ?? ''}-${_deliveryDate?.toIso8601String()}-${_deliveryNote ?? ''}',
-                          ),
-                          label: 'No Delivery Note *',
-                          selectedId: _deliveryNote,
-                          decoration: _decoration('No Delivery Note *'),
-                          options: [
-                            if ((_deliveryNote ?? '').isNotEmpty)
-                              ErpItemOption(
-                                id: _deliveryNote!,
-                                label: _deliveryNote!,
-                              ),
-                          ],
-                          onSearch: _searchDeliveryNotes,
-                          onSelected: (value) {
-                            setState(() => _deliveryNote = value);
-                            if ((value ?? '').isNotEmpty) _openDnSkus();
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                        OutlinedButton.icon(
-                          onPressed: _saving ? null : _openDnSkus,
-                          icon: const Icon(Icons.checklist_rounded),
-                          label: const Text('Pilih SKU dari DN'),
-                        ),
-                        for (var i = 0; i < _claims.length; i++) ...[
-                          const SizedBox(height: 12),
-                          _claimCard(i, readOnly: true),
-                        ],
-                      ],
-                    ),
                   ],
                   if (_jenisLocked) ...[
-                  const SizedBox(height: 12),
-                  SalesAttachmentCard(
-                    title: 'Attachment',
-                    existingNames: _existingAttachmentNames,
-                    photos: _photos,
-                    onCamera: _saving ? null : _pickCamera,
-                    onGallery: _saving ? null : _pickGallery,
-                    onRemove: (index) => setState(() => _photos.removeAt(index)),
-                  ),
-                  if (!_isFinal) ...[
-                  const SizedBox(height: 12),
-                  _section(
-                    title: 'Keterangan',
-                    children: [
-                      TextFormField(
-                        controller: _keteranganCtrl,
-                        minLines: 2,
-                        maxLines: 4,
-                        decoration: _decoration(
-                          'Keterangan',
-                          hint: 'Catatan (opsional)',
-                        ),
+                    const SizedBox(height: 12),
+                    SalesAttachmentCard(
+                      title: 'Attachment',
+                      existingNames: _existingAttachmentNames,
+                      photos: _photos,
+                      onCamera: _saving ? null : _pickCamera,
+                      onGallery: _saving ? null : _pickGallery,
+                      onRemove: (index) =>
+                          setState(() => _photos.removeAt(index)),
+                    ),
+                    if (!_isFinal) ...[
+                      const SizedBox(height: 12),
+                      _section(
+                        title: 'Keterangan',
+                        children: [
+                          TextFormField(
+                            controller: _keteranganCtrl,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: _decoration(
+                              'Keterangan',
+                              hint: 'Catatan (opsional)',
+                            ),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                  ],
                   ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
@@ -995,7 +985,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
 
   _ItemRow _manualRow() {
     return _ItemRow(
-      uom: 'Box',
       sourceWarehouse: context.read<TukarGulingState>().preferredWarehouseName(
         _company,
       ),
@@ -1003,7 +992,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   }
 
   void _chooseMetode(String metode) {
-    final hasData = _claims.any((row) => (row.itemCode ?? '').isNotEmpty) ||
+    final hasData =
+        _claims.any((row) => (row.itemCode ?? '').isNotEmpty) ||
         _rows.any((row) => (row.itemCode ?? '').isNotEmpty);
     if (_metode.isNotEmpty && _metode != metode && hasData) {
       setState(() {
@@ -1032,17 +1022,14 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       children: [
         const Text(
           'Metode Final',
-          style: TextStyle(
-            color: AppColors.navy,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(color: AppColors.navy, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: _methodCard(
-                title: 'Get From Harian',
+                title: 'Get From Pengajuan',
                 subtitle: 'Gabungkan klaim dalam kg dan konversi menjadi box.',
                 selected: _isGetFrom,
                 onTap: () => _chooseMetode('Get From Harian'),
@@ -1052,7 +1039,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
             Expanded(
               child: _methodCard(
                 title: 'Input Langsung',
-                subtitle: 'Isi item dan qty box.',
+                subtitle: 'Isi item dan qty sesuai UOM Item Master.',
                 selected: _isManual,
                 onTap: () => _chooseMetode('Input Langsung'),
               ),
@@ -1134,14 +1121,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     );
   }
 
-  void _chooseJenis(String jenis) {
-    setState(() {
-      _jenis = jenis;
-      _jenisLocked = true;
-      _pullSummary = '';
-    });
-  }
-
   Future<void> _pickDeliveryDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -1186,7 +1165,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     final dn = _deliveryNote?.trim() ?? '';
     if ((_customer ?? '').isEmpty || _deliveryDate == null || dn.isEmpty) {
       setState(
-        () => _error = 'Pilih customer, tanggal pengiriman, dan No Delivery Note.',
+        () => _error =
+            'Pilih customer, tanggal pengiriman, dan No Delivery Note.',
       );
       return;
     }
@@ -1236,6 +1216,24 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     });
   }
 
+  String _stockUomFor(
+    String itemCode,
+    List<TukarGulingDailyClaim> claims,
+    List<TukarGulingRemainder> remainders,
+  ) {
+    for (final claim in claims) {
+      if (claim.itemCode != itemCode) continue;
+      final uom = tukarGulingStockUom(claim.stockUom);
+      if (uom.isNotEmpty) return uom;
+    }
+    for (final row in remainders) {
+      if (row.itemCode != itemCode) continue;
+      final uom = tukarGulingStockUom(row.stockUom);
+      if (uom.isNotEmpty) return uom;
+    }
+    return 'Box';
+  }
+
   Future<void> _openDailyClaims() async {
     final customer = _customer?.trim() ?? '';
     if (customer.isEmpty) {
@@ -1268,7 +1266,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     claims = claims.where((claim) => claim.itemCode.isNotEmpty).toList();
     if (claims.isEmpty && remainders.isEmpty) {
       setState(
-        () => _error = 'Belum ada klaim Harian atau sisa kg untuk customer ini.',
+        () => _error =
+            'Belum ada klaim Pengajuan atau sisa kg untuk customer ini.',
       );
       return;
     }
@@ -1292,12 +1291,17 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     List<TukarGulingDailyClaim> selected,
     List<TukarGulingRemainder> remainders,
   ) async {
-    final ordered = [...selected]..sort((a, b) {
+    final ordered = [...selected]
+      ..sort((a, b) {
         final byDate = a.claimDate.compareTo(b.claimDate);
         if (byDate != 0) return byDate;
         return a.sourceName.compareTo(b.sourceName);
       });
-    final grouped = <String, ({String name, double kg, List<TukarGulingDailyClaim> rows})>{};
+    final grouped =
+        <
+          String,
+          ({String name, double kg, List<TukarGulingDailyClaim> rows})
+        >{};
     for (final claim in ordered) {
       final current = grouped[claim.itemCode];
       grouped[claim.itemCode] = (
@@ -1326,6 +1330,23 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     var totalBox = 0;
     var totalSisa = 0.0;
     for (final entry in grouped.entries) {
+      final stockUom = _stockUomFor(entry.key, selected, remainders);
+      totalKg += entry.value.kg;
+      if (stockUom == 'KG') {
+        summaries.add(
+          '${entry.value.name}: ${_qtyText(entry.value.kg)} kg langsung menjadi qty KG.',
+        );
+        nextRows.add(
+          _ItemRow(
+            itemCode: entry.key,
+            itemName: entry.value.name,
+            sourceWarehouse: warehouse,
+            uom: 'KG',
+            qtyText: _qtyText(entry.value.kg),
+          ),
+        );
+        continue;
+      }
       final perBox = await state.kgPerBox(
         entry.key,
         itemName: entry.value.name,
@@ -1340,7 +1361,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       }
       final boxes = ((entry.value.kg + 0.000001) / perBox).floor();
       final remainder = _round3(entry.value.kg - _round3(boxes * perBox));
-      totalKg += entry.value.kg;
       totalBox += boxes;
       totalSisa += remainder;
       if (remainder > 0.001) {
@@ -1370,7 +1390,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     if (nextRows.isEmpty) {
       if (!mounted) return;
       setState(
-        () => _error = 'Total kg belum cukup untuk 1 box. Kumpulkan klaim lagi.',
+        () =>
+            _error = 'Total kg belum cukup untuk 1 box. Kumpulkan klaim lagi.',
       );
       return;
     }
@@ -1486,7 +1507,9 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  claim.sourceName.isEmpty ? 'Klaim ${index + 1}' : claim.sourceName,
+                  claim.sourceName.isEmpty
+                      ? 'Klaim ${index + 1}'
+                      : claim.sourceName,
                   style: const TextStyle(
                     color: AppColors.navy,
                     fontWeight: FontWeight.w800,
@@ -1597,10 +1620,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                   Icons.calendar_today_rounded,
                   DateFormat('dd-MM-yyyy').format(claim.claimDate),
                 ),
-                _metaChip(
-                  Icons.scale_rounded,
-                  '${_qtyText(claim.qtyKg)} kg',
-                ),
+                _metaChip(Icons.scale_rounded, '${_qtyText(claim.qtyKg)} kg'),
               ],
             ),
             if (note.isNotEmpty) ...[
@@ -1645,7 +1665,8 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                 IconButton(
                   tooltip: 'Hapus baris',
                   visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() => _claims.removeAt(index).dispose()),
+                  onPressed: () =>
+                      setState(() => _claims.removeAt(index).dispose()),
                   icon: const Icon(Icons.delete_outline_rounded),
                 ),
             ],
@@ -1662,14 +1683,18 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                             context: context,
                             initialDate: claim.claimDate,
                             firstDate: DateTime(2020),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
                           );
                           if (picked == null || !mounted) return;
                           setState(() => claim.claimDate = picked);
                         },
                   child: InputDecorator(
                     decoration: _decoration('Tanggal'),
-                    child: Text(DateFormat('dd-MM-yyyy').format(claim.claimDate)),
+                    child: Text(
+                      DateFormat('dd-MM-yyyy').format(claim.claimDate),
+                    ),
                   ),
                 ),
               ),
@@ -1678,7 +1703,9 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                 child: TextFormField(
                   controller: claim.qtyCtrl,
                   readOnly: readOnly,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: _decoration('Qty (kg) *'),
                   validator: (value) {
                     if ((claim.itemCode ?? '').isEmpty) return null;
@@ -1740,10 +1767,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
     );
   }
 
-  Widget _section({
-    required String title,
-    required List<Widget> children,
-  }) {
+  Widget _section({required String title, required List<Widget> children}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -1769,7 +1793,6 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       ),
     );
   }
-
 
   Widget _itemCard(int index) {
     final row = _rows[index];
@@ -1827,7 +1850,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                 setState(() {
                   row.itemCode = null;
                   row.itemName = '';
-                  row.uom = _isManual ? 'Box' : '';
+                  row.uom = '';
                 });
                 return;
               }
@@ -1838,7 +1861,10 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
               setState(() {
                 row.itemCode = value;
                 row.itemName = meta?.name ?? '';
-                row.uom = _isManual ? 'Box' : (meta?.uom ?? row.uom);
+                final stockUom = tukarGulingStockUom(meta?.uom ?? '');
+                row.uom = stockUom.isNotEmpty
+                    ? stockUom
+                    : (meta?.uom ?? row.uom);
                 if (_isManual && (row.sourceWarehouse ?? '').isEmpty) {
                   row.sourceWarehouse = context
                       .read<TukarGulingState>()
@@ -1871,8 +1897,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                 ),
             ],
             onSearch: _searchWarehouses,
-            onSelected: (value) =>
-                setState(() => row.sourceWarehouse = value),
+            onSelected: (value) => setState(() => row.sourceWarehouse = value),
           ),
           const SizedBox(height: 12),
           LayoutBuilder(
@@ -1899,11 +1924,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
               );
               if (narrow) {
                 return Column(
-                  children: [
-                    qtyField,
-                    const SizedBox(height: 12),
-                    uomField,
-                  ],
+                  children: [qtyField, const SizedBox(height: 12), uomField],
                 );
               }
               return Row(
@@ -1979,7 +2000,8 @@ List<TukarGulingRemainder> _remaindersOf(Object? raw) {
     for (final row in raw.whereType<Map>())
       if ((row['item_code']?.toString().trim() ?? '').isNotEmpty)
         TukarGulingRemainder(
-          sourceFinal: (row['tg_final_sumber'] ?? row['source_final'])
+          sourceFinal:
+              (row['tg_final_sumber'] ?? row['source_final'])
                   ?.toString()
                   .trim() ??
               '',
@@ -2033,7 +2055,10 @@ String _claimDateText(Map map) {
     final text = map[key]?.toString().trim() ?? '';
     if (text.isNotEmpty && text != 'null') return text;
   }
-  return _mapText(map, (key) => key.contains('tanggal') || key.endsWith('_date'));
+  return _mapText(
+    map,
+    (key) => key.contains('tanggal') || key.endsWith('_date'),
+  );
 }
 
 Object? _claimQty(Map map) {
@@ -2087,12 +2112,78 @@ class _DailyClaimSheet extends StatefulWidget {
 }
 
 class _DailyClaimSheetState extends State<_DailyClaimSheet> {
-  late final Set<int> _selected = {
-    for (var i = 0; i < widget.claims.length; i++) i,
-  };
+  final Set<int> _selected = {};
   final _selectedRemainder = <int>{};
   final _perBox = <String, double?>{};
+  String _sku = '';
   bool _loading = true;
+
+  List<({String code, String name})> get _skus {
+    final names = <String, String>{};
+    for (final claim in widget.claims) {
+      names.putIfAbsent(
+        claim.itemCode,
+        () => claim.itemName.isEmpty ? claim.itemCode : claim.itemName,
+      );
+    }
+    for (final row in widget.remainders) {
+      names.putIfAbsent(
+        row.itemCode,
+        () => row.itemName.isEmpty ? row.itemCode : row.itemName,
+      );
+    }
+    final rows = [
+      for (final entry in names.entries) (code: entry.key, name: entry.value),
+    ]..sort((a, b) => a.name.compareTo(b.name));
+    return rows;
+  }
+
+  void _autoSelect() {
+    _selected.clear();
+    _selectedRemainder.clear();
+    if (_sku.isEmpty) return;
+    final uom = _uomOf(_sku);
+    var total = 0.0;
+    final target = uom == 'KG' ? double.infinity : (_perBox[_sku] ?? 0);
+    final saldo = <int>[
+      for (var i = 0; i < widget.remainders.length; i++)
+        if (widget.remainders[i].itemCode == _sku) i,
+    ];
+    final harian = <int>[
+      for (var i = 0; i < widget.claims.length; i++)
+        if (widget.claims[i].itemCode == _sku) i,
+    ];
+    for (final index in saldo) {
+      if (target.isFinite && total + 0.000001 >= target) break;
+      final kg = widget.remainders[index].qtyKg;
+      if (kg <= 0) continue;
+      _selectedRemainder.add(index);
+      total += kg;
+    }
+    for (final index in harian) {
+      if (target.isFinite && total + 0.000001 >= target) break;
+      final kg = widget.claims[index].qtyKg;
+      if (kg <= 0) continue;
+      _selected.add(index);
+      total += kg;
+    }
+  }
+
+  String _uomOf(String code) {
+    for (final claim in widget.claims) {
+      if (claim.itemCode == code &&
+          tukarGulingStockUom(claim.stockUom).isNotEmpty) {
+        return tukarGulingStockUom(claim.stockUom);
+      }
+    }
+    for (final row in widget.remainders) {
+      if (row.itemCode == code &&
+          tukarGulingStockUom(row.stockUom).isNotEmpty) {
+        return tukarGulingStockUom(row.stockUom);
+      }
+    }
+    return 'Box';
+  }
 
   @override
   void initState() {
@@ -2129,9 +2220,7 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = [
-      for (final index in _selected) widget.claims[index],
-    ];
+    final selected = [for (final index in _selected) widget.claims[index]];
     final remainders = [
       for (final index in _selectedRemainder) widget.remainders[index],
     ];
@@ -2152,15 +2241,26 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
     }
     var totalKg = 0.0;
     var totalBox = 0;
+    var directKg = false;
     final lines = <String>[];
+    var canProcess = grouped.isNotEmpty;
     for (final entry in grouped.entries) {
       totalKg += entry.value.kg;
+      if (_uomOf(entry.key) == 'KG') {
+        directKg = true;
+        lines.add(
+          '${entry.value.name}: ${_qtyText(entry.value.kg)} kg langsung menjadi qty KG.',
+        );
+        continue;
+      }
       final perBox = _perBox[entry.key];
       if (perBox == null || perBox <= 0) {
+        canProcess = false;
         lines.add('${entry.value.name}: konversi kg/box belum ada');
         continue;
       }
       final boxes = (entry.value.kg / perBox).floor();
+      if (boxes < 1) canProcess = false;
       final sisa = _round3(entry.value.kg - boxes * perBox);
       totalBox += boxes;
       lines.add(
@@ -2168,11 +2268,16 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
         ' = $boxes box, sisa ${_qtyText(sisa)} kg',
       );
     }
-    final canPull = !_loading && totalBox >= 1 && (selected.isNotEmpty || remainders.isNotEmpty);
+    final canPull =
+        !_loading &&
+        _sku.isNotEmpty &&
+        canProcess &&
+        (selected.isNotEmpty || remainders.isNotEmpty);
 
     return _TgSheetFrame(
-      title: 'Get From Harian',
-      subtitle: 'Centang klaim dan sisa kg. Kurang dari 1 box tidak bisa ditarik.',
+      title: 'Get From Pengajuan + Sisa',
+      subtitle:
+          'Pilih SKU, lalu sesuaikan sumber. Box butuh minimal 1 box. KG diproses langsung.',
       icon: Icons.download_rounded,
       footer: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2180,6 +2285,8 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
           Text(
             _loading
                 ? 'Menghitung konversi...'
+                : directKg
+                ? 'Total ${_qtyText(totalKg)} kg'
                 : 'Total ${_qtyText(totalKg)} kg → $totalBox box',
             style: const TextStyle(
               color: AppColors.navy,
@@ -2198,11 +2305,11 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
                 ),
               ),
             ),
-          if (!_loading && totalBox < 1)
+          if (!_loading && _sku.isNotEmpty && !canProcess)
             const Padding(
               padding: EdgeInsets.only(top: 6),
               child: Text(
-                'Total kg belum cukup untuk 1 box.',
+                'SKU Box belum cukup untuk 1 box.',
                 style: TextStyle(
                   color: AppColors.danger,
                   fontWeight: FontWeight.w700,
@@ -2235,26 +2342,49 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         children: [
-          for (var i = 0; i < widget.claims.length; i++)
-            _pickCard(
-              checked: _selected.contains(i),
-              title: widget.claims[i].itemName.isEmpty
-                  ? widget.claims[i].itemCode
-                  : widget.claims[i].itemName,
-              chips: [
-                widget.claims[i].sourceName,
-                DateFormat('dd-MM-yyyy').format(widget.claims[i].claimDate),
-                '${_qtyText(widget.claims[i].qtyKg)} kg',
-              ],
-              onChanged: (value) => setState(() {
-                if (value) {
-                  _selected.add(i);
-                } else {
-                  _selected.remove(i);
-                }
-              }),
+          DropdownButtonFormField<String>(
+            initialValue: _sku.isEmpty ? null : _sku,
+            decoration: const InputDecoration(labelText: 'Pilih SKU *'),
+            items: [
+              for (final sku in _skus)
+                DropdownMenuItem(value: sku.code, child: Text(sku.name)),
+            ],
+            onChanged: (value) => setState(() {
+              _sku = value ?? '';
+              _autoSelect();
+            }),
+          ),
+          const SizedBox(height: 12),
+          if (_sku.isEmpty)
+            const Text(
+              'Pilih SKU untuk menampilkan saldo Final dan Pengajuan.',
+              style: TextStyle(
+                color: AppColors.slate,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          if (widget.remainders.isNotEmpty) ...[
+          for (var i = 0; i < widget.claims.length; i++)
+            if (widget.claims[i].itemCode == _sku)
+              _pickCard(
+                checked: _selected.contains(i),
+                title: widget.claims[i].itemName.isEmpty
+                    ? widget.claims[i].itemCode
+                    : widget.claims[i].itemName,
+                chips: [
+                  widget.claims[i].sourceName,
+                  DateFormat('dd-MM-yyyy').format(widget.claims[i].claimDate),
+                  '${_qtyText(widget.claims[i].qtyKg)} kg',
+                ],
+                onChanged: (value) => setState(() {
+                  if (value) {
+                    _selected.add(i);
+                  } else {
+                    _selected.remove(i);
+                  }
+                }),
+              ),
+          if (_sku.isNotEmpty &&
+              widget.remainders.any((row) => row.itemCode == _sku)) ...[
             const Padding(
               padding: EdgeInsets.only(top: 4, bottom: 8),
               child: Text(
@@ -2266,23 +2396,24 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
               ),
             ),
             for (var i = 0; i < widget.remainders.length; i++)
-              _pickCard(
-                checked: _selectedRemainder.contains(i),
-                title: widget.remainders[i].itemName.isEmpty
-                    ? widget.remainders[i].itemCode
-                    : widget.remainders[i].itemName,
-                chips: [
-                  widget.remainders[i].sourceFinal,
-                  'Sisa ${_qtyText(widget.remainders[i].qtyKg)} kg',
-                ],
-                onChanged: (value) => setState(() {
-                  if (value) {
-                    _selectedRemainder.add(i);
-                  } else {
-                    _selectedRemainder.remove(i);
-                  }
-                }),
-              ),
+              if (widget.remainders[i].itemCode == _sku)
+                _pickCard(
+                  checked: _selectedRemainder.contains(i),
+                  title: widget.remainders[i].itemName.isEmpty
+                      ? widget.remainders[i].itemCode
+                      : widget.remainders[i].itemName,
+                  chips: [
+                    widget.remainders[i].sourceFinal,
+                    'Sisa ${_qtyText(widget.remainders[i].qtyKg)} kg',
+                  ],
+                  onChanged: (value) => setState(() {
+                    if (value) {
+                      _selectedRemainder.add(i);
+                    } else {
+                      _selectedRemainder.remove(i);
+                    }
+                  }),
+                ),
           ],
         ],
       ),
@@ -2582,11 +2713,14 @@ class _DnSkuSheetState extends State<_DnSkuSheet> {
     final rows = <_ClaimRow>[];
     for (final index in _selected) {
       final item = widget.items[index];
-      final qty = double.tryParse(_qty[index].text.trim().replaceAll(',', '.')) ?? 0;
+      final qty =
+          double.tryParse(_qty[index].text.trim().replaceAll(',', '.')) ?? 0;
       if (qty <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Qty kg untuk ${item['item_code']} harus lebih dari 0.'),
+            content: Text(
+              'Qty kg untuk ${item['item_code']} harus lebih dari 0.',
+            ),
           ),
         );
         return;
@@ -2625,7 +2759,12 @@ class _TgSheetFrame extends StatelessWidget {
     final media = MediaQuery.of(context);
     final topGap = media.viewPadding.top + 12;
     return Padding(
-      padding: EdgeInsets.fromLTRB(12, topGap, 12, 12 + media.viewInsets.bottom),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        topGap,
+        12,
+        12 + media.viewInsets.bottom,
+      ),
       child: Material(
         color: AppColors.white,
         elevation: 8,
@@ -2633,7 +2772,9 @@ class _TgSheetFrame extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         clipBehavior: Clip.antiAlias,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: media.size.height - topGap - 12),
+          constraints: BoxConstraints(
+            maxHeight: media.size.height - topGap - 12,
+          ),
           child: Column(
             children: [
               const SizedBox(height: 10),

@@ -458,7 +458,6 @@ class AppState with ChangeNotifier {
     if (_normalizeRoleProfile(_userRole) == MobileRole.spg) {
       enabledModules.remove(MobileModule.sales);
       const warehouseWork = {
-        'Warehouse',
         'Stock Entry',
         'Stock Reconciliation',
         'Stock Opname',
@@ -10637,6 +10636,22 @@ class AppState with ChangeNotifier {
           'posting_date',
           'total_debit',
           'total_credit',
+          'docstatus',
+        ],
+      ),
+      (
+        doctype: 'Tukar Guling',
+        fields: [
+          'name',
+          'customer',
+          'customer_name',
+          'company',
+          'workflow_state',
+          'owner',
+          'posting_date',
+          'keterangan',
+          'custom_jenis_input',
+          'custom_sumber_input',
           'docstatus',
         ],
       ),

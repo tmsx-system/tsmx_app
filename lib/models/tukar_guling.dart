@@ -6,6 +6,8 @@ class TukarGulingSummary {
   final String customerName;
   final String stockEntry;
   final String workflowState;
+  final String jenisInput;
+  final String metodeFinal;
   final String keterangan;
   final int docstatus;
 
@@ -17,6 +19,8 @@ class TukarGulingSummary {
     this.customerName = '',
     this.stockEntry = '',
     this.workflowState = '',
+    this.jenisInput = '',
+    this.metodeFinal = '',
     this.keterangan = '',
     this.docstatus = 0,
   });
@@ -33,6 +37,11 @@ class TukarGulingSummary {
           json['workflow_state']?.toString() ??
           json['status']?.toString() ??
           '',
+      jenisInput:
+          json['custom_jenis_input']?.toString() ??
+          json['jenis_input']?.toString() ??
+          '',
+      metodeFinal: json['custom_metode_final']?.toString() ?? '',
       keterangan: json['keterangan']?.toString() ?? '',
       docstatus: int.tryParse(json['docstatus']?.toString() ?? '') ?? 0,
     );
@@ -96,6 +105,7 @@ class TukarGulingRemainder {
   final String itemName;
   final double qtyKg;
   final String postingDate;
+  final String stockUom;
 
   const TukarGulingRemainder({
     required this.sourceFinal,
@@ -103,6 +113,7 @@ class TukarGulingRemainder {
     this.itemName = '',
     required this.qtyKg,
     this.postingDate = '',
+    this.stockUom = '',
   });
 }
 
@@ -125,6 +136,7 @@ class TukarGulingDailyClaim {
   final String itemName;
   final double qtyKg;
   final String keterangan;
+  final String stockUom;
 
   const TukarGulingDailyClaim({
     required this.sourceName,
@@ -133,7 +145,22 @@ class TukarGulingDailyClaim {
     this.itemName = '',
     required this.qtyKg,
     this.keterangan = '',
+    this.stockUom = '',
   });
+}
+
+String tukarGulingJenisLabel(String value) {
+  final text = value.trim().toLowerCase();
+  if (text == 'pengajuan' || text == 'harian') return 'Harian';
+  if (text == 'final' || text == 'finalisasi') return 'Final';
+  return value.trim();
+}
+
+String tukarGulingStockUom(String value) {
+  final text = value.trim().toLowerCase();
+  if (text == 'box') return 'Box';
+  if (text == 'kg' || text == 'kilogram') return 'KG';
+  return '';
 }
 
 class TukarGulingItemDraft {
@@ -179,6 +206,7 @@ class TukarGulingDraft {
   final String customer;
   final String customerName;
   final String jenisInput;
+  final String sumberInput;
   final String metodeFinal;
   final String keterangan;
   final DateTime? deliveryDate;
@@ -198,6 +226,7 @@ class TukarGulingDraft {
     required this.customer,
     this.customerName = '',
     this.jenisInput = 'Harian',
+    this.sumberInput = '',
     this.metodeFinal = '',
     this.keterangan = '',
     this.deliveryDate,
@@ -225,14 +254,27 @@ class TukarGulingDraft {
     final itemTable = meta.childTableField.trim() == 'items'
         ? 'tukar_guling_item'
         : meta.childTableField;
+    final jenisValue = isFinal ? 'Final' : 'Harian';
+    final sumber = sumberInput.trim();
+    final metode = metodeFinal.trim();
+    final jenisField = meta.jenisField.trim().isEmpty
+        ? 'custom_jenis_input'
+        : meta.jenisField.trim();
+    final metodeField = meta.metodeField.trim().isEmpty
+        ? 'custom_metode_final'
+        : meta.metodeField.trim();
     return {
       'doctype': 'Tukar Guling',
       if (parent.isNotEmpty) 'name': parent,
       if (parent.isEmpty && (namingSeries ?? '').trim().isNotEmpty)
         'naming_series': namingSeries!.trim(),
-      meta.jenisField: isFinal ? 'Final' : 'Harian',
-      if (isFinal && metodeFinal.trim().isNotEmpty)
-        meta.metodeField: metodeFinal.trim(),
+      'custom_jenis_input': jenisValue,
+      if (jenisField != 'custom_jenis_input') jenisField: jenisValue,
+      if (sumber == 'Sales' || sumber == 'SPG')
+        'custom_sumber_input': sumber,
+      if (isFinal && metode.isNotEmpty) 'custom_metode_final': metode,
+      if (isFinal && metode.isNotEmpty && metodeField != 'custom_metode_final')
+        metodeField: metode,
       'posting_date': date,
       'company': company.trim(),
       'customer': customer.trim(),
@@ -250,9 +292,7 @@ class TukarGulingDraft {
       if (totalKg > 0) 'custom_total_kg': totalKg,
       if (isFinal && totalBox > 0) 'custom_total_box': totalBox,
       if (isFinal) 'custom_sisa_kg': sisaKg,
-      if (isFinal &&
-          usedRemainders.isNotEmpty &&
-          meta.sourceDoctype.isNotEmpty)
+      if (isFinal && usedRemainders.isNotEmpty && meta.sourceDoctype.isNotEmpty)
         meta.sourceTableField: [
           for (final row in usedRemainders)
             tukarGulingChildRow(
@@ -450,10 +490,7 @@ TukarGulingProcessKg tukarGulingProcessKg(Map doc) {
   var processed = total - remaining;
   if (processed < 0) processed = 0;
   if (remaining < 0) remaining = 0;
-  return TukarGulingProcessKg(
-    processedKg: processed,
-    remainingKg: remaining,
-  );
+  return TukarGulingProcessKg(processedKg: processed, remainingKg: remaining);
 }
 
 String formatTukarGulingQty(double value) {

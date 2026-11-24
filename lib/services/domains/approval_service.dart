@@ -31,6 +31,7 @@ class ApprovalService {
     'Purchase Invoice',
     'Material Request',
     'Journal Entry',
+    'Tukar Guling',
   ];
 
   /// Shared inbox fields; unknown fields are dropped by field fallback.
@@ -81,7 +82,7 @@ class ApprovalService {
     final key = _approvalTodoCacheKey(currentUser);
     if (!forceRefresh) {
       final cachedRows = await _readDbRowList(key);
-      if (cachedRows != null) {
+      if (cachedRows != null && cachedRows.isNotEmpty) {
         final workflowStateDocStatus = await _workflowStateDocStatusMap();
         return cachedRows
             .map(_approvalTodoFromCacheJson)
@@ -606,6 +607,7 @@ class ApprovalService {
             if ((row['document_type']?.toString().trim() ?? '').isNotEmpty)
               row['document_type'].toString().trim(),
         };
+        names.addAll(_fallbackApprovalDoctypes);
         if (names.isNotEmpty) return names.toList()..sort();
       } catch (_) {}
       return List<String>.from(_fallbackApprovalDoctypes);
@@ -824,10 +826,18 @@ class ApprovalService {
           try {
             final doc = Map<String, dynamic>.from(row);
             doc['doctype'] = doctype;
-            final actions = await _fetchWorkflowActionsForDocument(
+            var actions = await _fetchWorkflowActionsForDocument(
               doc,
               workflowStateDocStatus: workflowStateDocStatus,
             );
+            if (actions.isEmpty) {
+              final full = await frappe.fetchDocument(doctype, name);
+              full['doctype'] = doctype;
+              actions = await _fetchWorkflowActionsForDocument(
+                full,
+                workflowStateDocStatus: workflowStateDocStatus,
+              );
+            }
             return (name: name, actions: actions);
           } catch (_) {
             return (name: name, actions: const <String>[]);

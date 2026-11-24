@@ -81,7 +81,9 @@ bool _rowLooksLikeTukarItem(String key, Map<String, dynamic> sample) {
       doctype.contains('tukar guling item');
 }
 
-List<Map<String, dynamic>> tukarGulingDocumentRows(Map<String, dynamic> detail) {
+List<Map<String, dynamic>> tukarGulingDocumentRows(
+  Map<String, dynamic> detail,
+) {
   var claims = _firstNamedChildTable(detail, const [
     'custom_claim_details',
     'klaim_harian',
@@ -135,7 +137,7 @@ String tukarGulingItemSectionTitle(
   double storedBox = 0,
 }) {
   if (rows.isNotEmpty && rows.every(tukarGulingRowIsClaim)) {
-    return 'Klaim Harian (${rows.length})';
+    return 'Klaim Pengajuan (${rows.length})';
   }
   final gotten = tukarGulingGottenBoxQty(
     rows.where((row) => !tukarGulingRowIsClaim(row)),
@@ -255,10 +257,7 @@ Widget tukarGulingTodoItemCard(
             children: [
               if (claim && dateLabel.isNotEmpty)
                 pill(Icons.event_rounded, dateLabel),
-              pill(
-                Icons.inventory_2_outlined,
-                uom.isEmpty ? qty : '$qty $uom',
-              ),
+              pill(Icons.inventory_2_outlined, uom.isEmpty ? qty : '$qty $uom'),
               if (!claim && warehouse.isNotEmpty)
                 pill(Icons.warehouse_outlined, warehouse),
               if (claim && note.isNotEmpty) pill(Icons.notes_rounded, note),
@@ -345,6 +344,15 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       });
     }
     final appState = context.read<TodoState>();
+    if (!appState.appState.canUseApprovals) {
+      if (!mounted) return;
+      setState(() {
+        _rows = const [];
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     try {
       final rows = await appState.fetchApprovalTodos(
         forceRefresh: forceRefresh,
@@ -673,7 +681,9 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
               width: 116,
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
               decoration: BoxDecoration(
-                color: selected ? AppColors.white : accent.withValues(alpha: 0.08),
+                color: selected
+                    ? AppColors.white
+                    : accent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: selected ? accent : accent.withValues(alpha: 0.16),
@@ -701,7 +711,11 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
                           color: accent.withValues(alpha: 0.14),
                           borderRadius: BorderRadius.circular(9),
                         ),
-                        child: Icon(_approvalIcon(doctype), color: accent, size: 16),
+                        child: Icon(
+                          _approvalIcon(doctype),
+                          color: accent,
+                          size: 16,
+                        ),
                       ),
                       const Spacer(),
                       Text(
@@ -765,9 +779,7 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       child: Column(
         children: [
           InkWell(
-            onTap: () => setState(
-              () => _openDoctype = expanded ? '' : doctype,
-            ),
+            onTap: () => setState(() => _openDoctype = expanded ? '' : doctype),
             borderRadius: BorderRadius.circular(16),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
@@ -787,7 +799,11 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
                       color: accent.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(_approvalIcon(doctype), color: accent, size: 16),
+                    child: Icon(
+                      _approvalIcon(doctype),
+                      color: accent,
+                      size: 16,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -859,132 +875,137 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
               child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Builder(
-                  builder: (context) {
-                    final accent = _approvalAccent(row.doctype);
-                    return Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.13),
-                        borderRadius: BorderRadius.circular(17),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Builder(
+                        builder: (context) {
+                          final accent = _approvalAccent(row.doctype);
+                          return Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: accent.withValues(alpha: 0.13),
+                              borderRadius: BorderRadius.circular(17),
+                            ),
+                            child: Icon(
+                              _approvalIcon(row.doctype),
+                              color: accent,
+                            ),
+                          );
+                        },
                       ),
-                      child: Icon(_approvalIcon(row.doctype), color: accent),
-                    );
-                  },
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Builder(
-                    builder: (context) {
-                      final accent = _approvalAccent(row.doctype);
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: accent.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    row.moduleLabel,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: accent,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Builder(
+                          builder: (context) {
+                            final accent = _approvalAccent(row.doctype);
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: accent.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          row.moduleLabel,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: accent,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
                                     ),
+                                    const SizedBox(width: 8),
+                                    ErpStatusBadge(
+                                      statusText: row.workflowState.isEmpty
+                                          ? row.status
+                                          : row.workflowState,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  row.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.navy,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              ErpStatusBadge(
-                                statusText: row.workflowState.isEmpty
-                                    ? row.status
-                                    : row.workflowState,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            row.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.navy,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            row.partyLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.slate,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+                                const SizedBox(height: 4),
+                                Text(
+                                  row.partyLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.slate,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.slate,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _approvalMetaPill(
+                        icon: Icons.payments_outlined,
+                        label: _approvalAmount(row),
+                        color: _approvalAccent(row.doctype),
+                      ),
+                      if (row.date.isNotEmpty)
+                        _approvalMetaPill(
+                          icon: Icons.event_available_rounded,
+                          label: row.date,
+                          color: const Color(0xFF0EA5E9),
+                        ),
+                      _approvalMetaPill(
+                        icon: Icons.task_alt_rounded,
+                        label: '${row.actions.length} action',
+                        color: const Color(0xFF6366F1),
+                      ),
+                    ],
                   ),
-                  child: const Icon(
-                    Icons.chevron_right_rounded,
-                    color: AppColors.slate,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _approvalMetaPill(
-                  icon: Icons.payments_outlined,
-                  label: _approvalAmount(row),
-                  color: _approvalAccent(row.doctype),
-                ),
-                if (row.date.isNotEmpty)
-                  _approvalMetaPill(
-                    icon: Icons.event_available_rounded,
-                    label: row.date,
-                    color: const Color(0xFF0EA5E9),
-                  ),
-                _approvalMetaPill(
-                  icon: Icons.task_alt_rounded,
-                  label: '${row.actions.length} action',
-                  color: const Color(0xFF6366F1),
-                ),
-              ],
-            ),
-          ],
-        ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1119,7 +1140,6 @@ class _SalesOrderApprovalScreenState extends State<SalesOrderApprovalScreen> {
       ],
     );
   }
-
 }
 
 class _ErpApprovalDetailPage extends StatefulWidget {
@@ -1204,10 +1224,13 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         _loading = false;
       });
       if (widget.approval.doctype == 'Tukar Guling' && detail != null) {
-        final claims = tukarGulingDocumentRows(detail).where(tukarGulingRowIsClaim);
+        final claims = tukarGulingDocumentRows(
+          detail,
+        ).where(tukarGulingRowIsClaim);
         final missing = [
           for (final claim in claims)
-            if (tukarGulingClaimDate(claim).isEmpty) tukarGulingClaimSource(claim),
+            if (tukarGulingClaimDate(claim).isEmpty)
+              tukarGulingClaimSource(claim),
         ];
         if (missing.isNotEmpty) {
           try {
@@ -1864,7 +1887,10 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     return value == 'cancel' || value == 'cancelled' || value == 'batal';
   }
 
-  bool _tukarIsFinal(Map<String, dynamic> detail, List<Map<String, dynamic>> rows) {
+  bool _tukarIsFinal(
+    Map<String, dynamic> detail,
+    List<Map<String, dynamic>> rows,
+  ) {
     final jenis = _text(detail['custom_jenis_input']).isNotEmpty
         ? _text(detail['custom_jenis_input'])
         : _text(detail['jenis_input']);
@@ -1876,7 +1902,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
     Map<String, dynamic> detail,
     List<Map<String, dynamic>> items,
   ) {
-    return _tukarIsFinal(detail, items) ? 'Final Items' : 'Klaim Harian';
+    return _tukarIsFinal(detail, items) ? 'Final Items' : 'Klaim Pengajuan';
   }
 
   List<Widget> _todoItemChildren(
@@ -1956,8 +1982,11 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
             '${formatTukarGulingQty(process.processedKg)} kg',
           ),
         if (isFinalTukar)
-          _detailRow('Sisa kg', '${formatTukarGulingQty(process.remainingKg)} kg'),
-        if (jenis.isNotEmpty) _detailRow('Jenis', jenis),
+          _detailRow(
+            'Sisa kg',
+            '${formatTukarGulingQty(process.remainingKg)} kg',
+          ),
+        if (jenis.isNotEmpty) _detailRow('Jenis', tukarGulingJenisLabel(jenis)),
         if (metode.isNotEmpty) _detailRow('Metode', metode),
         _detailRow('Company', _text(detail['company'])),
         _detailRow('Dibuat oleh', _text(detail['owner'])),
@@ -1976,8 +2005,11 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         _detailRow('Status Dokumen', docStatusLabel(widget.approval.docStatus)),
       ];
     }
-    final hasMoney = NumParse.asDouble(
-          detail['grand_total'] ?? detail['rounded_total'] ?? detail['net_total'],
+    final hasMoney =
+        NumParse.asDouble(
+          detail['grand_total'] ??
+              detail['rounded_total'] ??
+              detail['net_total'],
         ) >
         0;
     if (!hasMoney) {
@@ -1987,7 +2019,8 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       final jenis = _text(detail['custom_jenis_input']).isNotEmpty
           ? _text(detail['custom_jenis_input'])
           : _text(detail['jenis_input']);
-      final isFinalTukar = widget.approval.doctype == 'Tukar Guling' &&
+      final isFinalTukar =
+          widget.approval.doctype == 'Tukar Guling' &&
           (jenis.toLowerCase() == 'final' ||
               tukarRows.any((row) => !tukarGulingRowIsClaim(row)));
       final gottenBox = tukarGulingGottenBoxQty(
@@ -1999,9 +2032,12 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
         gottenBox > 0 ? gottenBox : storedBox,
       );
       return [
-        _detailRow('Customer', _text(detail['customer_name']).isNotEmpty
-            ? _text(detail['customer_name'])
-            : _text(detail['customer'])),
+        _detailRow(
+          'Customer',
+          _text(detail['customer_name']).isNotEmpty
+              ? _text(detail['customer_name'])
+              : _text(detail['customer']),
+        ),
         _detailRow('Company', _text(detail['company'])),
         _detailRow(
           'Tanggal',
