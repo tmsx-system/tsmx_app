@@ -1,3 +1,4 @@
+import '../../models/spg_workspace.dart';
 import '../../models/tukar_guling.dart';
 import '../../services/frappe_service.dart';
 import '../../utils/date_range_presets.dart';
@@ -100,6 +101,18 @@ class TukarGulingState extends AppStateProxyNotifier {
       filters.add(['posting_date', '<=', DateRangePresets.toFrappeDate(to)]);
     }
 
+    final scopedCustomers = await _scopedCustomerIds();
+    if (scopedCustomers != null) {
+      if (selectedCustomer.isNotEmpty &&
+          !scopedCustomers.contains(selectedCustomer)) {
+        return const [];
+      }
+      if (selectedCustomer.isEmpty) {
+        if (scopedCustomers.isEmpty) return const [];
+        filters.add(['customer', 'in', scopedCustomers.toList()]);
+      }
+    }
+
     Future<List<TukarGulingSummary>> load(
       List<List<dynamic>>? useFilters,
     ) async {
@@ -159,6 +172,31 @@ class TukarGulingState extends AppStateProxyNotifier {
         );
       }
     }
+  }
+
+  /// Sales sees customers on their Sales Team and on their Field SPG Assignment.
+  /// SPG sees only customers assigned to that employee.
+  Future<Set<String>?> _scopedCustomerIds() async {
+    if (appState.mobileAccess.isSpg) {
+      final scope = await appState.fetchSpgAssignmentScope(ignoreDates: true);
+      return {
+        for (final row in scope.rows)
+          if (row.customer.trim().isNotEmpty) row.customer.trim(),
+      };
+    }
+    if (!appState.mobileAccess.shouldScopeSalesData) return null;
+    final customers = await appState.fetchSalesCustomers();
+    var assignmentRows = const <SpgAssignmentRow>[];
+    try {
+      final scope = await appState.fetchSpgAssignmentScope(ignoreDates: true);
+      assignmentRows = scope.rows;
+    } catch (_) {}
+    return {
+      for (final customer in customers)
+        if (customer.id.trim().isNotEmpty) customer.id.trim(),
+      for (final row in assignmentRows)
+        if (row.customer.trim().isNotEmpty) row.customer.trim(),
+    };
   }
 
   /// Batch get_transitions from list rows (no full GET per row).
