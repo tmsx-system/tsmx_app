@@ -144,7 +144,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
       } else {
         final jenis = widget.initialJenis?.trim() ?? '';
         final spg = state.appState.mobileAccess.isSpg;
-        _jenis = spg || jenis != 'Final' ? 'Harian' : 'Final';
+        _jenis = spg || jenis.toLowerCase() != 'final' ? 'Pengajuan' : 'Final';
         _jenisLocked = true;
       }
     } catch (error) {
@@ -170,7 +170,10 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         doc[meta.jenisField]?.toString().trim() ??
         doc['jenis_input']?.toString().trim() ??
         '';
-    _jenis = jenis.toLowerCase() == 'pengajuan' ? 'Harian' : jenis;
+    final normalizedJenis = jenis.toLowerCase();
+    _jenis = normalizedJenis == 'harian' || normalizedJenis == 'pengajuan'
+        ? 'Pengajuan'
+        : jenis;
     _jenisLocked = true;
     _metode =
         doc[meta.metodeField]?.toString().trim() ??
@@ -286,6 +289,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
   Future<List<ErpItemOption>> _searchCustomers(String query) async {
     final rows = await context.read<TukarGulingState>().searchCustomers(
       query: query,
+      onDate: _postingDate,
     );
     for (final row in rows) {
       final id = row['name']?.toString().trim() ?? '';
@@ -471,7 +475,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         company: _company!.trim(),
         customer: _customer!.trim(),
         customerName: _customerName,
-        jenisInput: _isFinal ? 'Final' : 'Harian',
+        jenisInput: _isFinal ? 'Final' : 'Pengajuan',
         sumberInput: _sumberInput,
         metodeFinal: _isFinal ? _metode : '',
         keterangan: _isFinal ? '' : _keteranganCtrl.text,
@@ -2340,14 +2344,30 @@ class _DailyClaimSheetState extends State<_DailyClaimSheet> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         children: [
+          const Text(
+            'Pilih SKU *',
+            style: TextStyle(
+              color: AppColors.navy,
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             initialValue: _sku.isEmpty ? null : _sku,
-            decoration: const InputDecoration(labelText: 'Pilih SKU *'),
+            isExpanded: true,
+            decoration: const InputDecoration(
+              hintText: 'Pilih SKU',
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+            ),
             items: [
               for (final sku in _skus)
-                DropdownMenuItem(value: sku.code, child: Text(sku.name)),
+                DropdownMenuItem(
+                  value: sku.code,
+                  child: Text(sku.name, overflow: TextOverflow.ellipsis),
+                ),
             ],
             onChanged: (value) => setState(() {
               _sku = value ?? '';

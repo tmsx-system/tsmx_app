@@ -151,7 +151,7 @@ class TukarGulingDailyClaim {
 
 String tukarGulingJenisLabel(String value) {
   final text = value.trim().toLowerCase();
-  if (text == 'pengajuan' || text == 'harian') return 'Harian';
+  if (text == 'pengajuan' || text == 'harian') return 'Pengajuan';
   if (text == 'final' || text == 'finalisasi') return 'Final';
   return value.trim();
 }
@@ -225,7 +225,7 @@ class TukarGulingDraft {
     required this.company,
     required this.customer,
     this.customerName = '',
-    this.jenisInput = 'Harian',
+    this.jenisInput = 'Pengajuan',
     this.sumberInput = '',
     this.metodeFinal = '',
     this.keterangan = '',
@@ -254,7 +254,7 @@ class TukarGulingDraft {
     final itemTable = meta.childTableField.trim() == 'items'
         ? 'tukar_guling_item'
         : meta.childTableField;
-    final jenisValue = isFinal ? 'Final' : 'Harian';
+    final jenisValue = isFinal ? 'Final' : 'Pengajuan';
     final sumber = sumberInput.trim();
     final metode = metodeFinal.trim();
     final jenisField = meta.jenisField.trim().isEmpty

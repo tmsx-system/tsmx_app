@@ -1018,7 +1018,18 @@ class TukarGulingState extends AppStateProxyNotifier {
   Future<List<Map<String, dynamic>>> searchCustomers({
     String query = '',
     int limit = 40,
+    DateTime? onDate,
   }) async {
+    if (appState.mobileAccess.isSpg) {
+      final rows = await appState.fetchScheduledSpgCustomers(
+        query: query,
+        onDate: onDate,
+      );
+      return [
+        for (final row in rows.take(limit))
+          {'name': row.id, 'customer_name': row.name},
+      ];
+    }
     final rows = await appState.searchSalesCustomers(query);
     return [
       for (final row in rows.take(limit))
