@@ -512,6 +512,7 @@ class RipeningMonitoringState {
       meta.itemCodeField: line.itemCode.trim(),
       if (line.itemName.trim().isNotEmpty) meta.itemNameField: line.itemName.trim(),
       'position': line.posisi.trim(),
+      'ruang': line.ruang.trim(),
       'penggunaan_gas_ethylene_gram': line.gasEthylene,
       meta.qtyField: line.qtySampel,
       meta.rhField: line.rh,

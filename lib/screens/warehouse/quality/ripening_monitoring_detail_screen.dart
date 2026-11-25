@@ -257,7 +257,8 @@ class _RipeningMonitoringDetailScreenState
             spacing: 8,
             runSpacing: 8,
             children: [
-              _stat('Posisi Rak', line.posisi.isEmpty ? '-' : line.posisi),
+              _stat('Ruang', line.ruang.isEmpty ? '-' : line.ruang),
+              _stat('Posisi', line.posisi.isEmpty ? '-' : line.posisi),
               _stat(_meta.gasLabel, _qty(line.gasEthylene)),
               _stat('Qty Sampel', _qty(line.qtySampel)),
               _stat('RH', '${_qty(line.rh)}%'),

@@ -319,24 +319,30 @@ class _CreateRipeningMonitoringScreenState
           open: line.open,
           onToggle: () => _openOnly(line),
           child: Column(
-        children: [
-          _field(line.posisi, 'Posisi Rak *'),
-          Row(
             children: [
-              Expanded(child: _number(line.gas, '${_meta.gasLabel} *')),
-              const SizedBox(width: 10),
-              Expanded(child: _number(line.qty, 'Qty Sampel *', whole: true)),
+              Row(
+                children: [
+                  Expanded(child: _roomField(line)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _field(line.posisi, 'Posisi')),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(child: _number(line.gas, '${_meta.gasLabel} *')),
+                  const SizedBox(width: 10),
+                  Expanded(child: _number(line.qty, 'Qty Sampel *', whole: true)),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(child: _number(line.rh, 'RH *', suffix: '%')),
+                  const SizedBox(width: 10),
+                  Expanded(child: _number(line.suhu, 'Suhu Pulp *', suffix: '°C')),
+                ],
+              ),
             ],
           ),
-          Row(
-            children: [
-              Expanded(child: _number(line.rh, 'RH *', suffix: '%')),
-              const SizedBox(width: 10),
-              Expanded(child: _number(line.suhu, 'Suhu Pulp *', suffix: '°C')),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
@@ -607,6 +613,30 @@ class _CreateRipeningMonitoringScreenState
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: AppColors.primary, width: 1.3),
+      ),
+    );
+  }
+
+  Widget _roomField(_RipeningEditors line) {
+    const rooms = ['R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8'];
+    final current = line.ruang.text.trim();
+    final options = <String>[
+      ...rooms,
+      if (current.isNotEmpty && !rooms.contains(current)) current,
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: DropdownButtonFormField<String>(
+        key: ValueKey('ruang-${line.itemCode}-$current'),
+        initialValue: current.isEmpty ? null : current,
+        isExpanded: true,
+        decoration: _soDecoration('Ruang'),
+        hint: const Text('Pilih'),
+        items: [
+          for (final room in options)
+            DropdownMenuItem(value: room, child: Text(room)),
+        ],
+        onChanged: (value) => setState(() => line.ruang.text = value ?? ''),
       ),
     );
   }
