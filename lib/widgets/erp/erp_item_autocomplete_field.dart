@@ -357,10 +357,18 @@ class _ErpItemSearchSheetState extends State<_ErpItemSearchSheet> {
                               icon: const Icon(Icons.close_rounded),
                             ),
                       filled: true,
-                      fillColor: AppColors.background,
+                      fillColor: AppColors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
                       ),
                     ),
                   ),

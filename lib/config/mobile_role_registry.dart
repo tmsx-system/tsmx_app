@@ -220,7 +220,7 @@ class MobileRoleRegistry {
       key: MobileModule.qualityControl,
       groupKey: 'warehouse',
       defaultLabel: 'Quality Control',
-      defaultSubtitle: 'Incoming, production, reject, approval QC',
+      defaultSubtitle: 'QC gudang dan ripening',
       icon: Icons.fact_check_rounded,
       menuOrder: 46,
     ),
@@ -335,7 +335,7 @@ class MobileRoleRegistry {
     ),
     MobileModuleAccessRule(
       module: MobileModule.qualityControl,
-      readDoctypes: ['Quality Inspection'],
+      readDoctypes: ['Ripening Monitoring', 'Quality Inspection'],
     ),
     MobileModuleAccessRule(
       module: MobileModule.logistics,

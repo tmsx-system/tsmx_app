@@ -185,8 +185,9 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
       state.canCreateDoctype('Stock Entry'),
       state.canReadDoctype('Stock Reconciliation'),
       state.canCreateDoctype('Stock Reconciliation'),
+      state.canReadDoctype('Ripening Monitoring'),
+      state.canCreateDoctype('Ripening Monitoring'),
       state.canReadDoctype('Quality Inspection'),
-      state.canCreateDoctype('Quality Inspection'),
       state.canReadDoctype('Reject'),
     ]);
     final permissions = _WarehouseDoctypePermissions(
@@ -197,9 +198,9 @@ class _WarehouseMainScreenState extends State<WarehouseMainScreen> {
       canCreateStockEntry: results[4],
       canReadStockReconciliation: results[5],
       canCreateStockReconciliation: results[6],
-      canReadQualityInspection: results[7],
+      canReadQualityInspection: results[7] || results[8] || results[9],
       canCreateQualityInspection: results[8],
-      canReadReject: results[9],
+      canReadReject: results[10],
     );
     return permissions;
   }
