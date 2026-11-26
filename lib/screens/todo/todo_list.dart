@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/erp_approval_todo.dart';
+import '../../models/sales_order.dart';
 import '../../models/sales_order_approval.dart';
 import '../../models/tukar_guling.dart';
+import '../selling/shared/selling_document_detail_sheet.dart';
 import '../../state/selling/tukar_guling_state.dart';
 import '../../state/todo/todo_state.dart';
 import '../../theme/app_colors.dart';
@@ -1554,7 +1556,10 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: TmsxResponsive.pagePadding(context, top: 14, bottom: 28),
             children: [
-              _detailHeader(),
+              if (widget.approval.doctype == 'Sales Order' && detail != null)
+                _salesOrderDocument(detail)
+              else
+                _detailHeader(),
               if (_loading) ...[
                 const SizedBox(height: 12),
                 const LinearProgressIndicator(),
@@ -1563,7 +1568,8 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                 const SizedBox(height: 12),
                 _errorBox(_error!),
               ],
-              if (detail != null) ...[
+              if (detail != null &&
+                  widget.approval.doctype != 'Sales Order') ...[
                 const SizedBox(height: 12),
 
                 _sectionCard(
@@ -1600,7 +1606,8 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                         .sessionCookieHeader,
                   ),
                 ],
-
+              ],
+              if (detail != null) ...[
                 const SizedBox(height: 12),
                 _decisionCard(detail),
 
@@ -1616,6 +1623,66 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _salesOrderDocument(Map<String, dynamic> detail) {
+    final order = SalesOrder.fromJson(detail);
+    return SellingDocumentDetailView(
+      title: order.id,
+      subtitle: order.customer,
+      statusText: order.effectiveStatusText,
+      icon: Icons.point_of_sale_rounded,
+      metrics: [
+        SellingDetailMetric(
+          label: 'Total',
+          value: 'Rp ${formatErpCurrency(order.value)}',
+          icon: Icons.payments_outlined,
+        ),
+        SellingDetailMetric(
+          label: 'Items',
+          value: '${order.itemsCount}',
+          icon: Icons.inventory_2_outlined,
+        ),
+        SellingDetailMetric(
+          label: 'Delivered',
+          value: '${order.perDelivered.toStringAsFixed(1)}%',
+          icon: Icons.local_shipping_outlined,
+        ),
+        SellingDetailMetric(
+          label: 'Billed',
+          value: '${order.perBilled.toStringAsFixed(1)}%',
+          icon: Icons.receipt_long_outlined,
+        ),
+      ],
+      infos: [
+        SellingDetailInfo(
+          label: 'Doc Status',
+          value: docStatusLabel(order.docStatus),
+        ),
+        SellingDetailInfo(label: 'Date', value: order.date),
+        if (order.sellingPriceList.isNotEmpty)
+          SellingDetailInfo(label: 'Price List', value: order.sellingPriceList),
+        if (order.currency.isNotEmpty)
+          SellingDetailInfo(label: 'Currency', value: order.currency),
+        SellingDetailInfo(
+          label: 'Noted',
+          value: order.noted.trim().isEmpty ? '-' : order.noted.trim(),
+        ),
+      ],
+      items: order.items
+          .map(
+            (item) => SellingDetailItem(
+              title: item.itemName,
+              subtitle: item.itemCode,
+              qty: '${item.qty}',
+              rate: 'Rp ${formatErpCurrency(item.rate)}',
+              discount: 'Rp ${formatErpCurrency(item.discountAmount)}',
+              description: item.description,
+              amount: 'Rp ${formatErpCurrency(item.qty * item.rate)}',
+            ),
+          )
+          .toList(),
     );
   }
 

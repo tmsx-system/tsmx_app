@@ -102,7 +102,7 @@ Future<void> showSellingDocumentDetailSheet({
                   top: 10,
                   bottom: 28,
                 ),
-                child: _SellingDetailBody(
+                child: SellingDocumentDetailView(
                   title: title,
                   subtitle: subtitle,
                   statusText: statusText,
@@ -168,7 +168,7 @@ Future<void> showSellingDocumentDetailPage({
           child: ListView(
             padding: TmsxResponsive.pagePadding(pageContext, bottom: 28),
             children: [
-              _SellingDetailBody(
+              SellingDocumentDetailView(
                 title: title,
                 subtitle: subtitle,
                 statusText: statusText,
@@ -192,7 +192,7 @@ Future<void> showSellingDocumentDetailPage({
   );
 }
 
-class _SellingDetailBody extends StatelessWidget {
+class SellingDocumentDetailView extends StatelessWidget {
   final String title;
   final String subtitle;
   final String statusText;
@@ -210,7 +210,7 @@ class _SellingDetailBody extends StatelessWidget {
   final bool showHandle;
   final VoidCallback? onClose;
 
-  const _SellingDetailBody({
+  const SellingDocumentDetailView({
     required this.title,
     required this.subtitle,
     required this.statusText,
@@ -218,8 +218,8 @@ class _SellingDetailBody extends StatelessWidget {
     required this.metrics,
     required this.infos,
     required this.items,
-    required this.itemsTitle,
-    required this.footer,
+    this.itemsTitle = 'Detail Item',
+    this.footer,
     this.itemsBadge,
     this.headerMeta,
     this.itemsFooter,
