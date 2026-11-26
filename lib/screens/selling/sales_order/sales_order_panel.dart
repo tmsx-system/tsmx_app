@@ -134,7 +134,10 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
   void _sortOrders(List<SalesOrder> filtered) {
     filtered.sort((a, b) {
       return switch (_sortOption) {
-        _OrderSortOption.newest => _compareDateDesc(a.date, b.date),
+        _OrderSortOption.newest => _compareDateDesc(
+          a.modified.isNotEmpty ? a.modified : a.date,
+          b.modified.isNotEmpty ? b.modified : b.date,
+        ),
         _OrderSortOption.oldest => _compareDateAsc(a.date, b.date),
         _OrderSortOption.valueHigh => b.value.compareTo(a.value),
         _OrderSortOption.valueLow => a.value.compareTo(b.value),
@@ -378,6 +381,10 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
             ),
           if (detail.currency.isNotEmpty)
             SellingDetailInfo(label: 'Currency', value: detail.currency),
+          SellingDetailInfo(
+            label: 'Noted',
+            value: detail.noted.trim().isEmpty ? '-' : detail.noted.trim(),
+          ),
         ],
         items: detail.items
             .map(
@@ -387,8 +394,8 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
                 qty: '${i.qty}',
                 rate: 'Rp ${formatErpCurrency(i.rate)}',
                 discount: 'Rp ${formatErpCurrency(i.discountAmount)}',
+                description: i.description,
                 amount: 'Rp ${formatErpCurrency(i.qty * i.rate)}',
-                note: i.warehouse,
               ),
             )
             .toList(),

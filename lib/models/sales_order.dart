@@ -4,6 +4,15 @@ import '../utils/num_parse.dart';
 export '../utils/frappe_status.dart'
     show SalesOrderStatusKey, parseSalesOrderStatus;
 
+String _plainText(Object? value) {
+  final text = value?.toString() ?? '';
+  return text
+      .replaceAll(RegExp(r'<[^>]*>'), ' ')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
 class SalesOrderItem {
   final String itemCode;
   final String itemName;
@@ -14,6 +23,7 @@ class SalesOrderItem {
   final String warehouse;
   final String costCenter;
   final String deliveryDate;
+  final String description;
 
   SalesOrderItem({
     required this.itemCode,
@@ -25,6 +35,7 @@ class SalesOrderItem {
     this.warehouse = '',
     this.costCenter = '',
     this.deliveryDate = '',
+    this.description = '',
   });
 
   factory SalesOrderItem.fromJson(Map<String, dynamic> json) {
@@ -42,6 +53,7 @@ class SalesOrderItem {
       warehouse: json['warehouse']?.toString() ?? '',
       costCenter: json['cost_center']?.toString() ?? '',
       deliveryDate: json['delivery_date']?.toString() ?? '',
+      description: _plainText(json['description']),
     );
   }
 }
@@ -58,6 +70,7 @@ class SalesOrder {
   final double perDelivered;
   final double perBilled;
   final String date;
+  final String modified;
   final String deliveryDate;
   final String salesPerson;
   final String currency;
@@ -81,6 +94,7 @@ class SalesOrder {
     this.perDelivered = 0,
     this.perBilled = 0,
     required this.date,
+    this.modified = '',
     this.deliveryDate = '',
     this.salesPerson = '',
     this.currency = '',
@@ -155,6 +169,7 @@ class SalesOrder {
       perDelivered: NumParse.asDouble(json['per_delivered']),
       perBilled: NumParse.asDouble(json['per_billed']),
       date: date,
+      modified: json['modified']?.toString() ?? '',
       deliveryDate: json['delivery_date']?.toString() ?? '',
       salesPerson: salesPerson,
       currency: json['currency']?.toString() ?? '',
@@ -182,6 +197,7 @@ class SalesOrder {
     double? perDelivered,
     double? perBilled,
     String? date,
+    String? modified,
     String? deliveryDate,
     String? salesPerson,
     String? currency,
@@ -205,6 +221,7 @@ class SalesOrder {
       perDelivered: perDelivered ?? this.perDelivered,
       perBilled: perBilled ?? this.perBilled,
       date: date ?? this.date,
+      modified: modified ?? this.modified,
       deliveryDate: deliveryDate ?? this.deliveryDate,
       salesPerson: salesPerson ?? this.salesPerson,
       currency: currency ?? this.currency,

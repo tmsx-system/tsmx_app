@@ -39,6 +39,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   final _qtyCtrl = TextEditingController(text: '1');
   final _rateCtrl = TextEditingController();
   final _discountCtrl = TextEditingController(text: '0');
+  final _descriptionCtrl = TextEditingController();
   final _notedCtrl = TextEditingController();
   final List<_AdditionalItemRow> _additionalItems = [];
   final ImagePicker _imagePicker = ImagePicker();
@@ -591,6 +592,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     _qtyCtrl.dispose();
     _rateCtrl.dispose();
     _discountCtrl.dispose();
+    _descriptionCtrl.dispose();
     _notedCtrl.dispose();
     _itemTextController?.dispose();
     for (final row in _additionalItems) {
@@ -758,6 +760,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       _qtyCtrl.text = '1';
       _rateCtrl.clear();
       _discountCtrl.text = '0';
+      _descriptionCtrl.clear();
       _itemError = null;
     });
     _calculateTotal();
@@ -841,6 +844,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       required double qty,
       double? rate,
       double? discountAmount,
+      String? description,
       String? warehouse,
     }) {
       final pricing = _itemInsights[itemCode];
@@ -858,6 +862,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         if (rowAmount > 0) 'amount': rowAmount,
         if (rowAmount > 0) 'net_amount': rowAmount,
         'discount_amount': discount,
+        'description': description?.trim() ?? '',
         if (originalRate <= 0 && pricing != null && pricing.priceListRate > 0)
           'price_list_rate': pricing.priceListRate,
         if ((discountAmount == null || discountAmount <= 0) &&
@@ -881,6 +886,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         qty: _itemQty(_qtyCtrl.text),
         rate: _itemRate(_rateCtrl.text),
         discountAmount: _itemDiscount(_discountCtrl.text),
+        description: _descriptionCtrl.text,
         warehouse: _selectedWarehouse,
       ),
       ...List<_AdditionalItemRow>.of(_additionalItems).map(
@@ -889,6 +895,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
           qty: _itemQty(row.qtyController.text),
           rate: _itemRate(row.rateController.text),
           discountAmount: _itemDiscount(row.discountController.text),
+          description: row.descriptionController.text,
           warehouse: row.warehouse ?? _selectedWarehouse,
         ),
       ),
@@ -2775,6 +2782,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         discount: item.discountAmount > 0
             ? _formatRupiah(item.discountAmount)
             : '0',
+        description: item.description,
         warehouse: item.warehouse.isNotEmpty ? item.warehouse : null,
       );
       _bindAdditionalRowListeners(row);
@@ -2801,6 +2809,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       _discountCtrl.text = firstItem?.discountAmount != null
           ? _formatRupiah(firstItem!.discountAmount)
           : '0';
+      _descriptionCtrl.text = firstItem?.description ?? '';
       if (!keepCurrentDates) {
         _selectedDate = DateTime.tryParse(order.date) ?? _selectedDate;
         final deliveryDate = order.deliveryDate.isNotEmpty
@@ -2994,6 +3003,17 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
               }
               return null;
             },
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: row.descriptionController,
+            minLines: 2,
+            maxLines: 4,
+            textInputAction: TextInputAction.newline,
+            decoration: const InputDecoration(
+              labelText: 'Description',
+              prefixIcon: Icon(Icons.notes_outlined),
+            ),
           ),
           const SizedBox(height: 10),
           _ItemSubtotalSummary(
@@ -3906,6 +3926,29 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                         },
                       ),
                       const SizedBox(height: 10),
+                      TextFormField(
+                        controller: _descriptionCtrl,
+                        minLines: 2,
+                        maxLines: 4,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          labelText: 'Description',
+                          prefixIcon: const Icon(Icons.notes_outlined),
+                          filled: true,
+                          fillColor: AppColors.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: AppColors.primary.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       _ItemSubtotalSummary(
                         qty: _itemQty(_qtyCtrl.text),
                         rate: _itemRate(_rateCtrl.text),
@@ -4073,6 +4116,7 @@ class _AdditionalItemRow {
   final TextEditingController qtyController;
   final TextEditingController rateController;
   final TextEditingController discountController;
+  final TextEditingController descriptionController;
   final TextEditingController itemTextController;
 
   _AdditionalItemRow({
@@ -4081,16 +4125,19 @@ class _AdditionalItemRow {
     String qty = '1',
     String rate = '',
     String discount = '0',
+    String description = '',
     this.warehouse,
   }) : qtyController = TextEditingController(text: qty),
        rateController = TextEditingController(text: rate),
        discountController = TextEditingController(text: discount),
+       descriptionController = TextEditingController(text: description),
        itemTextController = TextEditingController(text: itemLabel);
 
   void dispose() {
     qtyController.dispose();
     rateController.dispose();
     discountController.dispose();
+    descriptionController.dispose();
     itemTextController.dispose();
   }
 }

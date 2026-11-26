@@ -207,10 +207,11 @@ class SalesOrderState extends AppStateProxyNotifier {
         'total_qty',
         'per_delivered',
         'per_billed',
+        'modified',
       ],
       limit: _documentPageSize,
       limitStart: limitStart,
-      orderBy: 'transaction_date desc, name desc',
+      orderBy: 'modified desc',
       filters: filters.isEmpty ? null : filters,
       orFilters: _searchFilters(_salesOrderSearch, const [
         'name',

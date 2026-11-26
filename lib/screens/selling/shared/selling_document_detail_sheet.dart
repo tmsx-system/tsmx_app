@@ -36,6 +36,7 @@ class SellingDetailItem {
   final String qty;
   final String rate;
   final String discount;
+  final String description;
   final String amount;
   final String note;
   final List<SellingDetailStat> stats;
@@ -46,6 +47,7 @@ class SellingDetailItem {
     this.qty = '',
     this.rate = '',
     this.discount = '',
+    this.description = '',
     this.amount = '',
     this.note = '',
     this.stats = const [],
@@ -710,6 +712,12 @@ class _SellingItemCard extends StatelessWidget {
                         width: tileWidth,
                         label: 'Amount',
                         value: item.amount,
+                      ),
+                    if (item.description.isNotEmpty)
+                      _ItemStatTile(
+                        width: constraints.maxWidth,
+                        label: 'Description',
+                        value: item.description,
                       ),
                     if (item.note.isNotEmpty)
                       _ItemStatTile(
