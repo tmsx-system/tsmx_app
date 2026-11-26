@@ -174,7 +174,7 @@ class TukarGulingState extends AppStateProxyNotifier {
     }
   }
 
-  /// Sales sees customers on their Sales Team and on their Field SPG Assignment.
+  /// Sales sees customers on their Sales Team and on their SPG Assignment.
   /// SPG sees only customers assigned to that employee.
   Future<Set<String>?> _scopedCustomerIds() async {
     if (appState.mobileAccess.isSpg) {

@@ -3981,9 +3981,8 @@ class AppState with ChangeNotifier {
   }) async {
     Object? lastError;
     for (final doctype in const [
-      'Field SPG Assignment',
       'SPG Assignment',
-      'SPG Target',
+      'Field SPG Assignment',
     ]) {
       try {
         final listed = await _fetchResourceWithFieldFallback(
@@ -4022,7 +4021,7 @@ class AppState with ChangeNotifier {
         lastError = error;
       }
     }
-    throw lastError ?? Exception('Field SPG Assignment tidak dapat dibaca.');
+    throw lastError ?? Exception('SPG Assignment tidak dapat dibaca.');
   }
 
   Future<List<SpgAssignmentRow>> _rowsFromAssignmentDocs(
@@ -4181,7 +4180,7 @@ class AppState with ChangeNotifier {
     final exists = assignedCustomers.any((option) => option.id == customer);
     if (!exists) {
       throw Exception(
-        'Customer tidak ada di Field SPG Assignment untuk employee ini.',
+        'Customer tidak ada di SPG Assignment untuk employee ini.',
       );
     }
   }
@@ -4400,6 +4399,49 @@ class AppState with ChangeNotifier {
     return fetchSellableItems(query: query);
   }
 
+  Future<List<String>> fetchStoreTargetItemGroups({
+    required String customer,
+    DateTime? onDate,
+  }) async {
+    final selectedCustomer = customer.trim();
+    if (selectedCustomer.isEmpty) return const [];
+    await _frappeService.ensureLoggedIn();
+    final rows = await _frappeService.fetchResource(
+      'Store Target By SPG',
+      fields: const ['name', 'customer', 'period', 'docstatus', 'modified'],
+      filters: [
+        ['customer', '=', selectedCustomer],
+        ['docstatus', '=', 1],
+      ],
+      orderBy: 'modified desc',
+      limit: 24,
+    );
+    if (rows.isEmpty) return const [];
+    final day = onDate ?? DateTime.now();
+    Map<String, dynamic>? chosen;
+    for (final row in rows) {
+      final period = DateTime.tryParse('${row['period']}');
+      if (period != null && period.year == day.year && period.month == day.month) {
+        chosen = row;
+        break;
+      }
+    }
+    chosen ??= rows.first;
+    final name = chosen['name']?.toString().trim() ?? '';
+    if (name.isEmpty) return const [];
+    final doc = await _frappeService.fetchDocument('Store Target By SPG', name);
+    final groups = <String>{};
+    for (final value in doc.values) {
+      if (value is! List) continue;
+      for (final raw in value.whereType<Map>()) {
+        final group = raw['item_group']?.toString().trim() ?? '';
+        if (group.isNotEmpty) groups.add(group);
+      }
+    }
+    final sorted = groups.toList()..sort();
+    return sorted;
+  }
+
   Future<Map<String, dynamic>> createSpgDailyReport({
     required String customer,
     required List<Map<String, dynamic>> sellingItems,
@@ -4476,10 +4518,19 @@ class AppState with ChangeNotifier {
       );
     }
     final rows = sellingItems
-        .where((row) => row['item']?.toString().trim().isNotEmpty == true)
+        .where(
+          (row) =>
+              row['item_group']?.toString().trim().isNotEmpty == true ||
+              row['item']?.toString().trim().isNotEmpty == true,
+        )
         .map(
           (row) => {
-            'item': row['item']?.toString().trim() ?? '',
+            'item_group': row['item_group']?.toString().trim().isNotEmpty == true
+                ? row['item_group']?.toString().trim()
+                : row['item']?.toString().trim() ?? '',
+            'item': row['item_group']?.toString().trim().isNotEmpty == true
+                ? row['item_group']?.toString().trim()
+                : row['item']?.toString().trim() ?? '',
             'uom': row['uom']?.toString().trim() ?? '',
             'opening_stock': NumParse.asDouble(row['opening_stock']),
             'closing_stock': NumParse.asDouble(row['closing_stock']),

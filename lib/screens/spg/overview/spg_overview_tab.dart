@@ -750,7 +750,9 @@ class _DaySummary {
       final rows = report['selling_items'];
       if (rows is! List) continue;
       for (final raw in rows.whereType<Map>()) {
-        final name = raw['item']?.toString().trim() ?? '';
+        final name = raw['item_group']?.toString().trim().isNotEmpty == true
+            ? raw['item_group'].toString().trim()
+            : raw['item']?.toString().trim() ?? '';
         if (name.isEmpty) continue;
         final rowUom = raw['uom']?.toString().trim() ?? '';
         if (uom.isEmpty && rowUom.isNotEmpty) uom = rowUom;

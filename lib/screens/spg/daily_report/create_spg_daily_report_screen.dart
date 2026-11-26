@@ -24,8 +24,7 @@ class _CreateSpgDailyReportScreenState
   final _notes = TextEditingController();
   final List<_SpgSellingRow> _rows = [_SpgSellingRow()];
   List<SpgCustomerOption> _customers = const [];
-  List<Map<String, dynamic>> _items = const [];
-  final _itemCache = <String, Map<String, dynamic>>{};
+  List<String> _itemGroups = const [];
   List<Map<String, dynamic>> _employees = const [];
   SpgCustomerOption? _customer;
   Map<String, dynamic>? _employee;
@@ -61,16 +60,14 @@ class _CreateSpgDailyReportScreenState
         selectsEmployee
             ? Future.value(const <SpgCustomerOption>[])
             : _customersFor(state, ''),
-        state.fetchSpgSellingItems(''),
         if (selectsEmployee)
           state.fetchSpgEmployeeChoices(onDate: _reportDate),
       ]);
       if (!mounted) return;
       setState(() {
         _customers = results[0] as List<SpgCustomerOption>;
-        _items = results[1] as List<Map<String, dynamic>>;
         _employees = selectsEmployee
-            ? results[2] as List<Map<String, dynamic>>
+            ? results[1] as List<Map<String, dynamic>>
             : const <Map<String, dynamic>>[];
       });
       await _applyExisting(state);
@@ -140,6 +137,7 @@ class _CreateSpgDailyReportScreenState
     }
     _notes.text = doc['notes']?.toString() ?? '';
     if (mounted) setState(() {});
+    if (customerId.isNotEmpty) await _loadItemGroups();
   }
 
   List<_SpgSellingRow> _rowsFromDoc(dynamic value) {
@@ -147,8 +145,8 @@ class _CreateSpgDailyReportScreenState
     return [
       for (final raw in value.whereType<Map>())
         _SpgSellingRow(
-          item: raw['item']?.toString() ?? '',
-          itemLabel: raw['item']?.toString() ?? '',
+          item: _groupOf(raw),
+          itemLabel: _groupOf(raw),
           uom: raw['uom']?.toString() ?? '',
           opening: raw['opening_stock']?.toString() ?? '',
           closing: raw['closing_stock']?.toString() ?? '',
@@ -230,8 +228,10 @@ class _CreateSpgDailyReportScreenState
       if (_customer != null &&
           !customers.any((option) => option.id == _customer!.id)) {
         _customer = null;
+        _itemGroups = const [];
       }
     });
+    if (_customer != null) await _loadItemGroups();
   }
 
   String _reportDateLabel() {
@@ -250,13 +250,9 @@ class _CreateSpgDailyReportScreenState
       setState(() => _error = 'Customer wajib dipilih.');
       return;
     }
-    final missingUom = _rows.any(
-      (row) => row.item.trim().isNotEmpty && row.uom.trim().isEmpty,
-    );
-    if (missingUom) {
-      setState(
-        () => _error = 'Pilih item dari hasil pencarian agar UOM terisi.',
-      );
+    final missingGroup = _rows.every((row) => row.item.trim().isEmpty);
+    if (missingGroup) {
+      setState(() => _error = 'Pilih Item Group dari Store Target customer ini.');
       return;
     }
     setState(() {
@@ -521,10 +517,8 @@ class _CreateSpgDailyReportScreenState
                     const SizedBox(height: 2),
                     Text(
                       row.item.isEmpty
-                          ? 'Pilih item dari master Item'
-                          : [row.item, row.uom]
-                                .where((value) => value.trim().isNotEmpty)
-                                .join(' · '),
+                          ? 'Item Group dari Store Target customer'
+                          : row.item,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -552,51 +546,20 @@ class _CreateSpgDailyReportScreenState
           IgnorePointer(
             ignoring: _saving,
             child: ErpItemAutocompleteField(
-              label: 'Name',
+              label: 'Item Group',
               selectedId: row.item.isEmpty ? null : row.item,
               options: _itemOptionsFor(row),
-              onSearch: _searchItems,
+              onSearch: _customer == null ? null : _searchItemGroups,
               onSelected: (id) => _selectItem(row, id),
               decoration: _pickerDecoration(
-                'Name',
-                hint: 'Pilih atau search item',
-                icon: Icons.inventory_2_outlined,
+                'Item Group',
+                hint: _customer == null
+                    ? 'Pilih customer dulu'
+                    : _itemGroups.isEmpty
+                    ? 'Customer ini belum punya target'
+                    : 'Pilih Item Group',
+                icon: Icons.category_outlined,
               ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppColors.softGreen.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.straighten_rounded,
-                  color: AppColors.primary,
-                  size: 18,
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'UOM',
-                  style: TextStyle(
-                    color: AppColors.slate,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  row.uom.trim().isEmpty ? 'Pilih item dulu' : row.uom,
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
             ),
           ),
           const SizedBox(height: 12),
@@ -633,16 +596,36 @@ class _CreateSpgDailyReportScreenState
     );
   }
 
-  String _itemLabel(Map<String, dynamic> option) {
-    final itemName = option['item_name']?.toString().trim() ?? '';
-    final itemCode =
-        (option['item_code']?.toString().trim().isNotEmpty == true
-            ? option['item_code']?.toString().trim()
-            : option['name']?.toString().trim()) ??
-        '';
-    if (itemName.isEmpty) return itemCode;
-    if (itemCode.isEmpty || itemCode == itemName) return itemName;
-    return '$itemName - $itemCode';
+  Future<void> _loadItemGroups() async {
+    final customer = _customer?.id.trim() ?? '';
+    if (customer.isEmpty) {
+      if (mounted) setState(() => _itemGroups = const []);
+      return;
+    }
+    try {
+      final groups = await context.read<SpgState>().fetchStoreTargetItemGroups(
+        customer: customer,
+        onDate: _reportDate,
+      );
+      if (!mounted) return;
+      setState(() {
+        _itemGroups = groups;
+        for (final row in _rows) {
+          if (row.item.isNotEmpty && !groups.contains(row.item)) {
+            row.item = '';
+            row.itemLabel = '';
+          }
+        }
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = captureErpError(context, error));
+    }
+  }
+
+  String _groupOf(Map raw) {
+    final group = raw['item_group']?.toString().trim() ?? '';
+    if (group.isNotEmpty) return group;
+    return raw['item']?.toString().trim() ?? '';
   }
 
   Widget _customerSearchField() {
@@ -655,7 +638,7 @@ class _CreateSpgDailyReportScreenState
         selectedId: _customer?.id,
         options: [for (final customer in _customers) _customerOption(customer)],
         onSearch: needsEmployee ? null : _searchCustomers,
-        onSelected: (id) {
+        onSelected: (id) async {
           SpgCustomerOption? selected;
           if (id != null && id.isNotEmpty) {
             for (final customer in _customers) {
@@ -667,6 +650,7 @@ class _CreateSpgDailyReportScreenState
             selected ??= SpgCustomerOption(id: id, name: id);
           }
           setState(() => _customer = selected);
+          await _loadItemGroups();
         },
         decoration: _pickerDecoration(
           'Customer',
@@ -723,6 +707,7 @@ class _CreateSpgDailyReportScreenState
             _employee = selected;
             _customer = null;
             _customers = const [];
+            _itemGroups = const [];
           });
           if (selected != null) _loadScheduledCustomersForEmployee();
         },
@@ -792,42 +777,29 @@ class _CreateSpgDailyReportScreenState
 
   List<ErpItemOption> _itemOptionsFor(_SpgSellingRow row) {
     final options = <ErpItemOption>[
-      for (final item in _items) _rememberItem(item),
+      for (final group in _itemGroups) ErpItemOption(id: group, label: group),
     ];
     if (row.item.isNotEmpty && !options.any((option) => option.id == row.item)) {
-      options.insert(
-        0,
-        ErpItemOption(
-          id: row.item,
-          label: row.itemLabel.isEmpty ? row.item : row.itemLabel,
-        ),
-      );
+      options.insert(0, ErpItemOption(id: row.item, label: row.item));
     }
     return options;
   }
 
-  Future<List<ErpItemOption>> _searchItems(String query) async {
-    final rows = await context.read<SpgState>().fetchSpgSellingItems(query);
-    if (query.trim().isEmpty) _items = rows;
-    return [for (final item in rows) _rememberItem(item)];
-  }
-
-  ErpItemOption _rememberItem(Map<String, dynamic> item) {
-    final code = item['item_code']?.toString().trim() ?? '';
-    final name = item['name']?.toString().trim() ?? '';
-    final id = code.isNotEmpty ? code : name;
-    if (id.isNotEmpty) _itemCache[id] = item;
-    return ErpItemOption(id: id, label: _itemLabel(item));
+  Future<List<ErpItemOption>> _searchItemGroups(String query) async {
+    final needle = query.trim().toLowerCase();
+    return [
+      for (final group in _itemGroups)
+        if (needle.isEmpty || group.toLowerCase().contains(needle))
+          ErpItemOption(id: group, label: group),
+    ];
   }
 
   void _selectItem(_SpgSellingRow row, String? id) {
-    final item = id == null ? null : _itemCache[id];
+    final group = id?.trim() ?? '';
     setState(() {
-      row.item = id?.trim() ?? '';
-      row.itemLabel = item == null
-          ? (id?.trim() ?? '')
-          : _itemLabel(item);
-      row.uom = item?['stock_uom']?.toString() ?? '';
+      row.item = group;
+      row.itemLabel = group;
+      row.uom = '';
     });
   }
 
@@ -903,6 +875,7 @@ class _SpgSellingRow {
   }
 
   Map<String, dynamic> toPayload() => {
+    'item_group': item,
     'item': item,
     'uom': uom,
     'opening_stock': stockAwal.text,

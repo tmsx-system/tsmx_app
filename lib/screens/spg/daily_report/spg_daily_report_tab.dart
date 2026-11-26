@@ -595,7 +595,9 @@ class _SpgDailyReportDetailSheet extends StatelessWidget {
   }
 
   Widget _itemCard(Map<String, dynamic> row) {
-    final item = row['item']?.toString() ?? '';
+    final item = row['item_group']?.toString().trim().isNotEmpty == true
+        ? row['item_group'].toString()
+        : row['item']?.toString() ?? '';
     final uom = row['uom']?.toString() ?? '';
     return Card(
       margin: const EdgeInsets.only(bottom: 8),

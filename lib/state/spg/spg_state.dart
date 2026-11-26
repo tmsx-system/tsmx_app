@@ -136,6 +136,16 @@ class SpgState extends AppStateProxyNotifier {
     );
   }
 
+  Future<List<String>> fetchStoreTargetItemGroups({
+    required String customer,
+    DateTime? onDate,
+  }) {
+    return appState.fetchStoreTargetItemGroups(
+      customer: customer,
+      onDate: onDate,
+    );
+  }
+
   Future<List<Map<String, dynamic>>> fetchSpgDailyReports({
     DateTime? from,
     DateTime? to,
