@@ -208,6 +208,7 @@ class SalesOrderState extends AppStateProxyNotifier {
         'per_delivered',
         'per_billed',
         'modified',
+        'custom_status_warehouse',
       ],
       limit: _documentPageSize,
       limitStart: limitStart,

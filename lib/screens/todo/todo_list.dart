@@ -1632,6 +1632,7 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
       title: order.id,
       subtitle: order.customer,
       statusText: order.effectiveStatusText,
+      statusBeside: order.warehouseStatus,
       icon: Icons.point_of_sale_rounded,
       metrics: [
         SellingDetailMetric(

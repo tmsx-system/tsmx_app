@@ -345,6 +345,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
         title: detail.id,
         subtitle: detail.customer,
         statusText: detail.effectiveStatusText,
+        statusBeside: detail.warehouseStatus,
         icon: Icons.point_of_sale_rounded,
         metrics: [
           SellingDetailMetric(
@@ -864,6 +865,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
                     statusText: o.effectiveStatusText,
                     date: o.date,
                     value: o.value,
+                    valueExtra: o.warehouseStatus,
                     onTap: _isOpeningDetail
                         ? null
                         : () => unawaited(_openDetail(o)),

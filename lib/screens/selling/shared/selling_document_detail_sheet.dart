@@ -68,6 +68,7 @@ Future<void> showSellingDocumentDetailSheet({
   String itemsTitle = 'Detail Item',
   String? itemsBadge,
   String? headerMeta,
+  String? statusBeside,
   Widget? itemsFooter,
   Widget? extra,
   Widget? afterItems,
@@ -113,6 +114,7 @@ Future<void> showSellingDocumentDetailSheet({
                   itemsTitle: itemsTitle,
                   itemsBadge: itemsBadge,
                   headerMeta: headerMeta,
+                  statusBeside: statusBeside,
                   itemsFooter: itemsFooter,
                   extra: extra,
                   afterItems: afterItems,
@@ -145,6 +147,7 @@ Future<void> showSellingDocumentDetailPage({
   String? itemsBadge,
   String? appBarTitle,
   String? headerMeta,
+  String? statusBeside,
   Widget? itemsFooter,
   Widget? extra,
   Widget? afterItems,
@@ -179,6 +182,7 @@ Future<void> showSellingDocumentDetailPage({
                 itemsTitle: itemsTitle,
                 itemsBadge: itemsBadge,
                 headerMeta: headerMeta,
+                statusBeside: statusBeside,
                 itemsFooter: itemsFooter,
                 extra: extra,
                 afterItems: afterItems,
@@ -203,6 +207,7 @@ class SellingDocumentDetailView extends StatelessWidget {
   final String itemsTitle;
   final String? itemsBadge;
   final String? headerMeta;
+  final String? statusBeside;
   final Widget? itemsFooter;
   final Widget? extra;
   final Widget? afterItems;
@@ -222,6 +227,7 @@ class SellingDocumentDetailView extends StatelessWidget {
     this.footer,
     this.itemsBadge,
     this.headerMeta,
+    this.statusBeside,
     this.itemsFooter,
     this.extra,
     this.afterItems,
@@ -253,6 +259,7 @@ class SellingDocumentDetailView extends StatelessWidget {
           statusText: statusText,
           icon: icon,
           headerMeta: headerMeta,
+          statusBeside: statusBeside,
           onClose: onClose,
         ),
         if (metrics.isNotEmpty) ...[
@@ -284,6 +291,7 @@ class _SellingDetailHeader extends StatelessWidget {
   final String statusText;
   final IconData icon;
   final String? headerMeta;
+  final String? statusBeside;
   final VoidCallback? onClose;
 
   const _SellingDetailHeader({
@@ -292,6 +300,7 @@ class _SellingDetailHeader extends StatelessWidget {
     required this.statusText,
     required this.icon,
     this.headerMeta,
+    this.statusBeside,
     this.onClose,
   });
 
@@ -356,6 +365,8 @@ class _SellingDetailHeader extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     ErpStatusBadge(statusText: statusText),
+                    if (statusBeside != null && statusBeside!.trim().isNotEmpty)
+                      ErpStatusBadge(statusText: statusBeside!.trim()),
                     if (headerMeta != null && headerMeta!.trim().isNotEmpty)
                       Text(
                         headerMeta!.trim(),
