@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../models/sales_order.dart';
 import '../../../models/sales_order_insight.dart';
@@ -1058,6 +1059,19 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
       maxWidth: 1600,
     );
     if (photo != null && mounted) setState(() => _photos.add(photo));
+  }
+
+  Future<void> _pickPdf() async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+    );
+    final path = file?.path;
+    if (path == null || path.isEmpty || !mounted) return;
+    final name = file?.name.trim().isNotEmpty == true
+        ? file!.name.trim()
+        : path.split(RegExp(r'[\\/]')).last;
+    setState(() => _photos.add(XFile(path, name: name)));
   }
 
   void _showCustomerHistory() {
@@ -4027,6 +4041,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                   photos: _photos,
                   onCamera: () => _pickPhoto(ImageSource.camera),
                   onGallery: () => _pickPhoto(ImageSource.gallery),
+                  onPdf: _pickPdf,
                   onRemove: (index) => setState(() => _photos.removeAt(index)),
                 ),
 
@@ -4689,12 +4704,14 @@ class _AttachmentCard extends StatelessWidget {
   final List<XFile> photos;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
+  final VoidCallback onPdf;
   final ValueChanged<int> onRemove;
 
   const _AttachmentCard({
     required this.photos,
     required this.onCamera,
     required this.onGallery,
+    required this.onPdf,
     required this.onRemove,
   });
 
@@ -4717,7 +4734,7 @@ class _AttachmentCard extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Text(
-              'Foto akan masuk ke panel Attachments setelah Draft Sales Order berhasil disimpan.',
+              'Foto dan PDF masuk ke panel Attachments setelah Sales Order berhasil disimpan.',
               style: TextStyle(fontSize: 11, color: AppColors.slate),
             ),
           ),
@@ -4741,6 +4758,12 @@ class _AttachmentCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: onPdf,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('PDF'),
+          ),
           ...photos.asMap().entries.map(
             (entry) => Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -4760,8 +4783,10 @@ class _AttachmentCard extends StatelessWidget {
                         color: AppColors.white,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
-                        Icons.image_outlined,
+                      child: Icon(
+                        entry.value.name.toLowerCase().endsWith('.pdf')
+                            ? Icons.picture_as_pdf_outlined
+                            : Icons.image_outlined,
                         color: AppColors.primary,
                         size: 18,
                       ),

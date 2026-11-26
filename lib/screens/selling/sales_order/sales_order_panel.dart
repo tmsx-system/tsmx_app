@@ -9,6 +9,7 @@ import '../../../utils/erp_doc_utils.dart';
 import '../../../utils/erp_format.dart';
 import '../../../utils/erp_share_file.dart';
 import '../../../widgets/erp/document_trend_card.dart';
+import '../../../widgets/erp/erp_attachment_photos.dart';
 import '../../../widgets/erp/erp_document_card.dart';
 import '../../../widgets/erp/erp_empty_state.dart';
 import '../../../widgets/erp/erp_error_box.dart';
@@ -333,6 +334,17 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
       }
       if (!mounted) return;
 
+      var photos = const <Map<String, dynamic>>[];
+      try {
+        photos = await sellingState.appState.fetchDocumentAttachments(
+          doctype: 'Sales Order',
+          documentName: detail.id,
+        );
+      } catch (_) {
+        photos = const [];
+      }
+      if (!mounted) return;
+
       final canSubmit = isDocDraft(detail.docStatus)
           ? await sellingState.canSubmitDoctype('Sales Order')
           : false;
@@ -400,6 +412,13 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
               ),
             )
             .toList(),
+        afterItems: photos.isEmpty
+            ? null
+            : ErpAttachmentPhotos(
+                files: photos,
+                baseUrl: sellingState.appState.frappeService.baseUrl,
+                cookie: sellingState.appState.frappeService.sessionCookieHeader,
+              ),
         footer: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

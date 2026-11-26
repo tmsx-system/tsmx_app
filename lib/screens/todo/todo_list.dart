@@ -14,6 +14,7 @@ import '../../theme/app_colors.dart';
 import '../../utils/erp_doc_utils.dart';
 import '../../utils/erp_format.dart';
 import '../../utils/num_parse.dart';
+import '../../widgets/erp/erp_attachment_photos.dart';
 import '../../widgets/erp/erp_empty_state.dart';
 import '../../utils/erp_error_message.dart';
 import '../../widgets/erp/erp_status_badge.dart';
@@ -1245,7 +1246,8 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
           setState(() => _harianDates = const {});
         }
       }
-      if (widget.approval.doctype == 'Tukar Guling') {
+      if (widget.approval.doctype == 'Tukar Guling' ||
+          widget.approval.doctype == 'Sales Order') {
         try {
           final files = await appState.appState.fetchDocumentAttachments(
             doctype: widget.approval.doctype,
@@ -1560,6 +1562,23 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
                 _salesOrderDocument(detail)
               else
                 _detailHeader(),
+              if (widget.approval.doctype == 'Sales Order' &&
+                  _photos.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                ErpAttachmentPhotos(
+                  files: _photos,
+                  baseUrl: context
+                      .read<TodoState>()
+                      .appState
+                      .frappeService
+                      .baseUrl,
+                  cookie: context
+                      .read<TodoState>()
+                      .appState
+                      .frappeService
+                      .sessionCookieHeader,
+                ),
+              ],
               if (_loading) ...[
                 const SizedBox(height: 12),
                 const LinearProgressIndicator(),

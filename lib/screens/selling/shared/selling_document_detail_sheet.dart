@@ -216,6 +216,7 @@ class SellingDocumentDetailView extends StatelessWidget {
   final VoidCallback? onClose;
 
   const SellingDocumentDetailView({
+    super.key,
     required this.title,
     required this.subtitle,
     required this.statusText,
