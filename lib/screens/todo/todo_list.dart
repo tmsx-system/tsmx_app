@@ -2079,6 +2079,13 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
           ),
         if (jenis.isNotEmpty) _detailRow('Jenis', tukarGulingJenisLabel(jenis)),
         if (metode.isNotEmpty) _detailRow('Metode', metode),
+        if (_text(detail['tanggal_pengiriman']).isNotEmpty)
+          _detailRow(
+            'Tanggal Pengiriman',
+            _text(detail['tanggal_pengiriman']).length >= 10
+                ? _text(detail['tanggal_pengiriman']).substring(0, 10)
+                : _text(detail['tanggal_pengiriman']),
+          ),
         _detailRow('Company', _text(detail['company'])),
         _detailRow('Dibuat oleh', _text(detail['owner'])),
       ];

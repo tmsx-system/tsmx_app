@@ -238,6 +238,7 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
         return detail['jenis_input']?.toString().trim() ?? '';
       }();
       final metode = detail['custom_metode_final']?.toString().trim() ?? '';
+      final deliveryDate = _shortDate(detail['tanggal_pengiriman']);
       final metodeText = metode.toLowerCase();
       final isManual =
           metodeText.contains('langsung') || metodeText.contains('manual');
@@ -388,6 +389,8 @@ class _TukarGulingTabState extends State<TukarGulingTab> {
             ),
           if (metode.isNotEmpty)
             SellingDetailInfo(label: 'Metode', value: metode),
+          if (deliveryDate.isNotEmpty)
+            SellingDetailInfo(label: 'Tanggal Pengiriman', value: deliveryDate),
           SellingDetailInfo(label: 'Company', value: company),
           if (createdBy.isNotEmpty)
             SellingDetailInfo(label: 'Dibuat oleh', value: createdBy),
