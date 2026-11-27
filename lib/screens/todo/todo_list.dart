@@ -193,6 +193,10 @@ Widget tukarGulingTodoItemCard(
   final sourceDate = sourceDates[tukarGulingClaimSource(item)] ?? '';
   final dateLabel = ownDate.isNotEmpty ? ownDate : sourceDate;
   final note = tukarGulingRowText(item, ['keterangan']);
+  final source = tukarGulingClaimSource(item);
+  final displayTitle = claim && source.isNotEmpty
+      ? (title.isEmpty ? source : '$source - $title')
+      : title;
   final warehouse = tukarGulingRowText(item, [
     'source_warehouse',
     's_warehouse',
@@ -236,7 +240,7 @@ Widget tukarGulingTodoItemCard(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title.isEmpty ? '-' : title,
+            title.isEmpty ? '-' : displayTitle,
             style: const TextStyle(
               color: AppColors.navy,
               fontWeight: FontWeight.w900,
