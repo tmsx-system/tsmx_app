@@ -419,6 +419,10 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         }
       }
     } else if (_isFinal) {
+      if (_deliveryDate == null) {
+        setState(() => _error = 'Tanggal pengiriman wajib diisi.');
+        return;
+      }
       if (!_isGetFrom && !_isManual) {
         setState(() => _error = 'Pilih metode Final.');
         return;
@@ -479,7 +483,7 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         sumberInput: _sumberInput,
         metodeFinal: _isFinal ? _metode : '',
         keterangan: _isFinal ? '' : _keteranganCtrl.text,
-        deliveryDate: _isHarian ? _deliveryDate : null,
+        deliveryDate: _isHarian || _isFinal ? _deliveryDate : null,
         deliveryNote: _isHarian ? (_deliveryNote ?? '') : '',
         totalKg: _isHarian
             ? filledClaims.fold<double>(0, (sum, row) => sum + row.qtyKg)
@@ -630,6 +634,36 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
                           ),
                         ),
                       ),
+                      if (_isFinal) ...[
+                        const SizedBox(height: 14),
+                        InkWell(
+                          onTap: _pickFinalDeliveryDate,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InputDecorator(
+                            decoration: _decoration(
+                              'Tanggal Pengiriman *',
+                              suffix: const Icon(
+                                Icons.local_shipping_outlined,
+                                size: 18,
+                                color: AppColors.slate,
+                              ),
+                            ),
+                            child: Text(
+                              _deliveryDate == null
+                                  ? 'Pilih tanggal'
+                                  : DateFormat(
+                                      'dd-MM-yyyy',
+                                    ).format(_deliveryDate!),
+                              style: TextStyle(
+                                color: _deliveryDate == null
+                                    ? AppColors.slate
+                                    : AppColors.navy,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 14),
                       ErpItemAutocompleteField(
                         label: 'Company *',
@@ -1123,6 +1157,19 @@ class _CreateTukarGulingScreenState extends State<CreateTukarGulingScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickFinalDeliveryDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _deliveryDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _deliveryDate = DateTime(picked.year, picked.month, picked.day);
+    });
   }
 
   Future<void> _pickDeliveryDate() async {
