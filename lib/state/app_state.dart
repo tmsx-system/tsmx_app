@@ -5848,6 +5848,7 @@ class AppState with ChangeNotifier {
     String? salesPerson,
     List<Map<String, dynamic>>? salesTeam,
     String? noted,
+    String? poNo,
     DateTime? transactionDate,
     DateTime? deliveryDate,
     bool refreshAfterSave = true,
@@ -5911,6 +5912,7 @@ class AppState with ChangeNotifier {
           {'sales_person': salesPerson!.trim(), 'allocated_percentage': 100},
         ],
       if (noted?.trim().isNotEmpty == true) 'noted': noted!.trim(),
+      if (poNo?.trim().isNotEmpty == true) 'po_no': poNo!.trim(),
       'items': orderItems,
       if (warehouse != null && warehouse.trim().isNotEmpty)
         'set_warehouse': warehouse.trim(),
@@ -5974,6 +5976,7 @@ class AppState with ChangeNotifier {
     String? salesPerson,
     List<Map<String, dynamic>>? salesTeam,
     String? noted,
+    String? poNo,
     DateTime? transactionDate,
     DateTime? deliveryDate,
     String? status,
@@ -6019,6 +6022,7 @@ class AppState with ChangeNotifier {
           {'sales_person': salesPerson.trim(), 'allocated_percentage': 100},
         ],
       if (noted != null) 'noted': noted.trim(),
+      if (poNo != null) 'po_no': poNo.trim(),
       if (warehouse != null && warehouse.trim().isNotEmpty)
         'set_warehouse': warehouse.trim(),
       if (items != null)

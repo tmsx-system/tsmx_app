@@ -42,6 +42,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
   final _discountCtrl = TextEditingController(text: '0');
   final _descriptionCtrl = TextEditingController();
   final _notedCtrl = TextEditingController();
+  final _poNoCtrl = TextEditingController();
   final List<_AdditionalItemRow> _additionalItems = [];
   final ImagePicker _imagePicker = ImagePicker();
   final List<XFile> _photos = [];
@@ -595,6 +596,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
     _discountCtrl.dispose();
     _descriptionCtrl.dispose();
     _notedCtrl.dispose();
+    _poNoCtrl.dispose();
     _itemTextController?.dispose();
     for (final row in _additionalItems) {
       row.dispose();
@@ -2300,6 +2302,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
           ignorePricingRule: false,
           salesPerson: _selectedSalesPerson,
           noted: _notedCtrl.text.trim(),
+          poNo: _poNoCtrl.text.trim(),
           transactionDate: _selectedDate,
           deliveryDate: _selectedDeliveryDate,
           refreshAfterSave: false,
@@ -2317,6 +2320,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
           priceListCurrency: _priceListCurrency,
           salesPerson: _selectedSalesPerson,
           noted: _notedCtrl.text.trim(),
+          poNo: _poNoCtrl.text.trim(),
           transactionDate: _selectedDate,
           deliveryDate: _selectedDeliveryDate,
           refreshAfterSave: false,
@@ -2820,6 +2824,7 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
         _selectedCenter = orderCostCenter;
       }
       _notedCtrl.text = order.noted;
+      _poNoCtrl.text = order.poNo;
       _discountCtrl.text = firstItem?.discountAmount != null
           ? _formatRupiah(firstItem!.discountAmount)
           : '0';
@@ -3512,6 +3517,28 @@ class _CreateSalesOrderScreenState extends State<CreateSalesOrderScreen> {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _poNoCtrl,
+                        keyboardType: TextInputType.text,
+                        decoration: InputDecoration(
+                          labelText: "Customer's Purchase Order",
+                          hintText: 'Nomor PO customer',
+                          prefixIcon: const Icon(Icons.receipt_long_outlined),
+                          filled: true,
+                          fillColor: AppColors.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(
+                              color: AppColors.primary.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       ErpItemAutocompleteField(
                         label: 'Cost Center',

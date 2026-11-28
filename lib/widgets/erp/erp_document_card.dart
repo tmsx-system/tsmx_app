@@ -6,6 +6,7 @@ import 'erp_status_badge.dart';
 class ErpDocumentCard extends StatelessWidget {
   final String id;
   final String party;
+  final String? partyDetail;
   final String statusText;
   final String date;
   final double value;
@@ -24,6 +25,7 @@ class ErpDocumentCard extends StatelessWidget {
     super.key,
     required this.id,
     required this.party,
+    this.partyDetail,
     required this.statusText,
     required this.date,
     required this.value,
@@ -110,6 +112,20 @@ class ErpDocumentCard extends StatelessWidget {
                             color: AppColors.slate,
                           ),
                         ),
+                        if (partyDetail != null &&
+                            partyDetail!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            partyDetail!.trim(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.navy,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

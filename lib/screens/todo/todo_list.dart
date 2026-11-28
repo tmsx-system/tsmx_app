@@ -1689,6 +1689,11 @@ class _ErpApprovalDetailPageState extends State<_ErpApprovalDetailPage> {
           SellingDetailInfo(label: 'Price List', value: order.sellingPriceList),
         if (order.currency.isNotEmpty)
           SellingDetailInfo(label: 'Currency', value: order.currency),
+        if (order.poNo.isNotEmpty)
+          SellingDetailInfo(
+            label: "Customer's Purchase Order",
+            value: order.poNo,
+          ),
         SellingDetailInfo(
           label: 'Noted',
           value: order.noted.trim().isEmpty ? '-' : order.noted.trim(),

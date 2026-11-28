@@ -394,6 +394,11 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
             ),
           if (detail.currency.isNotEmpty)
             SellingDetailInfo(label: 'Currency', value: detail.currency),
+          if (detail.poNo.isNotEmpty)
+            SellingDetailInfo(
+              label: "Customer's Purchase Order",
+              value: detail.poNo,
+            ),
           SellingDetailInfo(
             label: 'Noted',
             value: detail.noted.trim().isEmpty ? '-' : detail.noted.trim(),
@@ -881,6 +886,7 @@ class _SalesOrderPanelState extends State<SalesOrderPanel> {
                   (o) => ErpDocumentCard(
                     id: o.id,
                     party: o.customer,
+                    partyDetail: o.poNo,
                     statusText: o.effectiveStatusText,
                     date: o.date,
                     value: o.value,

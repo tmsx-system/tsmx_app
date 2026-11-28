@@ -78,6 +78,7 @@ class SalesOrder {
   final String priceListCurrency;
   final String costCenter;
   final String noted;
+  final String poNo;
   final String warehouseStatus;
   final bool ignorePricingRule;
   final int itemsCount;
@@ -103,6 +104,7 @@ class SalesOrder {
     this.priceListCurrency = '',
     this.costCenter = '',
     this.noted = '',
+    this.poNo = '',
     this.warehouseStatus = '',
     this.ignorePricingRule = false,
     required this.itemsCount,
@@ -179,6 +181,7 @@ class SalesOrder {
       priceListCurrency: json['price_list_currency']?.toString() ?? '',
       costCenter: json['cost_center']?.toString() ?? '',
       noted: json['noted']?.toString() ?? '',
+      poNo: json['po_no']?.toString().trim() ?? '',
       warehouseStatus: json['custom_status_warehouse']?.toString().trim() ?? '',
       ignorePricingRule:
           json['ignore_pricing_rule'] == 1 ||
@@ -208,6 +211,7 @@ class SalesOrder {
     String? priceListCurrency,
     String? costCenter,
     String? noted,
+    String? poNo,
     String? warehouseStatus,
     bool? ignorePricingRule,
     int? itemsCount,
@@ -233,6 +237,7 @@ class SalesOrder {
       priceListCurrency: priceListCurrency ?? this.priceListCurrency,
       costCenter: costCenter ?? this.costCenter,
       noted: noted ?? this.noted,
+      poNo: poNo ?? this.poNo,
       warehouseStatus: warehouseStatus ?? this.warehouseStatus,
       ignorePricingRule: ignorePricingRule ?? this.ignorePricingRule,
       itemsCount: itemsCount ?? this.itemsCount,
